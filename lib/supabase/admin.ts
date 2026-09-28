@@ -5,23 +5,9 @@
  * desde código que se ejecute en el navegador. Se usa en route handlers y
  * server actions: `/api/track`, `/admin/actions.ts`, etc.
  *
- * NO SE HA PROBADO CONTRA UN PROYECTO SUPABASE REAL CON DATOS (F2, ver
- * docs/tareas/CURRENT.md). El proyecto Supabase todavía no existe (bloqueado
- * por F0). El cliente está escrito contra la API pública de
- * @supabase/supabase-js y el esquema de supabase/migrations/0001_esquema_inicial.sql,
- * pero su comportamiento con una BD real queda pendiente de verificación en
- * cuanto F0 esté lista. Sí se ha verificado que `getSupabaseAdmin()` lee los
- * nombres correctos de env vars (ver admin.test.ts) tras un bug real donde
- * leía `SUPABASE_URL` en vez de `NEXT_PUBLIC_SUPABASE_URL` — los tests de
- * route.test.ts mockean el cliente entero y no lo detectaban.
- *
- * Construcción perezosa (lazy): `NEXT_PUBLIC_SUPABASE_URL` y
- * `SUPABASE_SERVICE_ROLE_KEY` no existen todavía como env vars (no hay
- * proyecto Supabase). Si este módulo
- * llamara a createClient() en el top-level, `pnpm build` fallaría hoy mismo
- * por falta de esas variables — y el build no puede depender de secretos que
- * aún no existen. En su lugar, el cliente solo se construye (y solo entonces
- * puede fallar) la primera vez que alguien llama a `getSupabaseAdmin()`.
+ * Construcción perezosa (lazy): el cliente solo se construye la primera vez
+ * que alguien llama a `getSupabaseAdmin()`. Esto evita que el build falle
+ * si las env vars no están presentes en el entorno de construcción.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -32,6 +18,7 @@ import type {
   Intento,
   MinutoAMinuto,
   Posicion,
+  Reto,
   Texto,
   VisitaWeb,
 } from "@/lib/types";
@@ -60,10 +47,20 @@ import type {
 export interface BaseDeDatos {
   public: {
     Tables: {
+      retos: {
+        Row: Pick<Reto, keyof Reto>;
+        Insert: Omit<Reto, "id" | "created_at">;
+        Update: Partial<Reto>;
+        Relationships: [];
+      };
       intentos: {
         Row: Pick<Intento, keyof Intento>;
-        Insert: Partial<Intento>;
-        Update: Partial<Intento>;
+        // reto_id es el único campo sin default en BD. El resto: fase/modo/cerrado
+        // tienen defaults; destino_lat/lon/started_at/etc. son nullable.
+        // id y created_at son generados por BD — excluidos.
+        Insert: Pick<Pick<Intento, keyof Intento>, "reto_id"> &
+          Partial<Omit<Pick<Intento, keyof Intento>, "id" | "created_at" | "reto_id">>;
+        Update: Partial<Pick<Intento, keyof Intento>>;
         Relationships: [];
       };
       posiciones: {
@@ -75,20 +72,25 @@ export interface BaseDeDatos {
       };
       intenciones: {
         Row: Pick<Intencion, keyof Intencion>;
+        // reto_id es requerido (NOT NULL en BD). FP1 lo inyectará desde el contexto
+        // del reto activo; en FP0 los callers usan reto_id: 1 (portuguesa-110).
         Insert: Omit<Intencion, "id" | "created_at">;
         Update: Partial<Intencion>;
         Relationships: [];
       };
       comentarios: {
         Row: Pick<Comentario, keyof Comentario>;
-        Insert: Omit<Comentario, "id" | "created_at" | "oculto"> &
-          Partial<Pick<Comentario, "oculto">>;
+        // reto_id requerido; oculto y parent_id opcionales (defaults en BD).
+        // FP3 usará parent_id para hilos de respuesta.
+        Insert: Omit<Comentario, "id" | "created_at" | "oculto" | "parent_id"> &
+          Partial<Pick<Comentario, "oculto" | "parent_id">>;
         Update: Partial<Comentario>;
         Relationships: [];
       };
       textos: {
         Row: Pick<Texto, keyof Texto>;
-        Insert: Omit<Texto, "updated_at">;
+        // id generado automáticamente; updated_at con default en BD.
+        Insert: Omit<Texto, "id" | "updated_at">;
         Update: Partial<Texto>;
         Relationships: [];
       };
@@ -100,14 +102,17 @@ export interface BaseDeDatos {
       };
       visitas_web: {
         Row: Pick<VisitaWeb, keyof VisitaWeb>;
+        // reto_id requerido (NOT NULL en BD). FP1 lo inyectará dinámicamente.
         Insert: Omit<VisitaWeb, "id" | "created_at">;
         Update: Partial<VisitaWeb>;
         Relationships: [];
       };
       config_trafico: {
         Row: Pick<ConfigTrafico, keyof ConfigTrafico>;
-        Insert: Partial<ConfigTrafico>;
-        Update: Partial<ConfigTrafico>;
+        // reto_id requerido (no tiene default en BD); cuenta_desde opcional (default now()).
+        Insert: Pick<Pick<ConfigTrafico, keyof ConfigTrafico>, "reto_id"> &
+          Partial<Omit<Pick<ConfigTrafico, keyof ConfigTrafico>, "id" | "created_at" | "reto_id">>;
+        Update: Partial<Pick<ConfigTrafico, keyof ConfigTrafico>>;
         Relationships: [];
       };
     };
