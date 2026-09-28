@@ -37,7 +37,7 @@ export default async function Home() {
   const [intentoActivo, textos] = await Promise.all([obtenerIntentoActivo(), obtenerTextos()]);
   const trazaCoords = cargarTrazaDeMapa();
 
-  const fase = intentoActivo?.fase ?? "antes";
+  const fase = "antes" as Fase; // TEMP preview-only, revertir
 
   return (
     <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
