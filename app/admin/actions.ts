@@ -81,7 +81,7 @@ export async function crearPrimerIntento(): Promise<void> {
   if (errorBusqueda) throw new Error("No se pudo comprobar si ya existe un intento activo.");
   if (intentoActivo) throw new Error("Ya existe un intento activo.");
 
-  const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes" });
+  const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes", reto_id: 1 }); // FP1: obtener reto_id del contexto del reto activo
   if (errorCreacion) throw new Error("No se pudo crear el intento.");
 
   revalidarAdmin();
@@ -320,7 +320,7 @@ export async function reiniciarReto(): Promise<void> {
 
   if (errorCierre) throw new Error("No se pudo cerrar el intento actual.");
 
-  const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes" });
+  const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes", reto_id: 1 }); // FP1: obtener reto_id del contexto del reto activo
   if (errorCreacion) throw new Error("No se pudo abrir un nuevo intento.");
 
   // El intento nuevo empieza en "antes": sin esto, un progreso de "llegada"
@@ -406,8 +406,11 @@ export async function guardarTexto(clave: string, valor: string): Promise<void> 
 
   // No se envía `updated_at`: el tipo Insert de `textos` (lib/supabase/admin.ts)
   // lo omite a propósito porque la columna tiene default `now()` en BD.
+  // FP1: obtener reto_id del contexto del reto activo en vez de hardcodear.
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("textos").upsert({ clave, valor });
+  const { error } = await supabase
+    .from("textos")
+    .upsert({ reto_id: 1, clave, valor }, { onConflict: "reto_id,clave" });
 
   if (error) throw new Error("No se pudo guardar el texto.");
   revalidarAdmin();

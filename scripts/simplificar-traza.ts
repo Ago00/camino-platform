@@ -462,7 +462,7 @@ const trazaMapa = {
 // Escribir los ficheros
 // ---------------------------------------------------------------------------
 
-const libTrazaDir = join(ROOT, "lib", "traza");
+const libTrazaDir = join(ROOT, "lib", "rutas", "portuguesa-110");
 mkdirSync(libTrazaDir, { recursive: true });
 
 const salidaCalculo = join(libTrazaDir, "traza.geojson");

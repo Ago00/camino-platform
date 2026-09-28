@@ -206,7 +206,7 @@ describe("Actividad — arranque desde cero (crearPrimerIntento)", () => {
     intentoActivoMock = null;
     await crearPrimerIntento();
 
-    expect(insertIntentoSpy).toHaveBeenCalledWith({ fase: "antes" });
+    expect(insertIntentoSpy).toHaveBeenCalledWith({ fase: "antes", reto_id: 1 });
   });
 
   it("lanza y no inserta una segunda fila si ya existe un intento activo (regresión del índice único)", async () => {
@@ -385,7 +385,7 @@ describe("Actividad — transiciones de fase", () => {
     await reiniciarReto();
 
     expect(updateSpy).toHaveBeenCalledWith({ cerrado: true });
-    expect(insertIntentoSpy).toHaveBeenCalledWith({ fase: "antes" });
+    expect(insertIntentoSpy).toHaveBeenCalledWith({ fase: "antes", reto_id: 1 });
   });
 
   it("reiniciarReto funciona también desde fase 'durante' (abortar en marcha)", async () => {
@@ -393,7 +393,7 @@ describe("Actividad — transiciones de fase", () => {
     await reiniciarReto();
 
     expect(updateSpy).toHaveBeenCalledWith({ cerrado: true });
-    expect(insertIntentoSpy).toHaveBeenCalledWith({ fase: "antes" });
+    expect(insertIntentoSpy).toHaveBeenCalledWith({ fase: "antes", reto_id: 1 });
   });
 
   it("reiniciarReto lanza si no hay ningún intento activo", async () => {
@@ -437,7 +437,11 @@ describe("Comentarios", () => {
 describe("Textos", () => {
   it("guardarTexto hace upsert de una clave conocida", async () => {
     await guardarTexto("reto_titulo", "Nuevo título");
-    expect(upsertSpy).toHaveBeenCalledWith({ clave: "reto_titulo", valor: "Nuevo título" });
+    // FP0: reto_id hardcodeado a 1 (portuguesa-110) hasta FP1.
+    expect(upsertSpy).toHaveBeenCalledWith(
+      { reto_id: 1, clave: "reto_titulo", valor: "Nuevo título" },
+      { onConflict: "reto_id,clave" }
+    );
   });
 
   it("guardarTexto lanza con una clave desconocida (defensa contra claves arbitrarias)", async () => {
