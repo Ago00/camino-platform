@@ -49,8 +49,8 @@ export interface BaseDeDatos {
     Tables: {
       retos: {
         Row: Pick<Reto, keyof Reto>;
-        Insert: Omit<Reto, "id" | "created_at">;
-        Update: Partial<Reto>;
+        Insert: Omit<Pick<Reto, keyof Reto>, "id" | "created_at">;
+        Update: Partial<Pick<Reto, keyof Reto>>;
         Relationships: [];
       };
       intentos: {
@@ -65,46 +65,46 @@ export interface BaseDeDatos {
       };
       posiciones: {
         Row: Pick<Posicion, keyof Posicion>;
-        Insert: Omit<Posicion, "id" | "created_at" | "descartado"> &
-          Partial<Pick<Posicion, "descartado">>;
-        Update: Partial<Posicion>;
+        Insert: Omit<Pick<Posicion, keyof Posicion>, "id" | "created_at" | "descartado"> &
+          Partial<Pick<Pick<Posicion, keyof Posicion>, "descartado">>;
+        Update: Partial<Pick<Posicion, keyof Posicion>>;
         Relationships: [];
       };
       intenciones: {
         Row: Pick<Intencion, keyof Intencion>;
         // reto_id es requerido (NOT NULL en BD). FP1 lo inyectará desde el contexto
         // del reto activo; en FP0 los callers usan reto_id: 1 (portuguesa-110).
-        Insert: Omit<Intencion, "id" | "created_at">;
-        Update: Partial<Intencion>;
+        Insert: Omit<Pick<Intencion, keyof Intencion>, "id" | "created_at">;
+        Update: Partial<Pick<Intencion, keyof Intencion>>;
         Relationships: [];
       };
       comentarios: {
         Row: Pick<Comentario, keyof Comentario>;
         // reto_id requerido; oculto y parent_id opcionales (defaults en BD).
         // FP3 usará parent_id para hilos de respuesta.
-        Insert: Omit<Comentario, "id" | "created_at" | "oculto" | "parent_id"> &
-          Partial<Pick<Comentario, "oculto" | "parent_id">>;
-        Update: Partial<Comentario>;
+        Insert: Omit<Pick<Comentario, keyof Comentario>, "id" | "created_at" | "oculto" | "parent_id"> &
+          Partial<Pick<Pick<Comentario, keyof Comentario>, "oculto" | "parent_id">>;
+        Update: Partial<Pick<Comentario, keyof Comentario>>;
         Relationships: [];
       };
       textos: {
         Row: Pick<Texto, keyof Texto>;
         // id generado automáticamente; updated_at con default en BD.
-        Insert: Omit<Texto, "id" | "updated_at">;
-        Update: Partial<Texto>;
+        Insert: Omit<Pick<Texto, keyof Texto>, "id" | "updated_at">;
+        Update: Partial<Pick<Texto, keyof Texto>>;
         Relationships: [];
       };
       minuto_a_minuto: {
         Row: Pick<MinutoAMinuto, keyof MinutoAMinuto>;
-        Insert: Omit<MinutoAMinuto, "id" | "created_at" | "updated_at">;
-        Update: Partial<MinutoAMinuto>;
+        Insert: Omit<Pick<MinutoAMinuto, keyof MinutoAMinuto>, "id" | "created_at" | "updated_at">;
+        Update: Partial<Pick<MinutoAMinuto, keyof MinutoAMinuto>>;
         Relationships: [];
       };
       visitas_web: {
         Row: Pick<VisitaWeb, keyof VisitaWeb>;
         // reto_id requerido (NOT NULL en BD). FP1 lo inyectará dinámicamente.
-        Insert: Omit<VisitaWeb, "id" | "created_at">;
-        Update: Partial<VisitaWeb>;
+        Insert: Omit<Pick<VisitaWeb, keyof VisitaWeb>, "id" | "created_at">;
+        Update: Partial<Pick<VisitaWeb, keyof VisitaWeb>>;
         Relationships: [];
       };
       config_trafico: {
