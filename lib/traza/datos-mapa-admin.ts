@@ -89,12 +89,13 @@ export async function obtenerDatosMapaAdmin(): Promise<DatosMapaAdmin> {
     };
   }
 
-  const traza = cargarTrazaDeCalculo();
+  // FP1: obtener rutaId del reto activo en vez de hardcodear.
+  const traza = cargarTrazaDeCalculo("portuguesa-110");
   const progreso = calcularProgreso(historico, traza);
 
   return {
     modo: "guiado",
-    trazaOficial: cargarTrazaDeMapa(),
+    trazaOficial: cargarTrazaDeMapa("portuguesa-110"),
     trazaReal,
     posicionActual: progreso.ultimaPosicion
       ? { lat: progreso.ultimaPosicion.lat, lon: progreso.ultimaPosicion.lon }

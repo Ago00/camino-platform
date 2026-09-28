@@ -90,9 +90,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { nombre, texto, visibilidad } = parsed.data;
   const supabase = getSupabasePublic();
 
-  // No se envía `oculto`: la política RLS de INSERT para anon ya impide
-  // fijarlo a true, y el valor por defecto en BD es false.
+  // No se envía `oculto` ni `parent_id`: la política RLS de INSERT para anon
+  // ya impide fijar oculto a true (default BD false); parent_id queda
+  // dormido hasta FP3 (hilos de respuesta), default null.
+  // FP1: obtener reto_id del contexto del reto activo en vez de hardcodear.
   const { error } = await supabase.from("comentarios").insert({
+    reto_id: 1,
     nombre,
     texto,
     visibilidad,

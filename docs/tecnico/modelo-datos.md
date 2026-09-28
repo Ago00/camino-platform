@@ -1,21 +1,38 @@
 # Modelo de datos
 
-Esquema Supabase (PostgreSQL). El SQL ejecutable vive en
-`supabase/migrations/0001_esquema_inicial.sql` (F2) — copia literal del
-diseño cerrado en `docs/tecnico/plan-ejecucion-v1.md`. Este documento describe
-las entidades, sus relaciones y los invariantes críticos que el código debe
-respetar.
+Esquema Supabase (PostgreSQL) de la plataforma multi-tenant. El SQL ejecutable
+completo vive en `supabase/migrations/0007_schema_plataforma.sql` (FP0/DT-025).
+Este documento describe las entidades, sus relaciones y los invariantes críticos
+que el código debe respetar.
 
-> **Estado (F2, 2026-07-30):** la migración no se ha ejecutado nunca contra
-> un proyecto Supabase real — no existe todavía (bloqueado por F0, ver
-> `docs/producto/roadmap.md`). Es SQL revisado a mano, pero pendiente de
-> verificación de integración: aplicarla contra una BD viva y confirmar que
-> los índices, constraints y políticas RLS se crean tal como aquí se
-> documentan.
+> **Estado (FP0, 2026-09-28):** la migración `0007_schema_plataforma.sql` está
+> escrita y revisada pero pendiente de aplicar contra el nuevo proyecto Supabase.
+> Santi la aplica manualmente (ver `DEBT.md`). Hasta entonces los endpoints de
+> API funcionan solo en local con el schema antiguo.
 
 ---
 
 ## Entidades
+
+### `retos`
+
+Entidad raíz del modelo multi-tenant (FP0/DT-025). Cada reto tiene sus propios
+datos aislados en el resto de tablas top-level vía `reto_id` FK.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | bigint PK | Generado automáticamente |
+| `slug` | text UNIQUE | Identificador URL amigable (p. ej. `'portuguesa-110'`) |
+| `nombre` | text | Nombre visible (p. ej. `'Camino Portugués 110 km'`) |
+| `descripcion` | text | Descripción larga; nullable |
+| `ruta_tipo` | text | `'predefinida' \| 'libre'`. Predefinida = existe traza GeoJSON en `lib/rutas/<ruta_id>/` |
+| `ruta_id` | text | Mapea a `lib/rutas/<ruta_id>/` en el repo. `null` solo en modo libre (check en BD) |
+| `activo` | boolean | `false` = reto archivado, no visible |
+| `created_at` | timestamptz | Automático |
+
+**Fila inicial:** `portuguesa-110` — el reto del Camino Portugués, `id = 1`.
+
+---
 
 ### `intentos`
 
@@ -25,6 +42,7 @@ pero solo uno activo a la vez.
 | Campo | Tipo | Notas |
 |---|---|---|
 | `id` | bigint PK | Generado automáticamente |
+| `reto_id` | bigint FK | Reto al que pertenece (DT-025) |
 | `fase` | text | `'antes' \| 'durante' \| 'llegada'` |
 | `modo` | text | `'guiado' \| 'libre'` (DT-016). Default `'guiado'`. Se fija en `iniciarReto()` y es inmutable durante la vida del intento — cambiarlo exige "Reiniciar" |
 | `destino_lat` | double precision | Destino del modo libre. `null` en modo guiado (siempre) y en modo libre antes de iniciar |
@@ -33,7 +51,7 @@ pero solo uno activo a la vez.
 | `started_at` | timestamptz | Se fija al pasar a `durante` |
 | `ended_at` | timestamptz | Se fija al pasar a `llegada` |
 | `mensaje_llegada` | text | Editable desde el admin antes de finalizar |
-| `foto_llegada_url` | text | Foto opcional de llegada (DT-024, migración `0006_foto_llegada.sql`). URL pública del bucket `minuto-a-minuto` (prefijo `llegada-` en el nombre del objeto). `null` = sin foto |
+| `foto_llegada_url` | text | Foto opcional de llegada (DT-024). URL pública del bucket `minuto-a-minuto` (prefijo `llegada-` en el nombre del objeto). `null` = sin foto |
 | `created_at` | timestamptz | Automático |
 
 **Invariante crítico:** `CREATE UNIQUE INDEX intentos_activo_unico ON intentos ((true)) WHERE NOT cerrado` — solo un intento abierto a la vez. La BD lo garantiza, no solo el código.
@@ -68,6 +86,7 @@ Intención dejada por familia o amigos.
 | Campo | Tipo | Notas |
 |---|---|---|
 | `id` | bigint PK | |
+| `reto_id` | bigint FK | Reto al que pertenece (DT-025) |
 | `texto` | text | 1-1000 chars (check constraint) |
 | `nombre` | text | null = anónima |
 | `created_at` | timestamptz | |
@@ -81,6 +100,8 @@ Comentario público o privado de un seguidor.
 | Campo | Tipo | Notas |
 |---|---|---|
 | `id` | bigint PK | |
+| `reto_id` | bigint FK | Reto al que pertenece (DT-025) |
+| `parent_id` | bigint FK | Comentario padre para hilos de respuesta (DT-025). `null` = comentario raíz. Dormido hasta FP3 |
 | `nombre` | text | 1-80 chars, nunca anónimo |
 | `texto` | text | 1-1000 chars |
 | `visibilidad` | text | `'publico' \| 'privado'` |
@@ -95,11 +116,13 @@ Textos editables de la web desde el panel admin.
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `clave` | text PK | Clave libre (no hay enum en BD) |
+| `id` | bigint PK | Generado automáticamente (DT-025: `clave` ya no es PK) |
+| `reto_id` | bigint FK | Reto al que pertenece (DT-025) |
+| `clave` | text | Clave libre (no hay enum en BD). Única por reto: `UNIQUE(reto_id, clave)` |
 | `valor` | text | El contenido del texto |
 | `updated_at` | timestamptz | |
 
-**Patrón de uso:** el código tiene un valor por defecto en `lib/textos/defaults.ts`. Si existe una fila en esta tabla con la misma clave, ese valor sobreescribe el por defecto. Nunca sale en blanco.
+**Patrón de uso:** el código tiene un valor por defecto en `lib/textos/defaults.ts`. Si existe una fila en esta tabla con la misma clave para el reto activo, ese valor sobreescribe el por defecto. Nunca sale en blanco.
 
 **Invariante:** añadir una clave nueva requiere código (decidir dónde se pinta). Editar un texto existente no requiere código — solo el panel admin.
 
@@ -143,6 +166,7 @@ alimenta la pestaña "Tráfico" del panel admin.
 | Campo | Tipo | Notas |
 |---|---|---|
 | `id` | bigint PK | Generado automáticamente |
+| `reto_id` | bigint FK | Reto al que corresponde la visita (DT-025) |
 | `ruta` | text | Ruta de la petición (hoy siempre `/`, la web pública no tiene más rutas) |
 | `ts` | timestamptz | Momento de la visita |
 | `visitante_id` | text | Id anónimo de la cookie funcional (`proxy.ts`); sin fingerprinting, sin datos personales |
@@ -166,12 +190,21 @@ del proyecto), coherente con que tampoco se filtran ni se resetean al
 
 ## Relaciones
 
+Con multi-tenant (DT-025/FP0), todas las tablas top-level llevan `reto_id`:
+
 ```
+retos (1) ──< intentos          (N)     reto_id → retos.id
+retos (1) ──< intenciones       (N)     reto_id → retos.id
+retos (1) ──< comentarios       (N)     reto_id → retos.id
+retos (1) ──< textos            (N)     reto_id → retos.id
+retos (1) ──< visitas_web       (N)     reto_id → retos.id
+retos (1) ──< config_trafico    (1)     reto_id → retos.id (unique)
+
 intentos (1) ──< posiciones (N)          intento_id → intentos.id
 intentos (1) ──< minuto_a_minuto (N)     intento_id → intentos.id
-```
 
-Las demás tablas (`intenciones`, `comentarios`, `textos`, `visitas_web`) son independientes.
+comentarios (1) ──< comentarios (N)      parent_id → comentarios.id (nullable, dormido hasta FP3)
+```
 
 ---
 
@@ -179,6 +212,7 @@ Las demás tablas (`intenciones`, `comentarios`, `textos`, `visitas_web`) son in
 
 | Tabla | anon (público) | service role (servidor) |
 |---|---|---|
+| `retos` | SELECT solo activos (`activo = true`) | ALL |
 | `intentos` | SELECT solo el activo (`NOT cerrado`) | ALL |
 | `posiciones` | SELECT solo `NOT descartado` del intento activo | ALL |
 | `intenciones` | Ninguna política (cero acceso) | ALL |
@@ -186,19 +220,16 @@ Las demás tablas (`intenciones`, `comentarios`, `textos`, `visitas_web`) son in
 | `textos` | SELECT | ALL |
 | `minuto_a_minuto` | SELECT solo entradas del intento activo (`NOT cerrado`) | ALL |
 | `visitas_web` | Ninguna política (cero acceso) | ALL |
+| `config_trafico` | Ninguna política (cero acceso) | ALL |
 
-RLS se activa en las 5 tablas iniciales en `supabase/migrations/0001_esquema_inicial.sql`,
-en `minuto_a_minuto` en `supabase/migrations/0002_minuto_a_minuto.sql`
-(DT-013), y en `visitas_web` en `supabase/migrations/0004_visitas_web.sql`
-(DT-022, mismo criterio de cero acceso público que `intenciones`). El
-service role bypassa RLS por diseño de Supabase (no necesita políticas
-explícitas); las políticas de los ficheros son únicamente para el rol
-`anon`. Storage (bucket `minuto-a-minuto`) no tiene políticas propias: es
-un bucket público, y todas las subidas pasan por el cliente service role.
+Todo el schema vive en `supabase/migrations/0007_schema_plataforma.sql` (FP0).
+El service role bypassa RLS por diseño de Supabase (no necesita políticas
+explícitas); las políticas son únicamente para el rol `anon`. Storage (bucket
+`minuto-a-minuto`) no tiene políticas propias: es un bucket público, y todas
+las subidas pasan por el cliente service role.
 
 Las columnas nuevas de `intentos` (`modo`, `destino_lat`, `destino_lon`,
-`supabase/migrations/0003_modo_intento.sql`, DT-016; `foto_llegada_url`,
-`supabase/migrations/0006_foto_llegada.sql`, DT-024) no cambian la política
+DT-016; `foto_llegada_url`, DT-024) no cambian la política
 RLS existente de `intentos_select_activo` — siguen siendo columnas del mismo
 intento activo, ya visible en su totalidad para `anon` (necesario para que
 `app/page.tsx`, `obtenerFotoLlegadaUrl`, pueda leer la foto con el cliente

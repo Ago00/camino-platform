@@ -112,7 +112,9 @@ async function proxyPublico(request: NextRequest): Promise<NextResponse> {
 async function registrarVisita(request: NextRequest, visitanteId: string): Promise<void> {
   try {
     const supabase = getSupabaseAdmin();
+    // FP1: obtener reto_id del contexto del reto activo en vez de hardcodear.
     await supabase.from("visitas_web").insert({
+      reto_id: 1,
       ruta: request.nextUrl.pathname,
       ts: new Date().toISOString(),
       visitante_id: visitanteId,

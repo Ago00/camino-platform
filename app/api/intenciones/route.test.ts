@@ -42,14 +42,16 @@ describe("POST /api/intenciones", () => {
     const response = await POST(crearPeticion({ texto: "Por mi abuela", nombre: "Marta" }));
 
     expect(response.status).toBe(201);
-    expect(insertSpy).toHaveBeenCalledWith({ texto: "Por mi abuela", nombre: "Marta" });
+    // FP0: reto_id hardcodeado a 1 (portuguesa-110) hasta FP1.
+    expect(insertSpy).toHaveBeenCalledWith({ reto_id: 1, texto: "Por mi abuela", nombre: "Marta" });
   });
 
   it("inserta la intención con nombre null cuando no se envía nombre (anónima)", async () => {
     const response = await POST(crearPeticion({ texto: "Por mi abuela" }));
 
     expect(response.status).toBe(201);
-    expect(insertSpy).toHaveBeenCalledWith({ texto: "Por mi abuela", nombre: null });
+    // FP0: reto_id hardcodeado a 1 (portuguesa-110) hasta FP1.
+    expect(insertSpy).toHaveBeenCalledWith({ reto_id: 1, texto: "Por mi abuela", nombre: null });
   });
 
   it("responde 400 sin insertar cuando el texto está vacío", async () => {

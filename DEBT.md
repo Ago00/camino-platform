@@ -2,6 +2,61 @@
 
 ---
 
+## `scripts/generar-perfil-elevacion.ts` lee de la ruta antigua del GeoJSON de pintado
+
+**Fecha:** 2026-09-28
+**Contexto:** FP0 — Reorganización de assets a `lib/rutas/<ruta_id>/`. El script `generar-perfil-elevacion.ts` (ejecutado una vez, output `lib/traza/perfil-elevacion.json` ya committeado) lee desde `lib/traza/traza-mapa.geojson` (línea 68), que ya no existe. Si alguien necesita regenerar el perfil de elevación tras una actualización de traza, el script fallará.
+**Problema:** `lib/traza/traza-mapa.geojson` fue eliminado en FP0; el script no se actualizó porque no es una operación rutinaria.
+**Impacto:** Bajo mientras el perfil committeado no necesite regenerarse. Si se actualiza la traza, el script fallará al ejecutarse.
+**Solución propuesta:** Cambiar la línea 68 de `scripts/generar-perfil-elevacion.ts` para leer de `lib/rutas/portuguesa-110/traza-mapa.geojson`. En FP1, parametrizar el script por `ruta_id`.
+**Prioridad:** Baja — solo bloquea regeneración futura del perfil.
+
+---
+
+## `docs/tecnico/arquitectura.md` — tabla "dos trazas" aún referencia rutas antiguas
+
+**Fecha:** 2026-09-28
+**Contexto:** FP0 — Reorganización de assets a `lib/rutas/<ruta_id>/`. La tabla de la sección "La regla no negociable de las dos trazas" en `arquitectura.md` (línea ~184) todavía muestra `lib/traza/traza.geojson` y `lib/traza/traza-mapa.geojson`.
+**Problema:** Documentación desincronizada con el código real.
+**Impacto:** Puramente documental. Un agente que lea arquitectura.md buscará los ficheros en el lugar incorrecto.
+**Solución propuesta:** Actualizar la tabla para usar el patrón `lib/rutas/<ruta_id>/traza.geojson` / `traza-mapa.geojson` con nota de que el `ruta_id` activo es `portuguesa-110`.
+**Prioridad:** Baja.
+
+---
+
+## `intentos.Insert` y `config_trafico.Insert` en `BaseDeDatos` no exigen `reto_id`
+
+**Fecha:** 2026-09-28
+**Contexto:** FP0 — Se usó `Partial<Intento>` / `Partial<ConfigTrafico>` para los tipos Insert de estas dos tablas en `lib/supabase/admin.ts`. Comentado explícitamente como "FP1 refinará". El tipo permisivo permitió que dos inserts en `intentos` (líneas 84 y 323 de `actions.ts`) olvidaran `reto_id` sin error de compilación — detectado en revisión de FP0 como bloqueante.
+**Problema:** TypeScript no garantiza en tiempo de compilación que `reto_id` esté presente en inserts a estas tablas.
+**Impacto:** Riesgo de error en runtime (NOT NULL violation en BD) si un caller olvida `reto_id`. Bajo en v1 con un solo desarrollador; aumenta al escalar.
+**Solución propuesta:** FP1: cambiar `intentos.Insert` a `Omit<Intento, "id" | "created_at">` (reto_id requerido) y `config_trafico.Insert` a `Omit<ConfigTrafico, "id" | "created_at">` una vez todos los callers lo inyecten dinámicamente.
+**Prioridad:** Media — resolver en FP1 junto con el routing multi-tenant.
+
+---
+
+## Aplicar `supabase/migrations/0007_schema_plataforma.sql` contra el proyecto Supabase de producción
+
+**Fecha:** 2026-09-28
+**Contexto:** FP0 — Schema plataforma multi-tenant (DT-025). La migración `0007_schema_plataforma.sql` crea el schema completo del nuevo proyecto Supabase de la plataforma. No se aplica automáticamente — Santi la aplica manualmente en el editor SQL del proyecto (o `supabase db push`).
+**Problema:** Hasta que se aplique, los endpoints de API funcionan solo en local con el schema antiguo del proyecto original. El nuevo proyecto Supabase (plataforma) está vacío y sin schema.
+**Impacto:** La plataforma no tiene base de datos operativa. Cualquier endpoint que escriba o lea de Supabase falla contra el proyecto nuevo hasta que el schema exista.
+**Solución propuesta:** Aplicar `supabase/migrations/0007_schema_plataforma.sql` en el editor SQL del nuevo proyecto Supabase de la plataforma.
+**Prioridad:** Alta — sin esto la plataforma no funciona contra BD real.
+
+---
+
+## Endpoints de API todavía no filtran por `reto_id`
+
+**Fecha:** 2026-09-28
+**Contexto:** FP0 — Schema plataforma multi-tenant (DT-025). En FP0, todos los endpoints que insertan en tablas con `reto_id` usan `reto_id: 1` hardcodeado (el reto `portuguesa-110`). Los endpoints que leen (comentarios, textos, intenciones, visitas, etc.) no filtran por `reto_id` todavía.
+**Problema:** Con más de un reto en la BD, los endpoints devuelven o escriben datos sin discriminar por reto — mezclarían datos de distintos retos.
+**Impacto:** Bloqueante para FP1 (routing multi-tenant). En v1 solo existe un reto, así que en la práctica no hay mezcla. El riesgo es real en cuanto se añada un segundo reto.
+**Solución propuesta:** FP1 parametriza todos los endpoints y server actions por `reto_id`, obtenido del contexto de la URL (`/[slug]/`).
+**Prioridad:** Alta — resolver en FP1 antes de que haya más de un reto activo.
+
+---
+
 ## `docs/producto/funcionalidades.md` no refleja el modal "Finalizar" con preview real ni la foto de llegada opcional (DT-024)
 
 **Fecha:** 2026-08-12

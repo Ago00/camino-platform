@@ -15,10 +15,13 @@ misma versión y puede servir como referencia de patrones validados.
 Hay dos ficheros GeoJSON de la traza y tienen responsabilidades completamente
 distintas. Mezclarlos es el bug más caro posible del proyecto.
 
+Con multi-tenant (DT-025, FP0), los assets de cada ruta viven en
+`lib/rutas/<ruta_id>/`. La ruta activa en v1 es `portuguesa-110`.
+
 | Fichero | Para qué | Longitud válida |
 |---|---|---|
-| `lib/traza/traza.geojson` | CÁLCULO (solo servidor) | SÍ — ~110,43 km (corredor DT-005/DT-015) |
-| `lib/traza/traza-mapa.geojson` | PINTADO (se envía al cliente) | NO — acortada por DP |
+| `lib/rutas/portuguesa-110/traza.geojson` | CÁLCULO (solo servidor) | SÍ — ~110,43 km (corredor DT-005/DT-015) |
+| `lib/rutas/portuguesa-110/traza-mapa.geojson` | PINTADO (se envía al cliente) | NO — acortada por DP |
 
 `proyeccion.ts` **siempre** usa `traza.geojson`. El cliente **nunca** recibe
 `traza.geojson` — solo los números del `Progreso`.

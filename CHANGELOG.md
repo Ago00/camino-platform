@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-09-28 — FP0: Schema multi-tenant y reorganización de assets de rutas
+
+**Tipo:** Feature (plataforma)
+
+La aplicación pasa de ser un proyecto de un único reto fijo a una plataforma
+capaz de alojar múltiples retos. Esta fase sienta las bases de datos y de
+código: nueva tabla `retos` como entidad raíz, campo `reto_id` en todas las
+tablas top-level para aislar los datos de cada reto, y reorganización de los
+assets de la ruta (`traza.geojson`, `traza-mapa.geojson`) bajo
+`lib/rutas/portuguesa-110/` para que añadir una ruta nueva sea tan sencillo
+como añadir una carpeta. Los endpoints no cambian de comportamiento — usan
+`reto_id: 1` hardcodeado hasta FP1, que traerá el routing multi-tenant.
+
+---
+
 ## 2026-08-30 — Fix: `/api/progreso` recalculaba el histórico completo cada 20 s también en fase "llegada"
 
 **Tipo:** Fix

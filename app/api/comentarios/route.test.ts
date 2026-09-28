@@ -122,7 +122,9 @@ describe("POST /api/comentarios", () => {
     );
 
     expect(response.status).toBe(201);
+    // FP0: reto_id hardcodeado a 1 (portuguesa-110) hasta FP1.
     expect(insertSpy).toHaveBeenCalledWith({
+      reto_id: 1,
       nombre: "Javi",
       texto: "¡Ánimo!",
       visibilidad: "publico",

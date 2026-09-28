@@ -181,7 +181,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // 5. Filtro de plausibilidad geográfica (DT-006, capa 1) — solo modo
   // 'guiado' (DT-016).
   if (modoIntento === "guiado") {
-    const traza = cargarTrazaDeCalculo();
+    // FP1: obtener rutaId del reto activo en vez de hardcodear.
+    const traza = cargarTrazaDeCalculo("portuguesa-110");
     const separacionM = separacionDeTrazaM(lat, lon, traza);
     const separacionMaximaM = SEPARACION_TRAZA_MAX_KM * 1000;
     if (separacionM > separacionMaximaM) {

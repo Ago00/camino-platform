@@ -93,9 +93,11 @@ camino-santi-ago/
 │   ├── envio/                 # DT-017: envío de formularios del panel a sus Server Actions
 │   │   ├── errores-de-envio.ts   # dominio puro: qué fallo se reintenta y qué se enseña
 │   │   └── reintentar.ts         # dominio puro: reintento con espera creciente (espera inyectada)
+│   ├── rutas/                    # FP0/DT-025: assets por ruta. Añadir ruta = añadir carpeta.
+│   │   └── portuguesa-110/
+│   │       ├── traza.geojson     # traza de CÁLCULO (7.951 puntos, sin simplificar, DT-015)
+│   │       └── traza-mapa.geojson  # traza de PINTADO (Douglas-Peucker 3 m, ~2.101 pts)
 │   ├── traza/
-│   │   ├── traza.geojson         # traza de CÁLCULO (7.951 puntos, sin simplificar, DT-015)
-│   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.101 pts)
 │   │   ├── proyeccion.ts         # dominio puro: prepararTraza + calcularProgreso (modo guiado, cerrado);
 │   │   │                         # calcularProgreso proyecta con ventana deslizante (±30 segmentos
 │   │   │                         # alrededor del último índice, DT-018) con fallback a escaneo completo
@@ -117,8 +119,10 @@ camino-santi-ago/
 │   │   │                         # de app/api/progreso/route.ts para que GET /api/progreso y
 │   │   │                         # crearMinutoAMinuto (app/admin/actions.ts) compartan la misma
 │   │   │                         # lógica sin duplicarla. Sin caché propia (I/O con cada llamada)
-│   │   ├── cargar-traza.ts       # carga traza.geojson (cálculo) server-side
-│   │   ├── cargar-traza-mapa.ts  # F3: carga traza-mapa.geojson (pintado) server-side
+│   │   ├── cargar-traza.ts       # carga lib/rutas/<rutaId>/traza.geojson (cálculo) server-side
+│   │   │                         # FP0/DT-025: parametrizado por rutaId; cachea por ruta
+│   │   ├── cargar-traza-mapa.ts  # F3: carga lib/rutas/<rutaId>/traza-mapa.geojson (pintado) server-side
+│   │   │                         # FP0/DT-025: parametrizado por rutaId; cachea por ruta
 │   │   └── umbrales.ts           # constantes del dominio (EN_RUTA_MAX_M, etc.; VENTANA_PROYECCION_SEGMENTOS
 │   │                             # y VENTANA_PROYECCION_FALLBACK_MAX_M de la ventana deslizante, DT-018)
 │   ├── supabase/             # F2

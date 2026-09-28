@@ -1628,3 +1628,79 @@ Aplicar `supabase/migrations/0005_config_trafico.sql` contra producción sigue s
 ### Nota de cierre (2026-08-12) — fix de seguridad post-revisión
 
 Seguridad encontró un bloqueante en la revisión de esta tarea: `finalizarReto` solo limitaba la longitud del mensaje de llegada en el cliente (`maxLength={1000}`, `ModalFinalizar.tsx`), trivialmente evitable enviando un `FormData` construido a mano contra la Server Action ya autenticada — inconsistente con `crearMinutoAMinuto`/`editarMinutoAMinuto`, que sí revalidan en servidor. Corregido: mismo tope (1000) añadido en servidor, mismo patrón y mismo mensaje de error que esas dos funciones. Sin cambios de contrato ni de comportamiento para el caso normal (un mensaje dentro del límite).
+
+---
+
+## DT-025 — Arquitectura multi-tenant: tabla `retos` con FK directo en cada tabla top-level
+
+**Fecha:** 2026-09-28 · **Tarea:** FP0 — Schema plataforma multi-tenant · **Decisión de arquitectura + producto**
+
+### Contexto
+
+El proyecto pasa de ser una app de un único reto fijo (Camino Portugués de Santi) a una plataforma que puede alojar múltiples retos. Objetivo: que un único proyecto Next.js + Supabase sirva distintos retos, cada uno con sus propios datos (posiciones, comentarios, intenciones, minuto a minuto, textos, visitas web, tráfico), sin que los datos de un reto sean accesibles desde otro.
+
+### Decisión — tabla `retos`
+
+```sql
+create table retos (
+  id          bigint generated always as identity primary key,
+  slug        text not null unique,
+  nombre      text not null,
+  descripcion text,
+  ruta_tipo   text not null check (ruta_tipo in ('predefinida', 'libre')),
+  ruta_id     text,
+  activo      boolean not null default true,
+  created_at  timestamptz not null default now(),
+  check (ruta_tipo = 'libre' or ruta_id is not null)
+);
+```
+
+`ruta_id` mapea a una carpeta en `lib/rutas/` del repo (ej. `'portuguesa-110'`). No es FK a ninguna tabla de BD.
+
+### Decisión — scoping multi-tenant: FK directo (Opción A)
+
+Las tablas top-level llevan `reto_id BIGINT NOT NULL REFERENCES retos(id)`. Las tablas ya scoped a través de `intento_id` no cambian.
+
+| Tabla | Cambio |
+|---|---|
+| `comentarios` | + `reto_id` + `parent_id` (nullable, para hilos — FP3) |
+| `intenciones` | + `reto_id` |
+| `textos` | + `reto_id` (unique compuesto `(reto_id, clave)`) |
+| `visitas_web` | + `reto_id` |
+| `intentos` | + `reto_id` |
+| `config_trafico` | + `reto_id` (pasa de fila singleton a una fila por reto) |
+| `posiciones` | sin cambio — ya scoped vía `intento_id` |
+| `minuto_a_minuto` | sin cambio — ya scoped vía `intento_id` |
+
+**Alternativas valoradas y descartadas:**
+- *Opción B — schema PostgreSQL por reto*: incompatible con el cliente `supabase-js` sin workarounds costosos. Descartada.
+- *Opción C — discriminador en texto sin FK*: sin integridad referencial. Descartada.
+
+### Decisión — organización de assets de rutas
+
+```
+lib/rutas/portuguesa-110/traza.geojson       (antes: lib/traza/traza.geojson)
+lib/rutas/portuguesa-110/traza-mapa.geojson  (antes: lib/traza/traza-mapa.geojson)
+```
+
+`cargar-traza.ts` y `cargar-traza-mapa.ts` reciben `ruta_id: string` como parámetro. Añadir una ruta nueva = añadir carpeta con GeoJSON.
+
+### Decisión de producto — rutas predefinidas v1
+
+- Solo existe `portuguesa-110` en v1.
+- Modo libre disponible (sin traza de cálculo).
+- Sin subida de GeoJSON desde la UI en v1. Añadir ruta nueva = añadir carpeta + fila en BD.
+
+### Decisión de producto — superadmin
+
+- Panel propio en `/superadmin`, contraseña via env var `SUPERADMIN_PASSWORD`.
+- Sin auto-registro. Solo Santi crea y gestiona retos.
+
+### Fases del plan de plataforma
+
+| Fase | Alcance |
+|---|---|
+| **FP0** | Schema (migración), tipos TS, reorganización de assets de rutas, quality gates en verde. Sin UI, sin cambio de endpoints. |
+| **FP1** | Routing multi-tenant (`/[slug]/`), todos los endpoints parametrizados por `reto_id`, web pública y admin funcionando. |
+| **FP2** | Panel superadmin (`/superadmin`): CRUD de retos. |
+| **FP3** | Features nuevas: hilos de respuesta en comentarios, MAM colapsable, admin más configurable. |

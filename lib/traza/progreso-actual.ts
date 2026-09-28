@@ -106,7 +106,8 @@ export async function calcularProgresoActual(): Promise<ProgresoPublico> {
     return calcularProgresoLibre(historico, destino);
   }
 
-  const traza = cargarTrazaDeCalculo();
+  // FP1: obtener rutaId del reto activo en vez de hardcodear.
+  const traza = cargarTrazaDeCalculo("portuguesa-110");
   const progreso = calcularProgreso(historico, traza);
 
   return aProgresoPublico(progreso);
@@ -157,6 +158,7 @@ async function obtenerIntentoActivoModoGuiado(
 }
 
 function progresoVacio(): ProgresoPublico {
-  const traza = cargarTrazaDeCalculo();
+  // FP1: obtener rutaId del reto activo en vez de hardcodear.
+  const traza = cargarTrazaDeCalculo("portuguesa-110");
   return aProgresoPublico(calcularProgreso([], traza));
 }

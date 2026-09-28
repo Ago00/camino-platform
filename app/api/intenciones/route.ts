@@ -46,7 +46,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { texto, nombre } = parsed.data;
   const supabase = getSupabaseAdmin();
 
+  // FP1: obtener reto_id del contexto del reto activo en vez de hardcodear.
   const { error } = await supabase.from("intenciones").insert({
+    reto_id: 1,
     texto,
     nombre: nombre ?? null,
   });

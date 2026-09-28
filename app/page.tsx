@@ -35,7 +35,8 @@ const C = { paper: "#F4F3EF", ink: "#1B211D" };
 
 export default async function Home() {
   const [intentoActivo, textos] = await Promise.all([obtenerIntentoActivo(), obtenerTextos()]);
-  const trazaCoords = cargarTrazaDeMapa();
+  // FP1: obtener rutaId del reto activo en vez de hardcodear.
+  const trazaCoords = cargarTrazaDeMapa("portuguesa-110");
 
   const fase = "antes" as Fase; // TEMP preview-only, revertir
 
@@ -379,7 +380,8 @@ export async function calcularProgresoDelIntento(intentoId: number): Promise<Pro
   }
 
   const historico = await obtenerHistoricoPosicionesCacheado(intentoId);
-  const traza = cargarTrazaDeCalculo();
+  // FP1: obtener rutaId del reto activo en vez de hardcodear.
+  const traza = cargarTrazaDeCalculo("portuguesa-110");
   const progreso = aProgresoPublico(calcularProgreso(historico, traza));
 
   guardarCacheProgreso(progreso);

@@ -1,80 +1,140 @@
-# Tarea en curso
+# Tarea en curso — FP0: Schema plataforma multi-tenant
 
-## Prompt / decisión a implementar
+## Decisión técnica
 
-Sustituir el `window.confirm()` + `<textarea>` plano que usa hoy "Finalizar"
-(`components/admin/ActividadAcciones.tsx`) por un modal con:
-- Mensaje de llegada editable (igual que hoy).
-- Foto opcional: adjuntar/reemplazar/quitar, con compresión en el navegador
-  (mismo patrón que el feed "minuto a minuto", DT-013/DT-017).
-- Preview real (no aproximada) del recuadro kicker/título/mensaje tal como
-  se ve en `components/publico/ModoLlegada.tsx`.
+**DT-025** (`docs/tecnico/decisiones-tecnicas.md`). FK directo (`reto_id`) en
+cada tabla top-level. Reorganización de assets de rutas a `lib/rutas/<ruta_id>/`.
+Sin cambios de UI ni de endpoints en esta fase.
 
-Decisión completa (ya no era DT-024 en el repo al empezar — el Implementador
-la escribió al cerrar, ver nota de LESSONS.md sobre desviaciones que deben
-quedar en el documento de decisiones): `docs/tecnico/decisiones-tecnicas.md`,
-entrada **DT-024**.
+## Alcance exacto de FP0
 
-## Rama
+### 1. Migración `supabase/migrations/0007_schema_plataforma.sql`
 
-`feature/finalizar-preview-foto`
+Schema completo de la plataforma en una única migración:
 
-## Archivos modificados / creados
+**Tabla nueva `retos`:**
+```sql
+create table retos (
+  id          bigint generated always as identity primary key,
+  slug        text not null unique,
+  nombre      text not null,
+  descripcion text,
+  ruta_tipo   text not null check (ruta_tipo in ('predefinida', 'libre')),
+  ruta_id     text,
+  activo      boolean not null default true,
+  created_at  timestamptz not null default now(),
+  check (ruta_tipo = 'libre' or ruta_id is not null)
+);
+```
+
+**Columnas `reto_id` en tablas existentes** — añadir nullable primero, backfill, luego NOT NULL:
+- `comentarios` + `reto_id` + `parent_id bigint references comentarios(id)`
+- `intenciones` + `reto_id`
+- `intentos` + `reto_id`
+- `visitas_web` + `reto_id`
+- `textos` + `reto_id` + unique `(reto_id, clave)`
+- `config_trafico` + `reto_id`
+
+**Índices:**
+```sql
+create index comentarios_reto_idx    on comentarios    (reto_id);
+create index intenciones_reto_idx    on intenciones    (reto_id);
+create index intentos_reto_idx       on intentos       (reto_id);
+create index visitas_web_reto_idx    on visitas_web    (reto_id);
+create index textos_reto_idx         on textos         (reto_id);
+create index config_trafico_reto_idx on config_trafico (reto_id);
+```
+
+**Fila inicial:**
+```sql
+insert into retos (slug, nombre, descripcion, ruta_tipo, ruta_id, activo)
+values (
+  'portuguesa-110',
+  'Camino Portugués 110 km',
+  'Los últimos 110 km del Camino Portugués Central hasta Santiago de Compostela.',
+  'predefinida',
+  'portuguesa-110',
+  true
+);
+```
+
+### 2. `lib/types.ts`
+
+- Tipo nuevo `Reto` con los campos de la tabla.
+- Campo `reto_id: number` en `Intento`, `Comentario`, `Intencion` y cualquier otro tipo que mapee una tabla modificada.
+- `parent_id: number | null` en `Comentario`.
+
+### 3. `lib/supabase/admin.ts` — `BaseDeDatos`
+
+- Añadir `retos` con el patrón `Pick<T, keyof T>` obligatorio (ver `LESSONS.md`).
+- Actualizar entradas existentes con `reto_id`.
+
+### 4. Reorganización de assets de rutas
+
+Mover:
+```
+lib/traza/traza.geojson       → lib/rutas/portuguesa-110/traza.geojson
+lib/traza/traza-mapa.geojson  → lib/rutas/portuguesa-110/traza-mapa.geojson
+```
+
+`cargar-traza.ts` y `cargar-traza-mapa.ts` reciben `ruta_id: string` como parámetro.
+Todos los callers actuales pasan `'portuguesa-110'` — se completa el contexto dinámico en FP1.
+Actualizar `AGENTS.md` con las rutas nuevas.
+
+### 5. Aplicar migración contra Supabase real ⚠️ MANUAL
+
+Esta parte la hace Santi. Ver lista de tareas manuales al final.
+
+### 6. Quality gates
+
+- `pnpm typecheck` — 0 errores.
+- `pnpm test` — en verde (excepto timeout preexistente de `proyeccion.ventana.test.ts` si aplica).
+
+## Qué NO hace FP0
+
+- No toca rutas de Next.js.
+- No cambia endpoints de API.
+- No crea UI nueva.
+- No implementa hilos de respuesta (`parent_id` queda dormido hasta FP3).
+- No implementa el panel superadmin (FP2).
+
+## Archivos esperados al cerrar FP0
 
 **Nuevos:**
-- `supabase/migrations/0006_foto_llegada.sql` — columna `intentos.foto_llegada_url`
-- `components/admin/ModalFinalizar.tsx`
-- `components/publico/RecuadroLlegada.tsx` (extraído de `ModoLlegada.tsx`)
-- `components/publico/FotoLlegada.tsx`
-- `components/admin/SeccionActividad.test.ts`
+- `supabase/migrations/0007_schema_plataforma.sql`
+- `lib/rutas/portuguesa-110/traza.geojson`
+- `lib/rutas/portuguesa-110/traza-mapa.geojson`
 
 **Modificados:**
-- `lib/types.ts` — `Intento.foto_llegada_url`
-- `lib/supabase/storage.ts` / `.test.ts` — `subirFotoLlegada()`, helper interno `subirFotoAlBucket`
-- `app/admin/actions.ts` / `.test.ts` — `finalizarReto` pasa a `FormData` → `ResultadoPublicacion`
-- `app/page.tsx` / `.test.ts` — `ModoLlegadaConectado` lee `foto_llegada_url` (`obtenerFotoLlegadaUrl`, consulta separada)
-- `components/admin/SeccionActividad.tsx` — `obtenerIntentoActividad` (consulta separada), pasa `textos`/foto a `ActividadAcciones`
-- `components/admin/ActividadAcciones.tsx` — "Finalizar" abre `ModalFinalizar`
-- `components/publico/ModoLlegada.tsx` — usa `RecuadroLlegada`/`FotoLlegada`, pinta la foto si existe
-- `app/admin/page.test.ts` — `beforeAll` con timeout propio (30 s) para el `import()` pesado (ver DEBT.md, entrada resuelta)
-- `docs/tecnico/decisiones-tecnicas.md` (DT-024), `docs/tecnico/arquitectura.md`, `docs/tecnico/modelo-datos.md`, `CHANGELOG.md`, `DEBT.md`
+- `lib/types.ts`
+- `lib/supabase/admin.ts`
+- `lib/traza/cargar-traza.ts`
+- `lib/traza/cargar-traza-mapa.ts`
+- Callers de `cargarTraza`/`cargarTrazaMapa`
+- `AGENTS.md`
+- `docs/tecnico/arquitectura.md`
+- `docs/tecnico/modelo-datos.md`
+- `CHANGELOG.md`
+- `DEBT.md`
 
-## Quality gates
+**Eliminados:**
+- `lib/traza/traza.geojson`
+- `lib/traza/traza-mapa.geojson`
 
-- `pnpm typecheck` — verde, 0 errores.
-- `pnpm lint` — verde, 0 errores.
-- `pnpm test` — 35/35 ficheros y 386/386 tests en verde. `pnpm test` completo
-  reporta exit code 1 por un "Unhandled Error" de infraestructura de Vitest
-  (`[vitest-worker]: Timeout calling "onTaskUpdate"`) originado en
-  `lib/traza/proyeccion.ventana.test.ts` — fichero preexistente, no tocado en
-  esta tarea, deuda ya documentada en `DEBT.md` (actualizada con esta
-  observación). Verificado que `pnpm vitest run --exclude
-  "**/proyeccion.ventana.test.ts"` da exit code 0 con los mismos 386 tests
-  en verde.
+## Historial de revisión
 
-## Decisiones de implementación (bloqueos menores resueltos sin pausar)
+### Revisión 1 — 2026-09-28 — Reviewer
 
-1. `finalizarReto` cambia de firma (`mensaje: string` → `FormData`) y de
-   contrato de error (`throw` → `ResultadoPublicacion`), igual que
-   `crearMinutoAMinuto` (DT-017) — necesario porque ahora puede fallar la
-   subida de una foto, y Next redacta el mensaje de cualquier `throw` en
-   producción. Documentado en DT-024.
-2. `foto_llegada_url` se consulta por separado de `modo`/`destino_lat`/
-   `destino_lon` (que ya tienen su propio fallback de compatibilidad con la
-   migración 0003 sin aplicar) para no acoplar dos migraciones
-   independientes en el mismo `select`.
-3. `app/admin/page.test.ts` movido a `beforeAll` para el `import()` pesado —
-   cierra una deuda preexistente que el crecimiento del árbol de imports de
-   esta tarea convirtió en fallo consistente.
+**Veredicto: BLOQUEANTES A CORREGIR**
 
-## Deuda generada
+**Bloqueante 1 — `app/admin/actions.ts:84` y `:323`**
+Dos inserts en `intentos` sin `reto_id`:
+```ts
+supabase.from("intentos").insert({ fase: "antes" })
+```
+Con el schema de 0007 (`reto_id bigint not null references retos(id)`), estos inserts fallarán en runtime. Afecta a las acciones `iniciarPrimerIntento` y `reiniciarReto`.
+Fix: añadir `reto_id: 1` con comentario `// FP1: obtener reto_id del contexto del reto activo`.
 
-Ver `DEBT.md`: "Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql`
-contra producción" (Alta) y "Objeto huérfano en Storage al reemplazar la foto
-de llegada" (Baja).
-
-## Fix post-revisión de Seguridad
-
-`finalizarReto` gana un tope de 1000 caracteres server-side para el mensaje
-de llegada (antes solo se limitaba en el cliente) — bloqueante encontrado
-por Seguridad, corregido antes de fusionar. Ver nota de cierre de DT-024.
+**Bloqueante 2 — `scripts/simplificar-traza.ts:465-469`**
+El script escribe los GeoJSON generados en `lib/traza/` (path antiguo). Tras FP0, el código lee de `lib/rutas/portuguesa-110/`. Cualquier ejecución de `pnpm simplificar-traza` dejará los ficheros en la ubicación incorrecta y no serán cargados por el runtime.
+Fix: cambiar `libTrazaDir` a `join(ROOT, "lib", "rutas", "portuguesa-110")` y actualizar el docstring del script.

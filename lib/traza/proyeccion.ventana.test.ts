@@ -52,7 +52,7 @@ import type { Posicion, Progreso, TrazaPreparada } from "@/lib/types";
 
 const TRAZA_REAL: TrazaPreparada = prepararTraza(
   JSON.parse(
-    readFileSync(join(__dirname, "traza.geojson"), "utf-8")
+    readFileSync(join(__dirname, "../rutas/portuguesa-110/traza.geojson"), "utf-8")
   ) as Parameters<typeof prepararTraza>[0]
 );
 

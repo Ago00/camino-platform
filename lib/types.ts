@@ -1,19 +1,37 @@
 /**
- * Tipos de dominio del proyecto camino-santi-ago.
+ * Tipos de dominio de la plataforma camino.
  *
- * Derivados del esquema Supabase definido en docs/tecnico/plan-ejecucion-v1.md.
  * Son el contrato entre el dominio puro (lib/traza/proyeccion.ts) y las capas
- * de datos (F2) y UI (F3-F4). Solo tipos — sin cliente de BD, sin lógica.
+ * de datos y UI. Solo tipos — sin cliente de BD, sin lógica.
  *
  * Invariantes críticos:
  * - Solo puede haber un `Intento` con `cerrado = false` a la vez.
  * - Las `Posicion` con `descartado = true` no participan en cálculos de progreso.
  * - La `Fase` del intento activo determina qué muestra la web pública.
+ * - Cada tabla top-level lleva `reto_id` FK a `retos` (DT-025, FP0).
  */
 
 // ---------------------------------------------------------------------------
 // Entidades de BD (espejo tipado del esquema Supabase)
 // ---------------------------------------------------------------------------
+
+/**
+ * Un reto alojado en la plataforma (DT-025). Entidad raíz del modelo
+ * multi-tenant: cada tabla top-level lleva un reto_id FK que apunta aquí.
+ *
+ * `ruta_id` mapea a `lib/rutas/<ruta_id>/` en el repo (p. ej. `'portuguesa-110'`).
+ * En modo libre (`ruta_tipo === 'libre'`) puede ser null — no hay traza fija.
+ */
+export interface Reto {
+  id: number;
+  slug: string;
+  nombre: string;
+  descripcion: string | null;
+  ruta_tipo: "predefinida" | "libre";
+  ruta_id: string | null;
+  activo: boolean;
+  created_at: string; // ISO 8601
+}
 
 /** Estado del reto. La web adapta su contenido según el valor activo. */
 export type Fase = "antes" | "durante" | "llegada";
@@ -31,6 +49,8 @@ export type ModoIntento = "guiado" | "libre";
 /** Un intento de completar el reto. N intentos posibles; solo uno activo. */
 export interface Intento {
   id: number;
+  /** Reto al que pertenece este intento (DT-025). */
+  reto_id: number;
   fase: Fase;
   modo: ModoIntento;
   /** Destino del modo libre (lat/lon). Siempre null en modo guiado. */
@@ -65,6 +85,8 @@ export interface Posicion {
 /** Una intención dejada por familia o amigos. Siempre privada (RLS). */
 export interface Intencion {
   id: number;
+  /** Reto al que pertenece (DT-025). */
+  reto_id: number;
   texto: string; // 1-1000 chars
   nombre: string | null; // null = anónima
   created_at: string; // ISO 8601
@@ -73,6 +95,13 @@ export interface Intencion {
 /** Un comentario público o privado de un seguidor. */
 export interface Comentario {
   id: number;
+  /** Reto al que pertenece (DT-025). */
+  reto_id: number;
+  /**
+   * Comentario padre para hilos de respuesta (DT-025). Dormido hasta FP3:
+   * la columna existe en BD pero el código no la usa todavía.
+   */
+  parent_id: number | null;
   nombre: string; // 1-80 chars, nunca anónimo
   texto: string; // 1-1000 chars
   visibilidad: "publico" | "privado";
@@ -81,8 +110,16 @@ export interface Comentario {
   created_at: string; // ISO 8601
 }
 
-/** Texto editable desde el panel admin con fallback al valor por defecto en código. */
+/**
+ * Texto editable desde el panel admin con fallback al valor por defecto en código.
+ *
+ * En el esquema original `clave` era la PK de la tabla. Con multi-tenant (DT-025),
+ * la PK es `id` y la unicidad se garantiza por `(reto_id, clave)`.
+ */
 export interface Texto {
+  id: number;
+  /** Reto al que pertenece (DT-025). */
+  reto_id: number;
   clave: string;
   valor: string;
   updated_at: string; // ISO 8601
@@ -111,6 +148,8 @@ export interface MinutoAMinuto {
  */
 export interface VisitaWeb {
   id: number;
+  /** Reto al que corresponde la visita (DT-025). */
+  reto_id: number;
   ruta: string;
   ts: string; // ISO 8601
   visitante_id: string;
@@ -119,13 +158,18 @@ export interface VisitaWeb {
 }
 
 /**
- * Fila única de configuración del contador de tráfico (DT-023). `cuenta_desde`
+ * Configuración del contador de tráfico por reto (DT-023, DT-025). `cuenta_desde`
  * es el corte a partir del cual una `VisitaWeb` cuenta en la pestaña
  * "Tráfico" del panel admin — el botón "Reset" la adelanta a `now()`, sin
  * borrar ninguna fila de `visitas_web`.
+ *
+ * Con multi-tenant (DT-025), ya no es fila única global: hay una fila por reto
+ * con unique(reto_id).
  */
 export interface ConfigTrafico {
-  id: number; // siempre 1, fila única
+  id: number;
+  /** Reto al que corresponde esta configuración (DT-025). */
+  reto_id: number;
   cuenta_desde: string; // ISO 8601
   created_at: string; // ISO 8601
 }

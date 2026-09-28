@@ -98,7 +98,7 @@ const TRAZA_5P = prepararTraza(TRAZA_100KM_5P);
 describe("Integridad de la traza real", () => {
   it("traza.geojson mide entre 110,38 km y 110,48 km (DT-015: extensión sur por t03v, ~10,2 km al sur de O Porriño)", () => {
     const raw = readFileSync(
-      join(__dirname, "traza.geojson"),
+      join(__dirname, "../rutas/portuguesa-110/traza.geojson"),
       "utf-8"
     );
     const geojson = JSON.parse(raw) as {
@@ -119,7 +119,7 @@ describe("Integridad de la traza real", () => {
 
   it("el último punto de traza.geojson es la Praza do Obradoiro (≈ -8.5448, 42.8806)", () => {
     const raw = readFileSync(
-      join(__dirname, "traza.geojson"),
+      join(__dirname, "../rutas/portuguesa-110/traza.geojson"),
       "utf-8"
     );
     const geojson = JSON.parse(raw) as {
@@ -151,7 +151,7 @@ describe("Integridad de la traza real", () => {
     const UMBRAL_M = 300;
 
     const raw = readFileSync(
-      join(__dirname, "traza.geojson"),
+      join(__dirname, "../rutas/portuguesa-110/traza.geojson"),
       "utf-8"
     );
     const geojson = JSON.parse(raw) as {
