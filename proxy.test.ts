@@ -1,7 +1,8 @@
 /**
  * Tests de proxy.ts (actualizados para FP1, DT-026):
- * - /:slug/admin/*: redirección a /admin/login sin sesión válida, acceso
- *   permitido con cookie válida (DT-010).
+ * - /:slug/admin/*: redirección a /admin/login sin sesión válida o con la
+ *   sesión de otro reto; acceso y renovación (conservando reto y huella) con
+ *   la sesión del reto de la URL, sin consultar BD (DT-010, DT-029).
  * - /:slug/* (rutas públicas): captura de visitas en visitas_web (DT-022) —
  *   genera/reutiliza la cookie de visitante, y un fallo del insert nunca impide
  *   NextResponse.next().
@@ -17,7 +18,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { crearSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
+import { crearSesion, NOMBRE_COOKIE_SESION, verificarSesionEnProxy } from "@/lib/auth/admin-session";
 
 // ---------------------------------------------------------------------------
 // Mock de lib/supabase/admin
@@ -57,10 +58,17 @@ vi.mock("@/lib/supabase/retos", () => ({
 
 // Import dinámico posterior al mock (proxy.ts importa getSupabaseAdmin y obtenerRetoPorSlug).
 const { proxy, NOMBRE_COOKIE_VISITANTE } = await import("@/proxy");
+const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+const { obtenerRetoPorSlug } = await import("@/lib/supabase/retos");
+
+const RETO_PORTUGUESA = { id: 1, slug: "portuguesa-110" };
+const HUELLA = "huellaDeTest0001";
 
 beforeEach(() => {
   vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-sesion-de-test-largo");
   insertSpy.mockClear();
+  vi.mocked(getSupabaseAdmin).mockClear();
+  vi.mocked(obtenerRetoPorSlug).mockClear();
   getSupabaseAdminDebeLanzar = false;
 });
 
@@ -97,18 +105,40 @@ describe("proxy — /:slug/admin/*", () => {
     expect(response.headers.get("location")).toContain("/admin/login");
   });
 
-  it("permite el acceso a /portuguesa-110/admin con una cookie de sesión válida", async () => {
-    const cookieValida = crearSesion();
+  it("permite el acceso a /portuguesa-110/admin con una cookie de sesión de ese reto", async () => {
+    const cookieValida = crearSesion(RETO_PORTUGUESA, HUELLA);
     const response = await proxy(peticionA("/portuguesa-110/admin", cookieValida));
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("renueva la cookie (Set-Cookie) en cada petición válida a /:slug/admin/*", async () => {
-    const cookieValida = crearSesion();
+  it("redirige a login con la cookie de otro reto (sesión de A en /b/admin)", async () => {
+    const cookieDeOtroReto = crearSesion({ id: 2, slug: "otro-reto" }, HUELLA);
+    const response = await proxy(peticionA("/portuguesa-110/admin", cookieDeOtroReto));
+    expect(response.status).toBe(307);
+    const destino = new URL(response.headers.get("location") ?? "");
+    expect(destino.pathname).toBe("/admin/login");
+    expect(destino.searchParams.get("returnTo")).toBe("/portuguesa-110/admin");
+    expect(response.cookies.get(NOMBRE_COOKIE_SESION)).toBeUndefined();
+  });
+
+  it("renueva la cookie conservando reto y huella en cada petición válida a /:slug/admin/*", async () => {
+    const hace1Dia = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const cookieValida = crearSesion(RETO_PORTUGUESA, HUELLA, hace1Dia);
     const response = await proxy(peticionA("/portuguesa-110/admin/posicion", cookieValida));
-    const setCookie = response.cookies.get(NOMBRE_COOKIE_SESION);
-    expect(setCookie).toBeDefined();
-    expect(setCookie?.value).not.toBe(""); // hay una cookie nueva fijada
+
+    const renovada = response.cookies.get(NOMBRE_COOKIE_SESION)?.value;
+    expect(renovada).toBeDefined();
+    expect(renovada).not.toBe(cookieValida);
+    const payload = verificarSesionEnProxy(renovada, RETO_PORTUGUESA.slug);
+    expect(payload).toMatchObject({ r: RETO_PORTUGUESA.id, s: RETO_PORTUGUESA.slug, v: HUELLA });
+    expect(payload?.exp).toBeGreaterThan(Date.now() + 6.9 * 24 * 60 * 60 * 1000);
+  });
+
+  it("no consulta la BD en la rama admin (ni con sesión válida ni sin ella)", async () => {
+    await proxy(peticionA("/portuguesa-110/admin", crearSesion(RETO_PORTUGUESA, HUELLA)));
+    await proxy(peticionA("/portuguesa-110/admin"));
+    expect(getSupabaseAdmin).not.toHaveBeenCalled();
+    expect(obtenerRetoPorSlug).not.toHaveBeenCalled();
   });
 
   it("no inserta ninguna visita al pasar por /:slug/admin/*", async () => {

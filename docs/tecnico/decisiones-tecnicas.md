@@ -1762,6 +1762,7 @@ Se implementa un panel `/superadmin` con autenticación propia paralela al admin
 
 **Auth del superadmin (Opción A — módulo paralelo, secreto compartido):**
 Se crea `lib/auth/superadmin-session.ts` que espeja `lib/auth/admin-session.ts` con cookie `superadmin_session` y contraseña leída desde `SUPERADMIN_PASSWORD`. La firma HMAC reutiliza `ADMIN_SESSION_SECRET` (aceptable: admin y superadmin son el mismo sujeto, Santi; no existe un adversario con el secreto de firma que no tenga también la contraseña). La autenticación sigue el mismo patrón que DT-010: proxy como primera línea + verificación independiente en cada Server Action.
+> **Superado por DT-029:** desde FP2.6 cada reto tiene su propio admin, que puede ser otra persona. El secreto se sigue compartiendo, pero cada cookie firma con una etiqueta de propósito distinta para que una no valga como la otra.
 
 `proxy.ts` añade una rama para `/superadmin` y `/superadmin/*` con `proxySuperAdmin()`, que verifica `superadmin_session`, redirige a `/superadmin/login` si inválida, y renueva el TTL rolling si válida. Patrón idéntico al de `proxyAdmin()`.
 
@@ -1826,3 +1827,39 @@ Tras FP0–FP2 todas las tablas top-level llevan `reto_id` (y `posiciones`/`minu
 - **Reto sin ruta con intento "guiado"** (punto 6): el plan decía "si null → progreso libre vacío" para el progreso vacío; se extendió el mismo criterio al cálculo con histórico (se mide como libre) y a la vista pública/mapa admin, porque no existe traza con la que calcular un progreso guiado.
 - **`app/[slug]/page.tsx` y `app/[slug]/admin/page.tsx`** responden `notFound()` si el reto no se resuelve (antes la pública degradaba a `"portuguesa-110"`): el layout ya da 404 en ese caso, y sin reto no hay nada que filtrar.
 - **Invalidación del histórico:** `descartarPosicion` y `reiniciarReto` limpian también la caché de histórico del reto (antes solo la de progreso), porque con la caché por reto un reinicio dejaba hasta 20 s el histórico del intento anterior.
+
+---
+
+## DT-029 — FP2.6: Contraseña de admin propia por reto
+
+**Fecha:** 2026-09-29 · **Tarea:** FP2.6 — Contraseña de admin por reto
+
+### Contexto
+
+Hasta FP2.5 todos los paneles `/<slug>/admin` compartían la env var `ADMIN_PASSWORD` y la cookie `admin_session` (HMAC con `ADMIN_SESSION_SECRET`, payload `{exp}`) no estaba ligada a ningún reto: quien entraba en un panel entraba en todos. Con varios retos de organizadores distintos, eso rompe el aislamiento conseguido en DT-028.
+
+### Decisión
+
+1. **Tabla `retos_admin`** (migración `0010_retos_admin.sql`): `reto_id bigint PK → retos(id) on delete cascade`, `password_hash text check (like 'scrypt$%')`, `updated_at`. RLS activado sin políticas y `revoke all` a `anon`/`authenticated`: solo el service role la toca. Tabla aparte porque `retos` es legible por `anon`.
+2. **Hash scrypt de `node:crypto`** (`lib/auth/password.ts`), formato `scrypt$N$r$p$salt$hash` (N=16384, r=8, p=1, salt 16 B, clave 64 B). Verificación con `timingSafeEqual`, nunca lanza; parámetros fuera de rango o memoria > 64 MB → `false`. `HASH_SENTINELA` para igualar tiempos.
+3. **Cookie ligada al reto — invalidación opción B:** payload `{r: retoId, s: slug, v: huella, exp}`, con `huella = SHA-256(password_hash)` base64url truncado a 16. Cada hash lleva salt nuevo ⇒ cambiar la contraseña cambia la huella e invalida las sesiones abiertas.
+4. **Dos niveles de verificación:** `proxy.ts` (`verificarSesionEnProxy`) comprueba firma, caducidad y que `s` es el slug de la URL, sin BD, y renueva la cookie conservando r/s/v. La página del panel y cada Server Action usan `resolverRetoConSesion(slug)` (`lib/auth/sesion-admin-servidor.ts`), que además compara `r` con el id del reto y `v` con la huella del hash actual.
+5. **Login** (`/api/admin/login`): rate limit por IP primero; zod `{slug, password}`; `verificarPassword` se ejecuta siempre (contra `HASH_SENTINELA` si no hay reto o hash); reto inexistente, sin contraseña o contraseña errónea → el mismo `401 {error:"credenciales incorrectas"}`. `ADMIN_PASSWORD` deja de leerse (obsoleta).
+6. **Superadmin:** contraseña obligatoria al crear (≥ 8, ≤ 200), opcional al editar (vacío = no cambiar); estado "configurada / sin configurar" por tarjeta. Nunca se guarda ni registra texto plano.
+7. **Login UI:** el reto sale de `returnTo`; sin `returnTo` válido el formulario queda desactivado (se elimina el reto por defecto fijo).
+
+### Alternativas valoradas
+
+**Invalidación opción A — sin huella (solo r/s/exp).** Descartada: cambiar la contraseña no expulsaría a quien ya tuviera sesión hasta 7 días.
+**Invalidación opción C — el proxy consulta BD en cada navegación.** Descartada: una consulta por navegación del panel en el proxy; la verificación completa ya ocurre en la página y en cada Server Action, que es donde se leen o escriben datos.
+**Columna `admin_password_hash` en `retos`.** Descartada: `retos` tiene política SELECT para `anon`; habría que excluir la columna en cada consulta pública.
+**bcrypt/argon2 como dependencia.** Descartado: scrypt nativo de Node cubre el caso sin dependencia nueva.
+
+### Notas de cierre (implementación)
+
+- **Tiempo de login con reto inexistente:** `verificarPassword` se ejecuta siempre, pero con un reto existente hay una consulta extra a `retos_admin`. La diferencia (un round-trip) solo revela si el slug existe, dato ya público (la web `/<slug>` es pública); no revela si el reto tiene contraseña.
+- **Mensaje ante 429 en el login:** además del mensaje de error pedido, la UI muestra "Demasiados intentos…" si la API responde 429, para no hacer creer al usuario que la contraseña es incorrecta.
+- **Server Actions que devuelven `ResultadoPublicacion`** (`finalizarReto`, `crearMinutoAMinuto`) usan `resolverRetoConSesion` directamente y devuelven "sesión caducada" si es null (antes distinguían "reto no encontrado"; ahora ambos casos son sesión inválida).
+- **`editarReto`** guarda la contraseña nueva tras actualizar el reto y revalidar; si falla ese guardado, lanza "No se pudo guardar la contraseña de admin del reto." con el resto de cambios ya aplicados.
+- **Despliegue:** hasta aplicar `0010` y fijar la contraseña de cada reto desde el superadmin, ningún panel admin es accesible (fallar cerrado). Las cookies antiguas `{exp}` dejan de ser válidas al desplegar.
+- **Separación de firmas admin / superadmin (hallazgo de Seguridad):** ambas cookies se firmaban con `ADMIN_SESSION_SECRET` y la misma construcción `HMAC(payload)`, y `verificarSesionSuperadmin` solo exigía un `exp` numérico. Una cookie `admin_session` de cualquier reto (y desde FP2, la antigua `{exp}` del admin único) valía como `superadmin_session`. Corregido con una etiqueta de propósito en la firma (`HMAC(secreto, "admin.v2." + payload)` y `"superadmin.v2." + payload`) y validación zod `.strict()` del payload en ambas. Al desplegar se invalidan también las sesiones de superadmin.

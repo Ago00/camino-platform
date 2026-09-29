@@ -175,6 +175,17 @@ export interface ConfigTrafico {
   created_at: string; // ISO 8601
 }
 
+/**
+ * Credencial del admin de un reto (FP2.6, DT-029). Tabla `retos_admin`, sin
+ * políticas RLS: solo el service role la lee o escribe. `password_hash` en
+ * formato `scrypt$N$r$p$salt$hash` (lib/auth/password.ts), nunca texto plano.
+ */
+export interface RetoAdmin {
+  reto_id: number;
+  password_hash: string;
+  updated_at: string; // ISO 8601
+}
+
 // ---------------------------------------------------------------------------
 // Tipos del dominio de progreso (proyeccion.ts)
 // ---------------------------------------------------------------------------

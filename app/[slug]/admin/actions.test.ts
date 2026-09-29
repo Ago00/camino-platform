@@ -6,8 +6,10 @@
  * argumentos) para poder comprobar que las escrituras quedan acotadas al
  * reto del slug: filas con `reto_id` propio se filtran por él además de por
  * `id`, y las que cuelgan de un intento se filtran por el intento activo del
- * reto. Sesión, reto y `revalidatePath` se mockean: aquí solo interesa qué
- * consulta llega a Supabase.
+ * reto. Reto, hash de la credencial, cookies y `revalidatePath` se mockean;
+ * la sesión se firma y verifica con el código real (FP2.6, DT-029) para
+ * comprobar que una sesión de otro reto o de una contraseña anterior no
+ * llega a escribir nada.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,7 +34,14 @@ interface LlamadaBuilder {
 
 let llamadas: LlamadaBuilder[] = [];
 let intentoActivoMock: { id: number } | null = null;
-let retoMock: Reto | null = RETO;
+const RETO_B: Reto = { ...RETO, id: 4, slug: "otro-reto" };
+const RETOS_POR_SLUG = new Map([RETO, RETO_B].map((reto) => [reto.slug, reto]));
+// Solo se usa su huella: no hace falta un hash scrypt real.
+const HASH_RETO = "scrypt$16384$8$1$saltDeTest$hashDeTestDelReto";
+const HASH_RETO_B = "scrypt$16384$8$1$saltDeTest$hashDeTestDelRetoB";
+
+let cookieMock: string | undefined;
+let hashesMock: Map<number, string>;
 
 /**
  * Builder encadenable que registra todas las llamadas. `maybeSingle()` sobre
@@ -65,27 +74,37 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("@/lib/supabase/retos", () => ({
-  obtenerRetoPorSlug: async () => retoMock,
+  obtenerRetoPorSlug: async (slug: string) => RETOS_POR_SLUG.get(slug) ?? null,
 }));
 
-vi.mock("@/lib/auth/admin-session", () => ({
-  NOMBRE_COOKIE_SESION: "admin_session",
-  verificarSesion: () => true,
+vi.mock("@/lib/supabase/credenciales-admin", () => ({
+  obtenerHashAdmin: async (retoId: number) => hashesMock.get(retoId) ?? null,
 }));
 
 vi.mock("next/headers", () => ({
-  cookies: async () => ({ get: () => ({ value: "cookie-valida" }), delete: () => undefined }),
+  cookies: async () => ({
+    get: () => (cookieMock === undefined ? undefined : { value: cookieMock }),
+    delete: () => undefined,
+  }),
 }));
 
 vi.mock("next/cache", () => ({
   revalidatePath: () => undefined,
 }));
 
+// La sesión se firma y verifica con el código real (admin-session +
+// huellaCredencial): así los tests cubren el cruce de retos y el cambio de
+// contraseña de extremo a extremo dentro de la acción.
+const { crearSesion } = await import("@/lib/auth/admin-session");
+const { huellaCredencial } = await import("@/lib/auth/password");
+
 const {
+  crearMinutoAMinuto,
   descartarPosicion,
   eliminarComentario,
   eliminarIntencion,
   eliminarMinutoAMinuto,
+  guardarTexto,
   ocultarComentario,
   resetearContadorTrafico,
 } = await import("@/app/[slug]/admin/actions");
@@ -94,10 +113,60 @@ function llamadasA(tabla: string, metodo: string): unknown[][] {
   return llamadas.filter((l) => l.tabla === tabla && l.metodo === metodo).map((l) => l.args);
 }
 
+function escriturasEnBd(): LlamadaBuilder[] {
+  return llamadas.filter((l) => ["update", "delete", "upsert", "insert"].includes(l.metodo));
+}
+
 beforeEach(() => {
+  vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-sesion-de-test-largo");
   llamadas = [];
   intentoActivoMock = null;
-  retoMock = RETO;
+  hashesMock = new Map([
+    [RETO.id, HASH_RETO],
+    [RETO_B.id, HASH_RETO_B],
+  ]);
+  cookieMock = crearSesion(RETO, huellaCredencial(HASH_RETO));
+});
+
+describe("requerirSesion — la sesión debe ser del reto del slug y de su contraseña vigente", () => {
+  it("la sesión del reto A no permite actuar sobre el reto B y no escribe nada", async () => {
+    await expect(eliminarComentario(RETO_B.slug, 55)).rejects.toThrow(/Sesión de admin/);
+    await expect(resetearContadorTrafico(RETO_B.slug)).rejects.toThrow(/Sesión de admin/);
+    await expect(guardarTexto(RETO_B.slug, "reto_titulo", "x")).rejects.toThrow(/Sesión de admin/);
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("una sesión con la huella de la contraseña anterior se rechaza tras cambiarla", async () => {
+    hashesMock.set(RETO.id, "scrypt$16384$8$1$saltNuevo$hashTrasCambiarLaContrasena");
+
+    await expect(eliminarComentario(RETO.slug, 55)).rejects.toThrow(/Sesión de admin/);
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("se rechaza si el reto ya no tiene contraseña configurada", async () => {
+    hashesMock.delete(RETO.id);
+
+    await expect(eliminarIntencion(RETO.slug, 8)).rejects.toThrow(/Sesión de admin/);
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("se rechaza sin cookie", async () => {
+    cookieMock = undefined;
+
+    await expect(eliminarIntencion(RETO.slug, 8)).rejects.toThrow(/Sesión de admin/);
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("las acciones que devuelven resultado informan de sesión caducada en vez de lanzar, sin escribir", async () => {
+    const formData = new FormData();
+    formData.set("texto", "hola");
+
+    await expect(crearMinutoAMinuto(RETO_B.slug, formData)).resolves.toEqual({
+      ok: false,
+      mensaje: expect.stringMatching(/sesión/),
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
 });
 
 describe("acciones de comentarios e intenciones — filtran por reto_id", () => {
@@ -128,8 +197,6 @@ describe("acciones de comentarios e intenciones — filtran por reto_id", () => 
   });
 
   it("no toca la BD si el reto del slug no existe", async () => {
-    retoMock = null;
-
     await expect(eliminarComentario("reto-inexistente", 55)).rejects.toThrow();
     expect(llamadasA("comentarios", "delete")).toHaveLength(0);
   });

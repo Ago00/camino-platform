@@ -1,81 +1,169 @@
+import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { crearSesion, verificarSesion } from "@/lib/auth/admin-session";
+import {
+  crearSesion,
+  renovarSesion,
+  verificarSesion,
+  verificarSesionEnProxy,
+} from "@/lib/auth/admin-session";
 
-describe("admin-session", () => {
+const RETO_A = { id: 1, slug: "reto-a" };
+const RETO_B = { id: 2, slug: "reto-b" };
+const HUELLA_A = "huellaDelRetoA01";
+const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const AHORA = new Date("2026-08-01T10:00:00Z");
+
+function decodificarPayload(cookie: string): unknown {
+  const [payload] = cookie.split(".");
+  return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+}
+
+function firmaDe(cookie: string): string {
+  return cookie.split(".")[1];
+}
+
+function payloadEnBase64(payload: unknown): string {
+  return Buffer.from(JSON.stringify(payload)).toString("base64url");
+}
+
+describe("admin-session — verificación completa (verificarSesion)", () => {
   beforeEach(() => {
     vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-test-suficientemente-largo");
   });
 
-  it("una cookie recién creada es válida en el mismo instante", () => {
-    const ahora = new Date("2026-08-01T10:00:00Z");
-    const cookie = crearSesion(ahora);
-    expect(verificarSesion(cookie, ahora)).toBe(true);
+  it("acepta una cookie recién creada para el mismo reto y la misma huella", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesion(cookie, RETO_A, HUELLA_A, AHORA)).toBe(true);
+  });
+
+  it("rechaza la sesión del reto A en el reto B", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesion(cookie, RETO_B, HUELLA_A, AHORA)).toBe(false);
+  });
+
+  it("rechaza si coincide el slug pero no el id del reto (reto borrado y recreado con el mismo slug)", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesion(cookie, { id: 99, slug: RETO_A.slug }, HUELLA_A, AHORA)).toBe(false);
+  });
+
+  it("rechaza si la huella de la credencial ha cambiado (contraseña cambiada)", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesion(cookie, RETO_A, "huellaNuevaDistint", AHORA)).toBe(false);
+  });
+
+  it("rechaza siempre si el reto no tiene credencial (huellaActual null)", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesion(cookie, RETO_A, null, AHORA)).toBe(false);
   });
 
   it("sigue siendo válida justo antes de cumplir el TTL de 7 días", () => {
-    const ahora = new Date("2026-08-01T10:00:00Z");
-    const cookie = crearSesion(ahora);
-    const justoAntes = new Date(ahora.getTime() + 7 * 24 * 60 * 60 * 1000 - 1000);
-    expect(verificarSesion(cookie, justoAntes)).toBe(true);
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    const justoAntes = new Date(AHORA.getTime() + TTL_MS - 1000);
+    expect(verificarSesion(cookie, RETO_A, HUELLA_A, justoAntes)).toBe(true);
   });
 
   it("expira pasados los 7 días de TTL", () => {
-    const ahora = new Date("2026-08-01T10:00:00Z");
-    const cookie = crearSesion(ahora);
-    const despuesDeExpirar = new Date(ahora.getTime() + 7 * 24 * 60 * 60 * 1000 + 1000);
-    expect(verificarSesion(cookie, despuesDeExpirar)).toBe(false);
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    const despues = new Date(AHORA.getTime() + TTL_MS + 1000);
+    expect(verificarSesion(cookie, RETO_A, HUELLA_A, despues)).toBe(false);
   });
 
   it("rechaza una cookie con la firma alterada", () => {
-    const cookie = crearSesion(new Date());
-    const [payload] = cookie.split(".");
-    const cookieManipulada = `${payload}.firmafalsaquenocoincide00000000000000000`;
-    expect(verificarSesion(cookieManipulada)).toBe(false);
+    const [payload] = crearSesion(RETO_A, HUELLA_A, AHORA).split(".");
+    const manipulada = `${payload}.firmafalsaquenocoincide00000000000000000`;
+    expect(verificarSesion(manipulada, RETO_A, HUELLA_A, AHORA)).toBe(false);
   });
 
-  it("rechaza una cookie con el payload alterado (exp adelantado) aunque la firma original se reutilice", () => {
-    const cookie = crearSesion(new Date("2026-08-01T10:00:00Z"));
-    const [, firma] = cookie.split(".");
-    const payloadFalso = Buffer.from(JSON.stringify({ exp: Date.now() + 999_999_999_999 })).toString(
-      "base64url"
-    );
-    expect(verificarSesion(`${payloadFalso}.${firma}`)).toBe(false);
+  it("rechaza un payload alterado (otro reto) aunque reutilice la firma original", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    const payloadFalso = payloadEnBase64({ r: RETO_B.id, s: RETO_B.slug, v: HUELLA_A, exp: AHORA.getTime() + TTL_MS });
+    expect(verificarSesion(`${payloadFalso}.${firmaDe(cookie)}`, RETO_B, HUELLA_A, AHORA)).toBe(false);
   });
 
-  it("rechaza una cookie firmada con un secreto distinto (ej. tras rotar ADMIN_SESSION_SECRET)", () => {
-    const cookieConSecretoViejo = crearSesion(new Date());
+  it("rechaza una cookie firmada con un secreto distinto (tras rotar ADMIN_SESSION_SECRET)", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
     vi.stubEnv("ADMIN_SESSION_SECRET", "otro-secreto-completamente-distinto");
-    expect(verificarSesion(cookieConSecretoViejo)).toBe(false);
+    expect(verificarSesion(cookie, RETO_A, HUELLA_A, AHORA)).toBe(false);
   });
 
-  it("rechaza valores sin el formato payload.firma", () => {
-    expect(verificarSesion("valor-sin-punto")).toBe(false);
-    expect(verificarSesion("a.b.c")).toBe(false);
-    expect(verificarSesion("")).toBe(false);
+  it("rechaza una cookie con el formato antiguo `{exp}` aunque esté bien firmada", () => {
+    const payloadAntiguo = payloadEnBase64({ exp: AHORA.getTime() + TTL_MS });
+    const firma = createHmacBase64Url(payloadAntiguo, "secreto-de-test-suficientemente-largo");
+    expect(verificarSesion(`${payloadAntiguo}.${firma}`, RETO_A, HUELLA_A, AHORA)).toBe(false);
+    expect(verificarSesionEnProxy(`${payloadAntiguo}.${firma}`, RETO_A.slug, AHORA)).toBeNull();
   });
 
-  it("rechaza null y undefined sin lanzar", () => {
-    expect(verificarSesion(null)).toBe(false);
-    expect(verificarSesion(undefined)).toBe(false);
-  });
-
-  it("rechaza un payload que no es JSON válido tras decodificar", () => {
-    const payloadCorrupto = Buffer.from("esto no es json").toString("base64url");
-    const cookie = crearSesion(new Date());
-    const [, firmaOriginal] = cookie.split(".");
-    // La firma no coincidirá con el payload corrupto, pero comprobamos
-    // explícitamente que el parseo de JSON tampoco puede lanzar sin control.
-    expect(verificarSesion(`${payloadCorrupto}.${firmaOriginal}`)).toBe(false);
+  it("rechaza valores sin el formato payload.firma, null y undefined sin lanzar", () => {
+    for (const valor of ["valor-sin-punto", "a.b.c", "", null, undefined]) {
+      expect(verificarSesion(valor, RETO_A, HUELLA_A, AHORA)).toBe(false);
+    }
   });
 
   it("lanza al crear una sesión si falta ADMIN_SESSION_SECRET", () => {
     vi.unstubAllEnvs();
-    expect(() => crearSesion(new Date())).toThrow(/ADMIN_SESSION_SECRET/);
+    vi.stubEnv("ADMIN_SESSION_SECRET", "");
+    expect(() => crearSesion(RETO_A, HUELLA_A, AHORA)).toThrow(/ADMIN_SESSION_SECRET/);
   });
 
   it("verificarSesion devuelve false (no lanza) si falta ADMIN_SESSION_SECRET", () => {
-    const cookie = crearSesion(new Date());
-    vi.unstubAllEnvs();
-    expect(verificarSesion(cookie)).toBe(false);
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    vi.stubEnv("ADMIN_SESSION_SECRET", "");
+    expect(verificarSesion(cookie, RETO_A, HUELLA_A, AHORA)).toBe(false);
   });
 });
+
+describe("admin-session — verificación en proxy (verificarSesionEnProxy)", () => {
+  beforeEach(() => {
+    vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-test-suficientemente-largo");
+  });
+
+  it("devuelve el payload si la cookie es del slug de la URL", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesionEnProxy(cookie, RETO_A.slug, AHORA)).toEqual({
+      r: RETO_A.id,
+      s: RETO_A.slug,
+      v: HUELLA_A,
+      exp: AHORA.getTime() + TTL_MS,
+    });
+  });
+
+  it("rechaza la sesión del reto A en la URL del reto B", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesionEnProxy(cookie, RETO_B.slug, AHORA)).toBeNull();
+  });
+
+  it("rechaza cookies caducadas o manipuladas", () => {
+    const cookie = crearSesion(RETO_A, HUELLA_A, AHORA);
+    expect(verificarSesionEnProxy(cookie, RETO_A.slug, new Date(AHORA.getTime() + TTL_MS + 1))).toBeNull();
+    expect(verificarSesionEnProxy("x.y", RETO_A.slug, AHORA)).toBeNull();
+  });
+});
+
+describe("admin-session — renovarSesion", () => {
+  beforeEach(() => {
+    vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-test-suficientemente-largo");
+  });
+
+  it("conserva r/s/v y reinicia la caducidad desde el nuevo instante", () => {
+    const original = crearSesion(RETO_A, HUELLA_A, AHORA);
+    const payload = verificarSesionEnProxy(original, RETO_A.slug, AHORA);
+    if (!payload) throw new Error("la sesión original debería ser válida");
+
+    const masTarde = new Date(AHORA.getTime() + 6 * 24 * 60 * 60 * 1000);
+    const renovada = renovarSesion(payload, masTarde);
+
+    expect(decodificarPayload(renovada)).toEqual({
+      r: RETO_A.id,
+      s: RETO_A.slug,
+      v: HUELLA_A,
+      exp: masTarde.getTime() + TTL_MS,
+    });
+    const pasadoElTtlOriginal = new Date(AHORA.getTime() + TTL_MS + 1000);
+    expect(verificarSesion(renovada, RETO_A, HUELLA_A, pasadoElTtlOriginal)).toBe(true);
+    expect(verificarSesion(renovada, RETO_A, "otraHuella000000", pasadoElTtlOriginal)).toBe(false);
+  });
+});
+
+function createHmacBase64Url(payload: string, secreto: string): string {
+  return createHmac("sha256", secreto).update(payload).digest("base64url");
+}

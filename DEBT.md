@@ -2,6 +2,50 @@
 
 ---
 
+## Recomendaciones de la revisión de FP2.6 (contraseña de admin por reto)
+
+**Fecha:** 2026-09-29
+**Contexto:** Revisión de FP2.6 (DT-029).
+**Problema:** (1) `app/[slug]/admin/actions.ts:47-57`: el JSDoc de `requerirSesion` quedó separado de su función (encima del JSDoc de `MENSAJE_SESION_CADUCADA`), dos bloques `/** */` seguidos. (2) `finalizarReto` no tiene test propio del camino "sesión de otro reto / contraseña cambiada → mensaje de sesión caducada sin subir foto ni escribir" (solo lo tiene `crearMinutoAMinuto`); comparten helper, pero es la acción que sube foto antes de escribir.
+**Impacto:** Bajo: legibilidad y cobertura de un camino ya protegido por el mismo helper.
+**Solución propuesta:** (1) Mover el JSDoc de `requerirSesion` justo encima de la función. (2) Añadir a `actions.test.ts` un caso de `finalizarReto(RETO_B.slug, formData con foto)` que compruebe `{ok:false}` y que no se llama a `subirFotoLlegada` ni hay escrituras.
+**Prioridad:** Baja.
+
+---
+
+## Contraseñas de admin de los retos existentes por fijar
+
+**Fecha:** 2026-09-29
+**Contexto:** FP2.6 (DT-029). El login de admin lee el hash de `retos_admin`; `ADMIN_PASSWORD` ya no se usa. La migración `0010` está aplicada y verificada (RLS activa, sin políticas, anon/authenticated sin SELECT).
+**Problema:** Hasta fijar la contraseña de cada reto existente, su panel `/<slug>/admin` responde 401 al login.
+**Impacto:** Falla cerrado (sin riesgo de seguridad), pero bloquea el panel del reto.
+**Solución propuesta:** En `/superadmin` editar cada reto existente y fijar su contraseña; verificar "Contraseña admin: configurada" y entrar en `/<slug>/admin`. Después, borrar `ADMIN_PASSWORD` de Vercel.
+**Prioridad:** Alta — operativa, obligatoria en el despliegue de FP2.6.
+
+---
+
+## Mensajes de error de la contraseña de admin en el superadmin llegan redactados
+
+**Fecha:** 2026-09-29
+**Contexto:** FP2.6 (DT-029). `crearReto`/`editarReto` lanzan `Error` con mensajes como "La contraseña de admin debe tener al menos 8 caracteres." o "Reto creado; fija la contraseña editándolo.". Es el mismo patrón ya registrado en "Panel superadmin: mensajes de error de server actions no llegan al usuario".
+**Problema:** En producción Next redacta el mensaje; el superadmin no ve por qué falló. Los atributos `minLength`/`required` del formulario cubren el caso común en el navegador, pero no el fallo de guardado del hash tras crear el reto.
+**Impacto:** Bajo: el estado "sin configurar" de la tarjeta delata el caso "reto creado sin contraseña".
+**Solución propuesta:** Resolverlo junto con la deuda general del superadmin (devolver `ResultadoOperacion` y mostrarlo inline).
+**Prioridad:** Baja.
+
+---
+
+## `pnpm test` registra de forma intermitente "Timeout calling onTaskUpdate"
+
+**Fecha:** 2026-09-29
+**Contexto:** FP2.6. En una de dos ejecuciones completas, vitest informó 400/400 tests en verde pero 1 "Unhandled Error: [vitest-worker]: Timeout calling onTaskUpdate", y salió con código de error. La repetición salió limpia.
+**Problema:** El RPC entre el worker y el proceso principal de vitest se bloquea cuando los tests intensivos en CPU (`proyeccion.ventana.test.ts`, benchmarks adversariales de ~6 s, y ahora los hashes scrypt de los tests de login) coinciden en el tiempo.
+**Impacto:** Ejecuciones de la suite en rojo sin fallo real; puede confundir a CI o al Implementador.
+**Solución propuesta:** Aislar los tests de benchmark en un proyecto de vitest aparte (o `poolOptions.threads.singleThread` para ellos), o subir `teardownTimeout`/limitar `maxWorkers`.
+**Prioridad:** Baja.
+
+---
+
 ## `docs/producto/` no refleja el panel superadmin ni la nueva home de listado de retos (FP2)
 
 **Fecha:** 2026-09-29

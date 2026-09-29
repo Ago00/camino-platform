@@ -127,6 +127,7 @@ camino-santi-ago/
 │   │                             # y VENTANA_PROYECCION_FALLBACK_MAX_M de la ventana deslizante, DT-018)
 │   ├── supabase/             # F2
 │   │   ├── admin.ts          # cliente service role (solo servidor)
+│   │   ├── credenciales-admin.ts # DT-029: hash de la contraseña de admin por reto (`retos_admin`)
 │   │   ├── public.ts         # cliente anon (peticiones públicas)
 │   │   ├── paginacion.ts     # DT-018: obtenerTodasLasFilas() — fetch paginado genérico con .range()
 │   │   │                     # en bucle (PostgREST corta a 1000 filas sin Range explícito), tope de
@@ -138,7 +139,10 @@ camino-santi-ago/
 │   │   ├── defaults.ts       # textos por defecto (override desde BD)
 │   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
 │   ├── auth/                 # F4
-│   │   └── admin-session.ts  # firma/verificación cookie HMAC
+│   │   ├── admin-session.ts  # firma/verificación cookie HMAC ligada a reto {r,s,v,exp} (DT-029)
+│   │   ├── password.ts       # DT-029: hash scrypt de la contraseña de admin por reto + huella
+│   │   └── sesion-admin-servidor.ts # DT-029: resolverRetoConSesion(slug) — verificación completa
+│   │                             # (reto + huella contra BD) en la página del panel y Server Actions
 │   ├── admin/                 # F4
 │   │   └── navegacion.ts     # estado de navegación (?tab=, ?filtroComentarios=,
 │   │                          # ?gran= DT-022) y sus validadores — fuera de
@@ -173,7 +177,7 @@ camino-santi-ago/
 | Constantes de dominio | `lib/traza/umbrales.ts` | Cada umbral con su porqué. |
 | Infraestructura BD | `lib/supabase/` | Solo clientes. Sin lógica de negocio. |
 | Endpoints | `app/api/` | Validación Zod en la frontera. Sin lógica de negocio. |
-| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con cookie. Los fallos esperados de `crearMinutoAMinuto` y `finalizarReto` (DT-024) se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). `crearMinutoAMinuto` recalcula el progreso con `lib/traza/progreso-actual.ts` cuando la caché compartida está vacía, en vez de guardar la posición a `null` (DT-019). |
+| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con la cookie del reto del slug (`resolverRetoConSesion`, DT-029) como primera operación de cada acción. Los fallos esperados de `crearMinutoAMinuto` y `finalizarReto` (DT-024) se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). `crearMinutoAMinuto` recalcula el progreso con `lib/traza/progreso-actual.ts` cuando la caché compartida está vacía, en vez de guardar la posición a `null` (DT-019). |
 | UI | `app/` + `components/` | Sin lógica de negocio. Consume `lib/`. |
 
 ## La regla no negociable de las dos trazas
@@ -220,6 +224,12 @@ en cada petición.
   `minuto_a_minuto` por el intento activo del reto. Las cachés en memoria
   (`lib/progreso-cache.ts`, `lib/historico-cache.ts`) van por `reto_id`.
 - `/api/track` recibe el reto en la URL (`?reto=<slug>`); sin reto válido no guarda nada.
+- La sesión de admin (`admin_session`) está ligada a UN reto: firma `{r: retoId, s: slug,
+  v: huella de su password_hash, exp}` (DT-029). `proxy.ts` solo comprueba firma, caducidad
+  y slug (sin BD); la página del panel y CADA Server Action verifican además `r` y `v` contra
+  BD con `resolverRetoConSesion` (`lib/auth/sesion-admin-servidor.ts`). Cambiar la contraseña
+  de un reto invalida sus sesiones abiertas. La contraseña se guarda solo como hash scrypt en
+  `retos_admin` (tabla sin políticas RLS: solo service role).
 - Las posiciones con `descartado = true` no participan en ningún cálculo.
 - La `Fase` del intento activo determina qué muestra la web pública.
 - Las intenciones son siempre privadas: ninguna política RLS de anon las alcanza.
@@ -232,5 +242,9 @@ en cada petición.
 
 Ver `docs/tecnico/plan-ejecucion-v1.md` para la lista completa:
 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`, `ADMIN_PASSWORD`,
-`ADMIN_SESSION_SECRET`, `NEXT_PUBLIC_MAPTILER_KEY`.
+`SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`, `ADMIN_SESSION_SECRET`,
+`SUPERADMIN_PASSWORD`, `NEXT_PUBLIC_MAPTILER_KEY`.
+
+**`ADMIN_PASSWORD` está obsoleta desde FP2.6 (DT-029):** ningún código la lee. Cada reto
+tiene su propia contraseña de admin, que fija el superadmin (hash scrypt en `retos_admin`).
+Se puede borrar de Vercel una vez desplegado FP2.6 y fijadas las contraseñas de los retos.

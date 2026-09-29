@@ -5,7 +5,7 @@
  * Bifurcación por `pathname`:
  * - `/` → pass-through; Next.js hace el redirect si aplica.
  * - `/superadmin` y `/superadmin/*` → proxySuperAdmin (FP2).
- * - `/:slug/admin/*` → proxyAdmin (protege el panel con sesión).
+ * - `/:slug/admin/*` → proxyAdmin (protege el panel con la sesión de ESE reto, sin BD).
  * - Todo lo demás → proxyPublico (captura visita para la pestaña "Tráfico").
  *
  * IMPORTANTE: esto NO es la única defensa de cada panel. Las Server Actions
@@ -14,7 +14,7 @@
 
 import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
-import { crearSesion, NOMBRE_COOKIE_SESION, verificarSesion } from "@/lib/auth/admin-session";
+import { NOMBRE_COOKIE_SESION, renovarSesion, verificarSesionEnProxy } from "@/lib/auth/admin-session";
 import { crearSesionSuperadmin, NOMBRE_COOKIE_SUPERADMIN_SESION, verificarSesionSuperadmin } from "@/lib/auth/superadmin-session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
@@ -86,22 +86,30 @@ function proxySuperAdmin(request: NextRequest): NextResponse {
 }
 
 // ---------------------------------------------------------------------------
-// /:slug/admin/* — sesión (DT-010, sin cambios de comportamiento)
+// /:slug/admin/* — sesión ligada al reto (DT-010, DT-029)
 // ---------------------------------------------------------------------------
 
+/**
+ * Primera línea: firma, caducidad y que la sesión es del slug de la URL. No
+ * consulta BD (corre en cada navegación del panel), así que no detecta un
+ * cambio de contraseña: eso lo verifican la página y cada Server Action con
+ * `resolverRetoConSesion` (lib/auth/sesion-admin-servidor.ts).
+ */
 function proxyAdmin(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
+  const slug = pathname.split("/")[1];
   const cookieSesion = request.cookies.get(NOMBRE_COOKIE_SESION)?.value;
 
-  if (!verificarSesion(cookieSesion)) {
-    // returnTo incluye el slug para que login redirija al panel correcto.
+  const payload = verificarSesionEnProxy(cookieSesion, slug);
+  if (!payload) {
+    // returnTo incluye el slug para que login sepa a qué reto autenticar.
     const loginUrl = new URL("/admin/login", request.url);
     loginUrl.searchParams.set("returnTo", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
   const response = NextResponse.next();
-  response.cookies.set(NOMBRE_COOKIE_SESION, crearSesion(), {
+  response.cookies.set(NOMBRE_COOKIE_SESION, renovarSesion(payload), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

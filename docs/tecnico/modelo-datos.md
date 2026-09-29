@@ -34,6 +34,21 @@ datos aislados en el resto de tablas top-level vía `reto_id` FK.
 
 ---
 
+### `retos_admin`
+
+Credencial del panel admin de cada reto (FP2.6, DT-029, migración 0010). Tabla
+aparte de `retos` porque `retos` es legible por `anon` (retos activos).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `reto_id` | bigint PK | FK → `retos.id`, `on delete cascade` |
+| `password_hash` | text | `scrypt$N$r$p$salt$hash` (`lib/auth/password.ts`); check `like 'scrypt$%'` impide texto plano |
+| `updated_at` | timestamptz | Default `now()`; el upsert lo fija al cambiar la contraseña |
+
+Un reto sin fila aquí no tiene panel admin accesible (login responde 401).
+
+---
+
 ### `intentos`
 
 Representa un intento de completar el reto. Puede haber N intentos en la BD,
@@ -199,6 +214,7 @@ retos (1) ──< comentarios       (N)     reto_id → retos.id
 retos (1) ──< textos            (N)     reto_id → retos.id
 retos (1) ──< visitas_web       (N)     reto_id → retos.id
 retos (1) ──< config_trafico    (1)     reto_id → retos.id (unique)
+retos (1) ──  retos_admin       (0..1)  reto_id → retos.id (PK, on delete cascade)
 
 intentos (1) ──< posiciones (N)          intento_id → intentos.id
 intentos (1) ──< minuto_a_minuto (N)     intento_id → intentos.id
@@ -221,6 +237,7 @@ comentarios (1) ──< comentarios (N)      parent_id → comentarios.id (nulla
 | `minuto_a_minuto` | SELECT solo entradas del intento activo (`NOT cerrado`) | ALL |
 | `visitas_web` | Ninguna política (cero acceso) | ALL |
 | `config_trafico` | Ninguna política (cero acceso) | ALL |
+| `retos_admin` | Ninguna política + `revoke all` a `anon`/`authenticated` (0010) | ALL |
 
 Todo el schema vive en `supabase/migrations/0007_schema_plataforma.sql` (FP0).
 El service role bypassa RLS por diseño de Supabase (no necesita políticas

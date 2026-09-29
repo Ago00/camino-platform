@@ -19,6 +19,7 @@ import type {
   MinutoAMinuto,
   Posicion,
   Reto,
+  RetoAdmin,
   Texto,
   VisitaWeb,
 } from "@/lib/types";
@@ -113,6 +114,15 @@ export interface BaseDeDatos {
         Insert: Pick<Pick<ConfigTrafico, keyof ConfigTrafico>, "reto_id"> &
           Partial<Omit<Pick<ConfigTrafico, keyof ConfigTrafico>, "id" | "created_at" | "reto_id">>;
         Update: Partial<Pick<ConfigTrafico, keyof ConfigTrafico>>;
+        Relationships: [];
+      };
+      retos_admin: {
+        Row: Pick<RetoAdmin, keyof RetoAdmin>;
+        // updated_at tiene default now() en BD, pero el upsert lo fija
+        // explícitamente para que también cambie al actualizar.
+        Insert: Pick<Pick<RetoAdmin, keyof RetoAdmin>, "reto_id" | "password_hash"> &
+          Partial<Pick<Pick<RetoAdmin, keyof RetoAdmin>, "updated_at">>;
+        Update: Partial<Pick<RetoAdmin, keyof RetoAdmin>>;
         Relationships: [];
       };
     };

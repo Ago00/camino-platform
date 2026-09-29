@@ -1,4 +1,6 @@
+import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { crearSesion, verificarSesion, verificarSesionEnProxy } from "@/lib/auth/admin-session";
 import { crearSesionSuperadmin, verificarSesionSuperadmin } from "@/lib/auth/superadmin-session";
 
 describe("superadmin-session", () => {
@@ -87,5 +89,34 @@ describe("superadmin-session", () => {
     const ahora = new Date();
     const cookie = crearSesionSuperadmin(ahora);
     expect(verificarSesionSuperadmin(cookie, ahora)).toBe(true);
+  });
+});
+
+describe("separación entre la cookie de admin y la de superadmin (mismo secreto)", () => {
+  const SECRETO = "secreto-de-test-suficientemente-largo";
+  const reto = { id: 1, slug: "santi-ago" };
+
+  beforeEach(() => {
+    vi.stubEnv("ADMIN_SESSION_SECRET", SECRETO);
+  });
+
+  it("una cookie de admin de un reto no vale como superadmin", () => {
+    const ahora = new Date();
+    const cookieAdmin = crearSesion(reto, "huella", ahora);
+    expect(verificarSesionSuperadmin(cookieAdmin, ahora)).toBe(false);
+  });
+
+  it("una cookie de superadmin no vale como admin de un reto", () => {
+    const ahora = new Date();
+    const cookieSuperadmin = crearSesionSuperadmin(ahora);
+    expect(verificarSesion(cookieSuperadmin, reto, "huella", ahora)).toBe(false);
+    expect(verificarSesionEnProxy(cookieSuperadmin, reto.slug, ahora)).toBeNull();
+  });
+
+  it("rechaza un payload {exp} firmado sin la etiqueta de propósito (formato anterior)", () => {
+    const ahora = new Date();
+    const payload = Buffer.from(JSON.stringify({ exp: ahora.getTime() + 60_000 })).toString("base64url");
+    const firma = createHmac("sha256", SECRETO).update(payload).digest("base64url");
+    expect(verificarSesionSuperadmin(`${payload}.${firma}`, ahora)).toBe(false);
   });
 });

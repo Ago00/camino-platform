@@ -1,21 +1,28 @@
 /**
- * POST /api/admin/login — autenticación del admin único.
+ * POST /api/admin/login — autenticación del admin de UN reto (FP2.6, DT-029).
  *
- * Recibe la contraseña, la compara contra `ADMIN_PASSWORD` en tiempo
- * constante (mismo patrón que `TRACK_TOKEN` en `/api/track`: hashear ambos
- * valores a longitud fija antes de `timingSafeEqual`, para no reintroducir
- * un timing leak con un early-return por longitud distinta) y, si coincide,
- * fija la cookie de sesión HttpOnly (DT-010).
+ * Recibe `{ slug, password }`, verifica la contraseña contra el hash scrypt
+ * guardado para ese reto en `retos_admin` y, si coincide, fija la cookie de
+ * sesión HttpOnly ligada a ese reto y a la huella de su credencial
+ * (DT-010). La env var `ADMIN_PASSWORD` ya no se lee.
  *
- * Rate limiting por IP (DT-011): 10 intentos / 15 min, para frenar fuerza
- * bruta sobre la contraseña. Responde 429 sin cuerpo al exceder el límite.
+ * Anti-enumeración: reto inexistente, reto sin contraseña configurada y
+ * contraseña errónea responden exactamente igual (`401 {error:"credenciales
+ * incorrectas"}`), y `verificarPassword` se ejecuta SIEMPRE (contra
+ * `HASH_SENTINELA` si no hay hash), para que el tiempo de respuesta tampoco
+ * revele qué retos existen o tienen contraseña.
+ *
+ * Rate limiting por IP (DT-011): 10 intentos / 15 min, antes de cualquier
+ * otra cosa. Responde 429 sin cuerpo al exceder el límite.
  */
 
-import { createHash, timingSafeEqual } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { crearSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
+import { HASH_SENTINELA, huellaCredencial, verificarPassword } from "@/lib/auth/password";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
+import { obtenerHashAdmin } from "@/lib/supabase/credenciales-admin";
+import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 
 export const runtime = "nodejs";
 
@@ -24,13 +31,12 @@ const LIMITE_INTENTOS = 10;
 const VENTANA_MS = 15 * 60_000;
 
 const cuerpoLogin = z.object({
-  password: z.string().min(1),
+  slug: z.string().min(1).max(60).regex(/^[a-z0-9-]+$/),
+  password: z.string().min(1).max(200),
 });
 
-function passwordEsValida(passwordRecibida: string, passwordEsperada: string): boolean {
-  const hashRecibido = createHash("sha256").update(passwordRecibida).digest();
-  const hashEsperado = createHash("sha256").update(passwordEsperada).digest();
-  return timingSafeEqual(hashRecibido, hashEsperado);
+function credencialesIncorrectas(): NextResponse {
+  return NextResponse.json({ error: "credenciales incorrectas" }, { status: 401 });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -47,19 +53,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const parsed = cuerpoLogin.safeParse(bodyJson);
   if (!parsed.success) {
-    return NextResponse.json({ error: "contraseña requerida" }, { status: 400 });
+    return NextResponse.json({ error: "reto y contraseña requeridos" }, { status: 400 });
   }
 
-  const passwordEsperada = process.env.ADMIN_PASSWORD;
+  const reto = await obtenerRetoPorSlug(parsed.data.slug);
+  const hash = reto ? await obtenerHashAdmin(reto.id) : null;
+  const passwordCorrecta = await verificarPassword(parsed.data.password, hash ?? HASH_SENTINELA);
 
-  // Sin ADMIN_PASSWORD configurada, no hay nada válido con lo que comparar:
-  // se rechaza igual que una contraseña incorrecta, sin distinguir el caso.
-  if (!passwordEsperada || !passwordEsValida(parsed.data.password, passwordEsperada)) {
-    return NextResponse.json({ error: "contraseña incorrecta" }, { status: 401 });
+  if (!reto || hash === null || !passwordCorrecta) {
+    return credencialesIncorrectas();
   }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(NOMBRE_COOKIE_SESION, crearSesion(), {
+  response.cookies.set(NOMBRE_COOKIE_SESION, crearSesion(reto, huellaCredencial(hash)), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

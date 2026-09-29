@@ -3,10 +3,10 @@
 // slug desde los params y lo pasa a todas las secciones para que puedan
 // usarlo en sus Server Actions. Desde FP2.5 (DT-028) también les pasa el
 // `reto` resuelto para que cada sección lea solo los datos de ese reto.
+// Desde FP2.6 (DT-029) la sesión se verifica contra ESTE reto (id, slug y
+// huella de su contraseña actual), no solo su firma.
 
-import { notFound, redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
+import { redirect } from "next/navigation";
 import {
   esFaseTraficoValida,
   esFiltroComentarioValido,
@@ -14,7 +14,7 @@ import {
   esTabValida,
   type TabAdmin,
 } from "@/lib/admin/navegacion";
-import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
+import { resolverRetoConSesion } from "@/lib/auth/sesion-admin-servidor";
 import TabsAdmin from "@/components/admin/TabsAdmin";
 import BotonCerrarSesion from "@/components/admin/BotonCerrarSesion";
 import SeccionActividad from "@/components/admin/SeccionActividad";
@@ -38,16 +38,13 @@ interface SlugAdminPageProps {
 export default async function SlugAdminPage({ params, searchParams }: SlugAdminPageProps) {
   const { slug } = await params;
 
-  const almacenCookies = await cookies();
-  const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SESION)?.value;
-  if (!verificarSesion(cookieSesion)) {
+  // Sin sesión válida para este reto → login (un reto inexistente ya da 404
+  // en el layout). Cada sección recibe el reto resuelto y filtra sus datos
+  // por él (FP2.5, DT-028).
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) {
     redirect(`/admin/login?returnTo=/${slug}/admin`);
   }
-
-  // El layout ya validó el slug (consulta deduplicada con React.cache). Cada
-  // sección recibe el reto resuelto y filtra sus datos por él (FP2.5, DT-028).
-  const reto = await obtenerRetoPorSlug(slug);
-  if (!reto) notFound();
 
   const sp = await searchParams;
   const tab: TabAdmin = esTabValida(sp.tab ?? null) ? (sp.tab as TabAdmin) : "actividad";

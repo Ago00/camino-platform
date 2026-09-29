@@ -2,12 +2,15 @@
 // Listado de todos los retos (activos e inactivos) + formulario de creación.
 // Edición inline: pasar ?edit=<id> en la URL muestra el formulario de edición
 // para ese reto; el servidor renderiza el estado sin necesidad de JS de cliente.
-// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028).
+// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028) y si
+// tiene contraseña de admin configurada (FP2.6, DT-029); crear exige la
+// contraseña y editar permite cambiarla (vacío = no cambiar).
 
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { RUTAS_PREDEFINIDAS } from "@/lib/rutas/catalogo";
+import { listarRetosConCredencial } from "@/lib/supabase/credenciales-admin";
 import { listarTodosLosRetos } from "@/lib/supabase/retos";
 import { crearReto, editarReto, cerrarSesionSuperadmin } from "./actions";
 import BotonEliminarReto from "./BotonEliminarReto";
@@ -25,7 +28,11 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
   const sp = await searchParams;
   const editarId = sp.edit ? Number(sp.edit) : null;
 
-  const [retos, origen] = await Promise.all([listarTodosLosRetos(), obtenerOrigenPeticion()]);
+  const [retos, origen, retosConCredencial] = await Promise.all([
+    listarTodosLosRetos(),
+    obtenerOrigenPeticion(),
+    listarRetosConCredencial(),
+  ]);
 
   // Acción de logout: redirige al login tras borrar la cookie.
   async function logout() {
@@ -65,6 +72,7 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
                   reto={reto}
                   modoEdicion={editarId === reto.id}
                   urlTracker={urlTrackerDelReto(origen, reto.slug)}
+                  tieneCredencial={retosConCredencial.has(reto.id)}
                 />
               ))}
             </div>
@@ -116,10 +124,12 @@ function RetoCard({
   reto,
   modoEdicion,
   urlTracker,
+  tieneCredencial,
 }: {
   reto: Reto;
   modoEdicion: boolean;
   urlTracker: string;
+  tieneCredencial: boolean;
 }) {
   const editarConId = editarReto.bind(null, reto.id);
 
@@ -168,6 +178,16 @@ function RetoCard({
         </p>
       </div>
 
+      {/* Estado de la contraseña del panel admin del reto (FP2.6, DT-029) */}
+      <p className="mt-2 text-[12.5px]">
+        <span className="font-medium" style={{ color: C.gris }}>
+          Contraseña admin:
+        </span>{" "}
+        <span style={{ color: tieneCredencial ? C.eucalipto : C.rojo }}>
+          {tieneCredencial ? "configurada" : "sin configurar"}
+        </span>
+      </p>
+
       {/* Acciones */}
       {!modoEdicion && (
         <div className="mt-3 flex gap-2">
@@ -212,6 +232,7 @@ function RetoCard({
               <option value="false">Inactivo</option>
             </select>
           </div>
+          <CampoPasswordAdmin placeholder="Dejar vacío para no cambiar" />
           <div className="flex gap-2">
             <button
               type="submit"
@@ -262,6 +283,7 @@ function FormularioCrearReto() {
         </select>
       </div>
       <SelectorRuta />
+      <CampoPasswordAdmin required />
       <button
         type="submit"
         className="rounded-full px-4 py-2 text-[13px] font-medium text-white"
@@ -293,6 +315,33 @@ function SelectorRuta({ defaultValue }: { defaultValue?: string }) {
       <p className="mt-1 text-[12px]" style={{ color: C.gris }}>
         Se ignora si el tipo de ruta es libre.
       </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Contraseña del panel admin del reto (FP2.6, DT-029)
+// ---------------------------------------------------------------------------
+
+// Sin defaultValue nunca: la contraseña no se puede leer (solo se guarda su hash).
+function CampoPasswordAdmin({ required, placeholder }: { required?: boolean; placeholder?: string }) {
+  return (
+    <div>
+      <label className="mb-1 block text-[13px] font-medium">
+        Contraseña del panel admin
+        {required && <span style={{ color: C.rojo }}> *</span>}
+      </label>
+      <input
+        type="password"
+        name="password_admin"
+        autoComplete="new-password"
+        minLength={8}
+        maxLength={200}
+        required={required}
+        placeholder={placeholder ?? "Mínimo 8 caracteres"}
+        className="w-full rounded-lg border px-3 py-2 text-[14px] outline-none"
+        style={{ borderColor: "#00000015" }}
+      />
     </div>
   );
 }

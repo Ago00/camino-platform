@@ -6,11 +6,12 @@
  * comentarios de ese módulo para la justificación técnica completa) con dos
  * diferencias: nombre de cookie distinto (`superadmin_session`) y la
  * credencial de acceso es `SUPERADMIN_PASSWORD` (env var propia). La firma
- * comparte el mismo secreto `ADMIN_SESSION_SECRET` — mismo dominio, mismo
- * nivel de confianza, sin necesidad de una segunda variable de entorno.
+ * comparte el secreto `ADMIN_SESSION_SECRET`, separada por una etiqueta de
+ * propósito distinta para que una cookie no valga como la otra.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
 
 export const NOMBRE_COOKIE_SUPERADMIN_SESION = "superadmin_session";
 
@@ -29,9 +30,15 @@ function obtenerSecreto(): string {
   return secreto;
 }
 
+// Etiqueta de propósito: admin-session.ts firma con el mismo secreto, y sin
+// ella una cookie de admin de un reto sería una firma válida de superadmin.
+const PROPOSITO_FIRMA = "superadmin.v2.";
+
 function firmar(payloadBase64Url: string, secreto: string): string {
-  return createHmac("sha256", secreto).update(payloadBase64Url).digest("base64url");
+  return createHmac("sha256", secreto).update(PROPOSITO_FIRMA + payloadBase64Url).digest("base64url");
 }
+
+const esquemaPayloadSesion = z.object({ exp: z.number() }).strict();
 
 /**
  * Compara dos firmas en tiempo constante (mismo patrón que admin-session.ts).
@@ -79,13 +86,14 @@ export function verificarSesionSuperadmin(
   const firmaEsperada = firmar(payloadBase64Url, secreto);
   if (!firmasCoinciden(firmaRecibida, firmaEsperada)) return false;
 
-  let payload: PayloadSesion;
+  let json: unknown;
   try {
-    payload = JSON.parse(Buffer.from(payloadBase64Url, "base64url").toString("utf8"));
+    json = JSON.parse(Buffer.from(payloadBase64Url, "base64url").toString("utf8"));
   } catch {
     return false;
   }
 
-  if (typeof payload.exp !== "number") return false;
-  return ahora.getTime() < payload.exp;
+  const payload = esquemaPayloadSesion.safeParse(json);
+  if (!payload.success) return false;
+  return ahora.getTime() < payload.data.exp;
 }

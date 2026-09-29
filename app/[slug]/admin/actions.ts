@@ -6,8 +6,8 @@
  * Cada acción recibe `slug: string` como primer parámetro. Los componentes
  * cliente lo vinculan con `.bind(null, slug)` antes de llamar. El slug se
  * usa para:
- *   1. Resolver el reto (obtenerRetoPorSlug — con React.cache, una sola
- *      consulta por request aunque lo llamen varias acciones seguidas).
+ *   1. Resolver el reto y verificar que la sesión es de ESE reto
+ *      (`requerirSesion(slug)` → `resolverRetoConSesion`, FP2.6 / DT-029).
  *   2. Invalidar la ruta correcta con `revalidatePath`.
  *
  * Aislamiento por reto (FP2.5, DT-028): toda lectura y escritura queda
@@ -18,9 +18,9 @@
  * el intento activo del reto. Así un admin en `/reto-a/admin` no puede
  * modificar datos de `reto-b` aunque envíe un id ajeno.
  *
- * Todas las demás reglas de seguridad permanecen igual que en la versión
- * anterior (app/admin/actions.ts): cada acción verifica la sesión con
- * `requerirSesion()`, sin confiar en que proxy.ts filtró la petición.
+ * Cada acción verifica la sesión con `requerirSesion(slug)` como primera
+ * operación, sin confiar en que proxy.ts filtró la petición (el proxy no
+ * consulta BD y no detecta un cambio de contraseña).
  */
 
 import { revalidatePath } from "next/cache";
@@ -29,11 +29,11 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import { subirFotoMinutoAMinuto, subirFotoLlegada, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
-import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
+import { NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
+import { resolverRetoConSesion } from "@/lib/auth/sesion-admin-servidor";
 import { guardarCacheProgreso, limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
 import { limpiarCacheHistorico } from "@/lib/historico-cache";
 import { calcularProgresoActual } from "@/lib/traza/progreso-actual";
-import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 import type { ResultadoPublicacion, Reto } from "@/lib/types";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
@@ -44,18 +44,21 @@ class SesionInvalidaError extends Error {
   }
 }
 
-async function requerirSesion(): Promise<void> {
-  const almacenCookies = await cookies();
-  const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SESION)?.value;
-  if (!verificarSesion(cookieSesion)) {
-    throw new SesionInvalidaError();
-  }
-}
+/**
+ * Las acciones que devuelven `ResultadoPublicacion` (DT-017) no lanzan: con
+ * sesión inválida para el reto devuelven este mensaje.
+ */
+const MENSAJE_SESION_CADUCADA = "Tu sesión de admin ha caducado. Vuelve a entrar y reintenta.";
 
-/** Reto del slug; lanza si no existe (las acciones no pueden seguir sin él). */
-async function requerirReto(slug: string): Promise<Reto> {
-  const reto = await obtenerRetoPorSlug(slug);
-  if (!reto) throw new Error(`Reto '${slug}' no encontrado.`);
+/**
+ * Reto del slug si la petición trae una sesión de admin válida PARA ESE reto
+ * (id, slug y huella de su contraseña actual, DT-029). Lanza
+ * `SesionInvalidaError` en cualquier otro caso (sin sesión, sesión de otro
+ * reto, contraseña cambiada, reto inexistente) antes de tocar la BD.
+ */
+async function requerirSesion(slug: string): Promise<Reto> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) throw new SesionInvalidaError();
   return reto;
 }
 
@@ -103,8 +106,7 @@ export async function cerrarSesion(): Promise<void> {
  * tenga dos caminos con significado distinto según el estado de la BD.
  */
 export async function crearPrimerIntento(slug: string): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
@@ -145,14 +147,13 @@ const parametrosIniciarReto = z.discriminatedUnion("modo", [
  * destino_lat/destino_lon junto con la transición de fase.
  */
 export async function iniciarReto(slug: string, params: IniciarRetoParams): Promise<void> {
-  await requerirSesion();
+  const reto = await requerirSesion(slug);
 
   const datos = parametrosIniciarReto.safeParse(params);
   if (!datos.success) {
     throw new Error("El modo libre exige un destino (lat/lon) válido.");
   }
 
-  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
   const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
@@ -193,14 +194,8 @@ export async function iniciarReto(slug: string, params: IniciarRetoParams): Prom
  * llegada editado y, opcional, la foto de llegada (DT-024).
  */
 export async function finalizarReto(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
-  try {
-    await requerirSesion();
-  } catch (error) {
-    if (error instanceof SesionInvalidaError) {
-      return { ok: false, mensaje: "Tu sesión de admin ha caducado. Vuelve a entrar y reintenta." };
-    }
-    throw error;
-  }
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
 
   const mensajeLimpio = String(formData.get("mensaje") ?? "").trim();
   if (mensajeLimpio.length === 0) {
@@ -208,11 +203,6 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
   }
   if (mensajeLimpio.length > 1000) {
     return { ok: false, mensaje: "El mensaje de llegada no puede superar 1000 caracteres." };
-  }
-
-  const reto = await obtenerRetoPorSlug(slug);
-  if (!reto) {
-    return { ok: false, mensaje: "No se ha encontrado el reto." };
   }
 
   const cambios: {
@@ -265,8 +255,7 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
  * llegada → durante, SOBRE EL MISMO intento: deshace el Finalizar.
  */
 export async function retomarReto(slug: string): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
@@ -292,8 +281,7 @@ export async function retomarReto(slug: string): Promise<void> {
  * Cierra el intento actual del reto y abre uno nuevo en blanco, en `antes`.
  */
 export async function reiniciarReto(slug: string): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
@@ -328,8 +316,7 @@ export async function reiniciarReto(slug: string): Promise<void> {
  * histórico que muestra la pestaña Posición.
  */
 export async function descartarPosicion(slug: string, id: number): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const intentoId = await obtenerIdIntentoActivo(reto.id);
   if (intentoId === null) throw new Error("No hay ningún intento activo en este reto.");
 
@@ -349,8 +336,7 @@ export async function descartarPosicion(slug: string, id: number): Promise<void>
 // ---------------------------------------------------------------------------
 
 export async function eliminarIntencion(slug: string, id: number): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase.from("intenciones").delete().eq("id", id).eq("reto_id", reto.id);
@@ -363,8 +349,7 @@ export async function eliminarIntencion(slug: string, id: number): Promise<void>
 // ---------------------------------------------------------------------------
 
 export async function ocultarComentario(slug: string, id: number): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase
@@ -377,8 +362,7 @@ export async function ocultarComentario(slug: string, id: number): Promise<void>
 }
 
 export async function mostrarComentario(slug: string, id: number): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase
@@ -391,8 +375,7 @@ export async function mostrarComentario(slug: string, id: number): Promise<void>
 }
 
 export async function eliminarComentario(slug: string, id: number): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase.from("comentarios").delete().eq("id", id).eq("reto_id", reto.id);
@@ -409,12 +392,10 @@ function esClaveDeTexto(clave: string): clave is ClaveTexto {
 }
 
 export async function guardarTexto(slug: string, clave: string, valor: string): Promise<void> {
-  await requerirSesion();
+  const reto = await requerirSesion(slug);
   if (!esClaveDeTexto(clave)) {
     throw new Error(`Clave de texto desconocida: ${clave}`);
   }
-
-  const reto = await requerirReto(slug);
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
@@ -434,14 +415,8 @@ export async function guardarTexto(slug: string, clave: string, valor: string): 
  * reto. Devuelve el fallo en vez de lanzarlo (DT-017).
  */
 export async function crearMinutoAMinuto(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
-  try {
-    await requerirSesion();
-  } catch (error) {
-    if (error instanceof SesionInvalidaError) {
-      return { ok: false, mensaje: "Tu sesión de admin ha caducado. Vuelve a entrar y reintenta." };
-    }
-    throw error;
-  }
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
 
   const texto = String(formData.get("texto") ?? "").trim();
   if (texto.length === 0) {
@@ -449,11 +424,6 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
   }
   if (texto.length > 500) {
     return { ok: false, mensaje: "El texto no puede superar 500 caracteres." };
-  }
-
-  const reto = await obtenerRetoPorSlug(slug);
-  if (!reto) {
-    return { ok: false, mensaje: "No se ha encontrado el reto." };
   }
 
   const foto = formData.get("foto");
@@ -505,7 +475,7 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
  * (las únicas que muestra la pestaña Minuto a minuto).
  */
 export async function editarMinutoAMinuto(slug: string, id: number, texto: string): Promise<void> {
-  await requerirSesion();
+  const reto = await requerirSesion(slug);
 
   const textoLimpio = texto.trim();
   if (textoLimpio.length === 0) {
@@ -515,7 +485,6 @@ export async function editarMinutoAMinuto(slug: string, id: number, texto: strin
     throw new Error("El texto no puede superar 500 caracteres.");
   }
 
-  const reto = await requerirReto(slug);
   const intentoId = await obtenerIdIntentoActivo(reto.id);
   if (intentoId === null) throw new Error("No hay ningún intento activo en este reto.");
 
@@ -535,8 +504,7 @@ export async function editarMinutoAMinuto(slug: string, id: number, texto: strin
  * reto.
  */
 export async function eliminarMinutoAMinuto(slug: string, id: number): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const intentoId = await obtenerIdIntentoActivo(reto.id);
   if (intentoId === null) throw new Error("No hay ningún intento activo en este reto.");
 
@@ -560,8 +528,7 @@ export async function eliminarMinutoAMinuto(slug: string, id: number): Promise<v
  * configuración, se crea en vez de no hacer nada.
  */
 export async function resetearContadorTrafico(slug: string): Promise<void> {
-  await requerirSesion();
-  const reto = await requerirReto(slug);
+  const reto = await requerirSesion(slug);
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase

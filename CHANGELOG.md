@@ -2,6 +2,26 @@
 
 ---
 
+## 2026-09-29 — FP2.6: Cada reto tiene su propia contraseña de panel admin
+
+**Tipo:** Feature (plataforma)
+
+El panel admin de cada reto tiene ahora su propia contraseña, que fija el
+organizador desde el panel superadmin (obligatoria al crear un reto, se puede
+cambiar al editarlo). Entrar en el panel de un reto ya no da acceso al de otro,
+y cambiar la contraseña cierra las sesiones abiertas con la anterior. La
+contraseña común `ADMIN_PASSWORD` deja de usarse. El panel superadmin indica
+qué retos tienen contraseña configurada. Requiere aplicar la migración
+`0010_retos_admin.sql` y fijar la contraseña de los retos existentes: hasta
+entonces sus paneles no son accesibles.
+
+Incluye además un fix de seguridad: la sesión de admin de un reto ya no puede
+reutilizarse como sesión de superadmin. Hasta ahora las dos cookies se firmaban
+de forma intercambiable, y un admin podía hacerse pasar por superadmin. Al
+desplegar hay que volver a entrar también en el superadmin.
+
+---
+
 ## 2026-09-29 — FP2.5: Cada reto ve y gestiona solo sus propios datos
 
 **Tipo:** Fix (plataforma)
