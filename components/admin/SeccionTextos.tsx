@@ -1,4 +1,4 @@
-// Sección "Textos": las 6 claves de CLAVES_TEXTOS con su valor actual en el
+// Sección "Textos": todas las claves de CLAVES_TEXTOS con su valor actual en el
 // reto del panel (BD si hay override, si no el default) y un campo editable
 // por clave que hace upsert en la tabla `textos` vía guardarTexto().
 

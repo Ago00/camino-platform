@@ -39,7 +39,8 @@ camino-santi-ago/
 │   │   ├── MuroComentarios.tsx / HiloComentario.tsx / RespuestaForm.tsx / InsigniaCaminante.tsx
 │   │   │                      # FP3a/DT-030: muro en hilos de un nivel, plegado si > 2 respuestas
 │   │   ├── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
-│   │   ├── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa
+│   │   ├── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa;
+│   │   │                      # FP3b/DT-031: sección plegable (plegadoInicial en "llegada") con aviso de nuevas
 │   │   ├── RecuadroLlegada.tsx  # DT-024: kicker+título+mensaje de la pantalla "llegada", extraído de
 │   │   │                        # ModoLlegada.tsx para compartirlo con la preview de ModalFinalizar.tsx
 │   │   ├── FotoLlegada.tsx      # DT-024: tarjeta de la foto opcional de llegada, mismo motivo
@@ -81,6 +82,8 @@ camino-santi-ago/
 │   │                          # (ModoLlegadaConectado)
 │   ├── comentarios/hilos.ts   # FP3a/DT-030: dominio puro de hilos — motivoRechazoPadre, agruparHilos,
 │   │                          # agruparHilosAdmin
+│   ├── minuto-a-minuto/       # FP3b/DT-031: contar-nuevas.ts (aviso "N nuevas" con la sección plegada)
+│   │                          # y polling.ts (URL del poll, también con feed vacío; fusión sin duplicar ids)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
 │   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
 │   ├── progreso-cache.ts      # DT-014: caché compartida de ProgresoPublico (antes vivía

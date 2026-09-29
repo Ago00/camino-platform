@@ -94,6 +94,7 @@ export default function ModoLlegada({
         <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} textos={textos} />
         <MinutoAMinuto
           polling={false}
+          plegadoInicial
           entradasIniciales={entradasMinutoAMinuto}
           onSeleccionarPunto={setPuntoResaltado}
           textos={textos}

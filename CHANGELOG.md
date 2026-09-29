@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-09-30 — FP3b: "Minuto a minuto" plegable en la web pública
+
+**Tipo:** Feature + Fix
+
+La sección "minuto a minuto" de la web pública se puede plegar y desplegar con
+un botón. Está abierta mientras el reto está en marcha y plegada tras la
+llegada. Si está plegada y el caminante publica algo nuevo, la cabecera avisa
+("1 nueva", "3 nuevas") hasta que se despliega. El punto marcado en el mapa se
+mantiene al plegar. Arregla además que, con el reto en marcha y sin ninguna
+entrada todavía, la primera no aparecía hasta recargar la página.
+
+---
+
 ## 2026-09-29 — FP3a: Respuestas en hilo en los comentarios
 
 **Tipo:** Feature

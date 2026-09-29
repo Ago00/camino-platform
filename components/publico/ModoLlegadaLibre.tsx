@@ -104,6 +104,7 @@ export default function ModoLlegadaLibre({
         />
         <MinutoAMinuto
           polling={false}
+          plegadoInicial
           entradasIniciales={entradasMinutoAMinuto}
           onSeleccionarPunto={setPuntoResaltado}
           textos={textos}

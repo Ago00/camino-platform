@@ -1,74 +1,64 @@
-# Tarea en curso — FP3a: Respuestas en hilo en los comentarios
+# Tarea en curso — FP3b: "Minuto a minuto" plegable en la web pública
 
-> El contenido anterior (FP2.6, contraseña de admin por reto) se archivó en
-> `docs/tareas/historico/2026-09-29-fp2-6-password-por-reto.md`.
+> El contenido anterior (FP3a, respuestas en hilo) se archivó en
+> `docs/tareas/historico/2026-09-30-fp3a-respuestas-comentarios.md`.
+
+## Prompt clarificado (producto cerrado)
+
+Se pliega la sección entera del "minuto a minuto" (pulsar una entrada sigue marcando su punto en el mapa). Abierta en fase "durante", plegada en "llegada". Sin persistir la elección. Plegada, si llegan entradas nuevas por polling, aviso en la cabecera ("1 nueva" / "{n} nuevas"); al desplegar vuelve a 0. El punto marcado en el mapa se mantiene al plegar.
+
+Incluye fix aprobado: con el feed vacío el polling no preguntaba nunca, así que en "durante" la primera entrada no aparecía hasta recargar.
 
 ## Decisión técnica
 
-**DT-030** (`docs/tecnico/decisiones-tecnicas.md`). Un solo nivel de respuestas, reglas en BD (migración 0011: `es_autor`, FK cascade, check de respuesta pública, trigger `comentarios_validar_respuesta`, RLS con `comentario_raiz_visible`), dominio puro `lib/comentarios/hilos.ts`, API que pagina raíces y trae respuestas por ids, Server Action `responderComentario` (es_autor) y UI de hilos en muro y panel. Sin fase de diseño (estilos del muro).
+**DT-031** (`docs/tecnico/decisiones-tecnicas.md`). Estado `plegado` + `ultimoVistoId` en `MinutoAMinuto.tsx`, `contarNuevas` puro, región siempre montada con `aria-controls`, aviso `aria-live`, animación altura 0↔auto con `MotionConfig reducedMotion="user"`, polling sin cambios de cadencia. Fix: `despuesDeId=0` con el feed vacío.
 
 ## Archivos creados/modificados (Implementador)
 
 | Archivo | Estado |
 |---|---|
-| `supabase/migrations/0011_hilos_comentarios.sql` | Creado (**NO aplicado**) |
-| `lib/types.ts` | `Comentario.es_autor`; `ComentarioPublico`, `HiloPublico`, `RespuestaMuro`; fuera el aviso "Dormido hasta FP3" |
-| `lib/supabase/admin.ts` | `es_autor` opcional en `comentarios.Insert`; fuera el comentario "FP3 usará" |
-| `lib/comentarios/hilos.ts` (+ `hilos.test.ts`) | Creado: `motivoRechazoPadre`, `agruparHilos`, `agruparHilosAdmin` |
-| `app/[slug]/api/comentarios/route.ts` (+ `route.test.ts` nuevo) | GET por raíces + respuestas; POST raíz/respuesta con `z.union` de esquemas `.strict()` |
-| `app/[slug]/admin/actions.ts` (+ test ampliado) | `responderComentario(slug, parentId, texto)` |
-| `lib/textos/defaults.ts` | 6 claves nuevas del muro/respuesta |
-| `components/publico/MuroComentarios.tsx` | Pinta `HiloComentario` por raíz; tipos de `lib/types.ts` |
-| `components/publico/HiloComentario.tsx`, `RespuestaForm.tsx`, `InsigniaCaminante.tsx` | Creados |
-| `components/admin/SeccionComentarios.tsx` | Agrupado por hilo con `agruparHilosAdmin`; raíz de contexto atenuada |
-| `components/admin/FormRespuestaAdmin.tsx` | Creado |
-| `components/admin/AccionesComentario.tsx` | Prop `numRespuestas`; confirm "se borrarán también N respuestas" |
-| `components/admin/FiltroComentarios.tsx` | Prop `slug`; navega a `/${slug}/admin?…` (antes `/admin?…`, 404) |
-| `components/admin/TabsAdmin.tsx`, `EnlacePaginacion.tsx`, `SeccionTrafico.tsx` | (Orquestador) enlaces a `/admin?…` (404 desde FP1) corregidos: `usePathname` / `/${slug}/admin?…` |
-| `docs/tecnico/decisiones-tecnicas.md` | DT-030 con notas de cierre |
-| `docs/tecnico/modelo-datos.md`, `docs/tecnico/arquitectura.md` | `es_autor`, invariantes del hilo, RLS, ficheros nuevos |
+| `lib/minuto-a-minuto/contar-nuevas.ts` (+ `.test.ts`) | Creado: `contarNuevas(entradas, ultimoVistoId)` |
+| `lib/minuto-a-minuto/polling.ts` (+ `.test.ts`) | Creado: `construirUrlPolling(slug, masRecienteId)`, `fusionarSinDuplicados(primero, despues)` |
+| `components/publico/MinutoAMinuto.tsx` | Prop `plegadoInicial`; cabecera con botón Mostrar/Ocultar y aviso; región plegable; poll con feed vacío; fila extraída a `FilaEntrada` |
+| `components/publico/ModoLlegada.tsx`, `ModoLlegadaLibre.tsx` | Pasan `plegadoInicial` |
+| `lib/textos/defaults.ts` | 4 claves: `minuto_a_minuto_boton_mostrar`, `_boton_ocultar`, `_aviso_nueva`, `_aviso_nuevas` |
+| `components/admin/SeccionTextos.tsx` | Comentario desfasado ("las 6 claves") corregido |
+| `docs/tecnico/decisiones-tecnicas.md` | DT-031 |
+| `docs/tecnico/arquitectura.md` | `lib/minuto-a-minuto/` y nota en `MinutoAMinuto.tsx` |
 | `CHANGELOG.md`, `DEBT.md` | Actualizados |
 
-`ocultarComentario`, `mostrarComentario` y `eliminarComentario` ya filtraban por `id` + `reto_id` (comprobado, con test existente).
+`app/[slug]/api/minuto-a-minuto/route.ts` sin cambios: `despuesDeId` ya admite 0 (`min(0)`) y los ids empiezan en 1.
 
 ## Quality gates
 
 - `pnpm typecheck`: 0 errores
 - `pnpm lint`: 0 errores, 0 warnings
-- `pnpm test`: 441 tests en verde (39 ficheros)
+- `pnpm test`: 453 tests en verde (41 ficheros)
 - `pnpm build`: OK
-- Migración `0011`: creada, **pendiente de aplicar** (orquestador). Debe aplicarse ANTES de desplegar: el GET selecciona `es_autor` y sin la columna responde 500.
-- **Verificación visual pendiente** (LESSONS: UI y componentes cliente): no hecha por el Implementador. Comprobar en navegador muro con hilo de 1-2 respuestas (desplegado), de 3+ (plegado + toggle), responder como visitante, insignia "Caminante", y la pestaña Comentarios del admin (responder, filtro, raíz de contexto atenuada, confirm de borrado).
-
-## Checklist SQL post-migración (ejecutar tras aplicar 0011)
-
-Usar un reto de pruebas. `<R>` = id de reto, `<A>`/`<B>` = ids devueltos.
-
-1. **Esquema:** `select column_name, data_type, column_default from information_schema.columns where table_name='comentarios' and column_name='es_autor';` → boolean, default false. `select confdeltype from pg_constraint where conname='comentarios_parent_id_fkey';` → `c` (cascade).
-2. **Cascade:** como service role, insertar raíz `<A>` pública y una respuesta con `parent_id=<A>`; `delete from comentarios where id=<A>;` → la respuesta desaparece.
-3. **Anon no ve respuestas de raíz oculta:** raíz `<A>` pública + respuesta visible; `update comentarios set oculto=true where id=<A>;` y como anon (`set local role anon;` dentro de una transacción) `select id from comentarios where parent_id=<A>;` → 0 filas. Con `oculto=false` → 1 fila.
-4. **Anon no puede `es_autor=true`:** `begin; set local role anon; insert into comentarios (reto_id,nombre,texto,visibilidad,parent_id,es_autor) values (<R>,'x','y','publico',<A>,true); rollback;` → error de RLS (new row violates row-level security policy).
-5. **Anon no puede responder a una respuesta:** con `<B>` respuesta de `<A>`: `begin; set local role anon; insert into comentarios (reto_id,nombre,texto,visibilidad,parent_id) values (<R>,'x','y','publico',<B>); rollback;` → `respuesta_no_permitida`.
-6. **Extras:** respuesta con `visibilidad='privado'` → viola `comentarios_respuesta_publica`; respuesta con `parent_id` de otro reto o de una raíz privada/oculta → `respuesta_no_permitida`; como anon `select comentarios_validar_respuesta();` → permission denied.
+- **Verificación visual pendiente** (LESSONS: UI y componentes cliente): no la ha hecho el Implementador. Comprobar en navegador: "durante" abierto y "llegada" plegado; toggle animado (y sin animación con reduced motion); aviso "1 nueva"/"N nuevas" con la sección plegada tras publicar desde el admin, y a 0 al desplegar; punto del mapa conservado al plegar; primera entrada de un feed vacío apareciendo sin recargar (≤ 30 s).
 
 ## Decisiones de implementación (bloqueos menores resueltos) — revisar
 
-1. **EXECUTE revocado también a `anon`/`authenticated`** (el plan solo revocaba a `public`): Supabase concede EXECUTE por default privileges del schema. Registrado en DT-030.
-2. **POST de respuesta devuelve la fila creada** vía `.insert(...).select(...).single()` (id/created_at reales para pintarla en local). Un `check_violation` del trigger (carrera) se traduce a 422.
-3. **Lectura del padre en la API filtrada por `id` + `reto_id`** (además de la RLS), igual que en la acción del admin.
-4. **`motivoRechazoPadre` devuelve una unión de literales** (`"no_existe" | "otro_reto" | "es_respuesta" | "privado" | "oculto"`) en vez de `string`; la API responde un único mensaje, el admin uno por motivo.
-5. **Panel sin filtro en BD:** trae todos los comentarios del reto y filtra al agrupar. Un hilo de raíz oculta muestra "oculto (con todo su hilo)".
-6. **Fix relacionado:** `FiltroComentarios` navegaba a `/admin?…` (404 desde FP1). El mismo fallo en `TabsAdmin` y `EnlacePaginacion` (ahora con `usePathname`) y en `SeccionTrafico` (enlaces con `/${slug}/admin?…`) lo corrigió el orquestador en esta misma tarea; ya no queda deuda por ello.
-7. **`RespuestaForm` sin zod en cliente**, como el resto de componentes públicos (no se añade zod al bundle del navegador).
+1. **Fix del feed vacío con `despuesDeId=0`** en vez de otro parámetro u `offset=0`: reutiliza el camino del poll y no toca la API ni el estado de paginación.
+2. **`ultimoVistoId` = 0 (no null) al plegar con el feed vacío**, para que la primera entrada sí genere el aviso. `ultimoVistoId` también se fija al cargar la página 0, así la carga inicial nunca cuenta como nueva.
+3. **Fix relacionado: "Cargar más" deduplica por id** (`fusionarSinDuplicados`). La paginación es por offset: tras entradas añadidas por el poll, la página siguiente repetía filas (claves duplicadas). El poll también fusiona sin duplicar.
+4. **Fila extraída a `FilaEntrada`** (mismo fichero) para mantener legible el JSX anidado en la región.
 
 ## Pendiente operativo tras el merge
 
-- Aplicar `0011` en Supabase (antes del despliegue) y pasar el checklist SQL.
 - Verificación visual en preview.
 - Invocar al Agente de Producto para `docs/producto/` (registrado en DEBT).
 
 ## Historial de revisión
 
-### Reviewer — ciclo 1 (2026-09-29): APROBADO, pasa a Seguridad
+### Reviewer — 2026-09-30 — APROBADO (pasa a Seguridad)
 
-Sin bloqueantes. Coincide con DT-030: un nivel (trigger + `motivoRechazoPadre`), `es_autor` solo service role (RLS + `.strict()`), cascade, RLS con `comentario_raiz_visible`, paginación por raíces + respuestas por ids, `reto_id` en todas las consultas nuevas (GET raíces/respuestas, lectura del padre en API y acción, insert). Tests de dominio, API y acción cubren rechazos y aislamiento. Recomendaciones (6) registradas en `DEBT.md` ("Recomendaciones de la revisión de FP3a"). Docs: el Reviewer actualizó CURRENT (decisión 6 y tabla), DT-030 y CHANGELOG para reflejar el fix de navegación del orquestador en `TabsAdmin`/`EnlacePaginacion`/`SeccionTrafico`. Siguen pendientes: aplicar 0011 + checklist SQL y verificación visual.
+Sin bloqueantes. Comprobado:
+- Estado `ultimoVistoId`/`nuevas`: correcto en plegar antes de la carga inicial (0 y luego la página 0 lo fija), en páginas antiguas de "Cargar más" (no cuentan) y en tandas acumuladas de poll.
+- Carreras: poll vs página 0 se autocorrige (el siguiente poll recupera lo que la sustitución de la página 0 pudiera tirar); poll solapado consigo mismo y "Cargar más" desplazado deduplican por id; el offset desplazado no salta filas (solo repite, y se deduplica). Intervalo limpiado en el cleanup (`[polling, slug]`).
+- Fix feed vacío: 1 petición cada 30 s por visitante mientras el feed está vacío (antes 0), igual cadencia que con feed lleno; no hay recargas duplicadas. Solo en "durante" (en "llegada" `polling=false`).
+- Reduced motion: en motion-dom 12.43 `height` está en `positionalKeys`, así que con `reducedMotion="user"` la altura cambia al instante; solo se mantiene el fundido de opacidad (aceptable).
+- Docs (CHANGELOG, DEBT, DT-031, arquitectura) coherentes.
+
+Recomendaciones registradas en `DEBT.md`: contexto a11y del botón y del aviso; `cargarPagina` sin `catch` y respuestas sin Zod (previo).
+Sigue pendiente la verificación visual en navegador antes del cierre.

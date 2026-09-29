@@ -1897,3 +1897,34 @@ Hasta FP2.5 todos los paneles `/<slug>/admin` compartían la env var `ADMIN_PASS
 - **Panel sin filtro en BD:** `SeccionComentarios` trae todos los comentarios del reto y filtra al agrupar (necesario para mostrar la raíz como contexto).
 - **`FiltroComentarios`** navegaba a `/admin?…` (ruta inexistente desde FP1); corregido a `/${slug}/admin?…`. El mismo fallo en pestañas (`TabsAdmin`), paginación (`EnlacePaginacion`, ambos con `usePathname`) y tráfico (`SeccionTrafico`) se corrigió en la misma tarea.
 - **Cliente sin zod:** `RespuestaForm` tipa la respuesta de la API como el resto de componentes públicos, sin añadir zod al bundle del navegador.
+
+---
+
+## DT-031 — FP3b: "Minuto a minuto" plegable en la web pública
+
+**Fecha:** 2026-09-30 · **Tarea:** FP3b — Minuto a minuto plegable
+
+### Contexto
+
+Producto decidió (cerrado): la sección "minuto a minuto" entera se puede plegar; abierta en "durante", plegada en "llegada"; la elección no se persiste; plegada, si llegan entradas por polling, la cabecera avisa ("1 nueva" / "{n} nuevas") y al desplegar vuelve a 0; el punto marcado en el mapa se mantiene al plegar. Al analizarlo apareció un bug previo: con el feed vacío el poll salía sin preguntar, así que en "durante" la primera entrada del reto no aparecía hasta recargar.
+
+### Decisión
+
+1. **Estado en `MinutoAMinuto.tsx`:** prop `plegadoInicial?: boolean` (default `false`; `ModoLlegada`/`ModoLlegadaLibre` la pasan a `true`); estados `plegado` y `ultimoVistoId`. `ultimoVistoId` se fija con la entrada más reciente al cargar la página 0, al plegar y al desplegar. El número de nuevas es derivado: `plegado ? contarNuevas(entradas, ultimoVistoId) : 0`.
+2. **Dominio puro `lib/minuto-a-minuto/contar-nuevas.ts`:** cuenta `id > ultimoVistoId` (null ⇒ 0). Por id y no por longitud: las páginas antiguas de "Cargar más" no cuentan como nuevas.
+3. **Accesibilidad y animación:** botón "Mostrar"/"Ocultar" con `aria-expanded` y `aria-controls` hacia una región siempre montada (`useId`); aviso en un `<span aria-live="polite">` siempre montado (vacío con 0); dentro de la región, `AnimatePresence` + `motion.div` altura 0 ↔ auto, con `MotionConfig reducedMotion="user"`.
+4. **Polling sin cambios de cadencia:** mismo intervalo plegado o no. `seleccionada` vive en el componente, que no se desmonta al plegar, así que el punto del mapa se conserva.
+5. **Fix del feed vacío (`lib/minuto-a-minuto/polling.ts`):** `construirUrlPolling(slug, masRecienteId)` usa `despuesDeId=0` si no hay entradas (el esquema de la API ya admite `min(0)` y los ids empiezan en 1), así que el poll devuelve las más recientes del intento activo. No hace falta tocar `route.ts`. `fusionarSinDuplicados` une listas descartando ids repetidos.
+6. **Textos:** `minuto_a_minuto_boton_mostrar`, `minuto_a_minuto_boton_ocultar`, `minuto_a_minuto_aviso_nueva`, `minuto_a_minuto_aviso_nuevas` (`{n}` con `replaceAll`, como `muro_boton_ver_respuestas`).
+
+### Alternativas valoradas
+
+**Persistir la elección (localStorage).** Descartada por Producto: la fase decide el estado inicial.
+**Desmontar la lista al plegar sin región estable.** Descartada: `aria-controls` debe apuntar a un elemento existente.
+**Con feed vacío, pedir la página 0 (`offset=0`).** Posible, pero `despuesDeId=0` reutiliza el mismo camino del poll y no mezcla estado de paginación.
+
+### Notas de cierre (implementación)
+
+- **Referencia 0 con el feed vacío:** al plegar con la lista vacía, `ultimoVistoId` es 0 (no null) para que la primera entrada que llegue sí genere el aviso. null solo antes de la primera carga.
+- **Fusión sin duplicados también en "Cargar más":** la paginación es por offset; si el poll ha añadido N entradas arriba, la página siguiente repite N filas ya pintadas (claves duplicadas en React). Se deduplica por id al añadir la página. También en el poll, por si se solapa con la carga inicial.
+- **Fila extraída a `FilaEntrada`** (mismo fichero) para que el anidamiento de la región plegable no hiciera ilegible el JSX.

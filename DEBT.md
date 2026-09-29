@@ -2,6 +2,39 @@
 
 ---
 
+## "Minuto a minuto" plegable: botón y aviso sin contexto para lector de pantalla (FP3b)
+
+**Fecha:** 2026-09-30
+**Contexto:** Recomendación del Reviewer en FP3b (DT-031), `components/publico/MinutoAMinuto.tsx`.
+**Problema:** El botón se anuncia solo como "Mostrar"/"Ocultar" (con `aria-expanded`, pero sin decir qué muestra) y el `aria-live` anuncia "2 nuevas" sin mencionar el minuto a minuto. Con varias secciones plegables en la página (muro con "Ocultar respuestas"), el contexto se pierde.
+**Impacto:** Accesibilidad mejorable; no bloquea el uso.
+**Solución propuesta:** Dar un `id` al kicker y usar `aria-describedby` en el botón (o `aria-labelledby` botón+kicker), y añadir un prefijo `sr-only` al aviso ("Minuto a minuto:").
+**Prioridad:** Baja.
+
+---
+
+## `MinutoAMinuto.tsx`: `cargarPagina` sin `catch` y respuestas de la API sin validar
+
+**Fecha:** 2026-09-30
+**Contexto:** Detectado por el Reviewer en FP3b (código previo, no introducido en la tarea).
+**Problema:** `cargarPagina` tiene `try/finally` sin `catch`: un fallo de red en la carga inicial (`void cargarPagina(0)`) o en "Cargar más" produce un unhandled rejection. Además, las respuestas de `fetch` se tipan con anotación (`const data: RespuestaFeed = await response.json()`) sin validar con Zod.
+**Impacto:** Ruido en consola/monitorización ante fallos de red; si la forma de la API cambia, el error aparece lejos del origen.
+**Solución propuesta:** Añadir `catch` silencioso como en el poll, y un esquema Zod compartido para `RespuestaFeed` usado en carga y poll.
+**Prioridad:** Baja.
+
+---
+
+## `docs/producto/` no refleja el "minuto a minuto" plegable (FP3b)
+
+**Fecha:** 2026-09-30
+**Contexto:** FP3b (DT-031) se implementó con las decisiones de producto cerradas en el prompt, pero el Implementador no escribe en `docs/producto/`.
+**Problema:** `funcionalidades.md` y `decisiones-producto.md` no recogen que la sección se pliega (abierta en "durante", plegada en "llegada", sin persistir, aviso de nuevas).
+**Impacto:** La documentación de producto queda desfasada respecto a la web.
+**Solución propuesta:** Invocar al Agente de Producto para registrar la funcionalidad y la decisión.
+**Prioridad:** Baja.
+
+---
+
 ## `intenciones` probablemente permite fijar `created_at` vía PostgREST
 
 **Fecha:** 2026-09-30

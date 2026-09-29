@@ -2,11 +2,16 @@
 // patrón que MuroComentarios.tsx) + polling opcional de entradas nuevas cada
 // 30 s (modo "durante", DT-013) + interacción de clic → resaltar punto en el
 // mapa. Sigue el mockup (design-sandbox/app/camino/durante-minuto-a-minuto/page.tsx).
+// La sección entera se puede plegar (FP3b, DT-031): plegada, el polling sigue
+// y la cabecera avisa de las entradas nuevas; el punto marcado en el mapa se
+// conserva porque este componente no se desmonta al plegar.
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { contarNuevas } from "@/lib/minuto-a-minuto/contar-nuevas";
+import { construirUrlPolling, fusionarSinDuplicados } from "@/lib/minuto-a-minuto/polling";
 import type { Textos } from "@/lib/textos/obtener-textos";
 
 const PAGINA = 20;
@@ -43,6 +48,8 @@ interface MinutoAMinutoProps {
   textos: Textos;
   /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
   slug: string;
+  /** true en "llegada": la sección arranca plegada. La elección no se persiste. */
+  plegadoInicial?: boolean;
 }
 
 export default function MinutoAMinuto({
@@ -51,6 +58,7 @@ export default function MinutoAMinuto({
   onSeleccionarPunto,
   textos,
   slug,
+  plegadoInicial = false,
 }: MinutoAMinutoProps) {
   const [entradas, setEntradas] = useState<EntradaMinutoAMinutoPublica[]>(entradasIniciales ?? []);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(
@@ -59,6 +67,14 @@ export default function MinutoAMinuto({
   const [cargando, setCargando] = useState(false);
   const [seleccionada, setSeleccionada] = useState<number | null>(null);
   const cargadoInicial = useRef(entradasIniciales !== undefined);
+  const [plegado, setPlegado] = useState(plegadoInicial);
+  // Referencia del aviso "N nuevas": id de la entrada más reciente que el
+  // visitante tenía delante. null hasta la primera carga del feed.
+  const [ultimoVistoId, setUltimoVistoId] = useState<number | null>(
+    entradasIniciales ? idMasReciente(entradasIniciales) : null
+  );
+  const regionId = useId();
+  const nuevas = plegado ? contarNuevas(entradas, ultimoVistoId) : 0;
 
   const cargarPagina = useCallback(async (offset: number) => {
     setCargando(true);
@@ -66,8 +82,9 @@ export default function MinutoAMinuto({
       const response = await fetch(`/${slug}/api/minuto-a-minuto?offset=${offset}&limit=${PAGINA}`);
       if (!response.ok) return;
       const data: RespuestaFeed = await response.json();
-      setEntradas((previas) => (offset === 0 ? data.entradas : [...previas, ...data.entradas]));
+      setEntradas((previas) => (offset === 0 ? data.entradas : fusionarSinDuplicados(previas, data.entradas)));
       setSiguienteOffset(data.siguienteOffset);
+      if (offset === 0) setUltimoVistoId(idMasReciente(data.entradas));
     } finally {
       setCargando(false);
     }
@@ -80,7 +97,8 @@ export default function MinutoAMinuto({
   }, [cargarPagina]);
 
   // Poll de entradas nuevas (solo modo "durante"): cada 30 s, pide las
-  // entradas con id mayor que la más reciente ya cargada y las añade arriba.
+  // entradas con id mayor que la más reciente ya cargada (todas si el feed
+  // está vacío) y las añade arriba. Igual con la sección plegada o no.
   const masRecienteIdRef = useRef<number | null>(null);
   useEffect(() => {
     masRecienteIdRef.current = entradas.length > 0 ? entradas[0].id : null;
@@ -90,14 +108,12 @@ export default function MinutoAMinuto({
     if (!polling) return;
 
     const id = setInterval(async () => {
-      const despuesDeId = masRecienteIdRef.current;
-      if (despuesDeId === null) return;
       try {
-        const response = await fetch(`/${slug}/api/minuto-a-minuto?despuesDeId=${despuesDeId}`);
+        const response = await fetch(construirUrlPolling(slug, masRecienteIdRef.current));
         if (!response.ok) return;
         const data: RespuestaFeed = await response.json();
         if (data.entradas.length > 0) {
-          setEntradas((previas) => [...data.entradas, ...previas]);
+          setEntradas((previas) => fusionarSinDuplicados(data.entradas, previas));
         }
       } catch {
         // Fallo puntual de red: se mantiene el feed actual, el próximo
@@ -107,6 +123,13 @@ export default function MinutoAMinuto({
 
     return () => clearInterval(id);
   }, [polling, slug]);
+
+  function alternarPlegado() {
+    // Al plegar, lo que hay en pantalla es la referencia del aviso; al
+    // desplegar, todo pasa a estar visto y el aviso vuelve a 0.
+    setUltimoVistoId(idMasReciente(entradas));
+    setPlegado((previo) => !previo);
+  }
 
   function alPulsar(entrada: EntradaMinutoAMinutoPublica) {
     const esLaMisma = entrada.id === seleccionada;
@@ -120,94 +143,152 @@ export default function MinutoAMinuto({
     onSeleccionarPunto({ lat: entrada.lat, lon: entrada.lon, hora: formatearHora(entrada.created_at) });
   }
 
+  const textoAviso =
+    nuevas === 0
+      ? ""
+      : nuevas === 1
+        ? textos.minuto_a_minuto_aviso_nueva
+        : textos.minuto_a_minuto_aviso_nuevas.replaceAll("{n}", String(nuevas));
+
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-2 px-1">
-        {polling && (
-          <span className="relative flex h-2 w-2">
-            <span
-              className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
-              style={{ background: C.ember }}
-            />
-            <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: C.ember }} />
+    <MotionConfig reducedMotion="user">
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-2 px-1">
+          {polling && (
+            <span className="relative flex h-2 w-2">
+              <span
+                className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+                style={{ background: C.ember }}
+              />
+              <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: C.ember }} />
+            </span>
+          )}
+          <div className="font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
+            {textos.minuto_a_minuto_kicker}
+          </div>
+          <span aria-live="polite" className="font-mono text-[11px] font-medium" style={{ color: C.ember }}>
+            {textoAviso}
           </span>
-        )}
-        <div className="font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-          {textos.minuto_a_minuto_kicker}
+          <button
+            type="button"
+            onClick={alternarPlegado}
+            aria-expanded={!plegado}
+            aria-controls={regionId}
+            className="ml-auto rounded-full border px-3 py-1 text-[12px] font-medium"
+            style={{ borderColor: "#00000015", color: "#2F5D50", background: "#FBFAF7" }}
+          >
+            {plegado ? textos.minuto_a_minuto_boton_mostrar : textos.minuto_a_minuto_boton_ocultar}
+          </button>
+        </div>
+
+        <div id={regionId}>
+          <AnimatePresence initial={false}>
+            {!plegado && (
+              <motion.div
+                key="contenido"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-2.5">
+                  <AnimatePresence initial={false}>
+                    {entradas.map((entrada) => (
+                      <FilaEntrada
+                        key={entrada.id}
+                        entrada={entrada}
+                        esActiva={entrada.id === seleccionada}
+                        onPulsar={alPulsar}
+                      />
+                    ))}
+                  </AnimatePresence>
+
+                  {siguienteOffset !== null ? (
+                    <button
+                      onClick={() => cargarPagina(siguienteOffset)}
+                      disabled={cargando}
+                      className="mx-auto flex items-center gap-1.5 rounded-full border px-4 py-2 text-[12.5px] font-medium disabled:opacity-60"
+                      style={{ borderColor: "#00000015", color: "#2F5D50", background: "#FBFAF7" }}
+                    >
+                      {cargando ? "Cargando…" : textos.minuto_a_minuto_boton_cargar_mas}
+                    </button>
+                  ) : entradas.length === 0 ? (
+                    <div className="pt-1 text-center text-[11.5px]" style={{ color: "#9AA29C" }}>
+                      {textos.minuto_a_minuto_mensaje_vacio}
+                    </div>
+                  ) : null}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
-
-      <AnimatePresence initial={false}>
-        {entradas.map((entrada) => {
-          const esActiva = entrada.id === seleccionada;
-          const tienePosicion = entrada.lat !== null && entrada.lon !== null;
-          return (
-            <motion.button
-              key={entrada.id}
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.35 }}
-              onClick={() => alPulsar(entrada)}
-              disabled={!tienePosicion}
-              className={
-                entrada.foto_url
-                  ? "w-full overflow-hidden rounded-xl border text-left transition-colors disabled:cursor-default"
-                  : "flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-default"
-              }
-              style={{
-                borderColor: esActiva ? C.ember : "#00000010",
-                background: esActiva ? "#D9773B0D" : "white",
-              }}
-            >
-              {entrada.foto_url ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element -- URL pública de Supabase Storage */}
-                  <img
-                    src={entrada.foto_url}
-                    alt=""
-                    className="w-full h-auto"
-                  />
-                  <div className="min-w-0 px-4 py-3">
-                    <div className="font-mono text-[11px]" style={{ color: C.muted }}>
-                      {formatearHora(entrada.created_at)}
-                    </div>
-                    <div className="mt-0.5 text-[14px] leading-snug" style={{ color: C.ink }}>
-                      {entrada.texto}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="min-w-0 flex-1">
-                  <div className="font-mono text-[11px]" style={{ color: C.muted }}>
-                    {formatearHora(entrada.created_at)}
-                  </div>
-                  <div className="mt-0.5 text-[14px] leading-snug" style={{ color: C.ink }}>
-                    {entrada.texto}
-                  </div>
-                </div>
-              )}
-            </motion.button>
-          );
-        })}
-      </AnimatePresence>
-
-      {siguienteOffset !== null ? (
-        <button
-          onClick={() => cargarPagina(siguienteOffset)}
-          disabled={cargando}
-          className="mx-auto flex items-center gap-1.5 rounded-full border px-4 py-2 text-[12.5px] font-medium disabled:opacity-60"
-          style={{ borderColor: "#00000015", color: "#2F5D50", background: "#FBFAF7" }}
-        >
-          {cargando ? "Cargando…" : textos.minuto_a_minuto_boton_cargar_mas}
-        </button>
-      ) : entradas.length === 0 ? (
-        <div className="pt-1 text-center text-[11.5px]" style={{ color: "#9AA29C" }}>
-          {textos.minuto_a_minuto_mensaje_vacio}
-        </div>
-      ) : null}
-    </div>
+    </MotionConfig>
   );
+}
+
+interface FilaEntradaProps {
+  entrada: EntradaMinutoAMinutoPublica;
+  esActiva: boolean;
+  onPulsar: (entrada: EntradaMinutoAMinutoPublica) => void;
+}
+
+function FilaEntrada({ entrada, esActiva, onPulsar }: FilaEntradaProps) {
+  const tienePosicion = entrada.lat !== null && entrada.lon !== null;
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.35 }}
+      onClick={() => onPulsar(entrada)}
+      disabled={!tienePosicion}
+      className={
+        entrada.foto_url
+          ? "w-full overflow-hidden rounded-xl border text-left transition-colors disabled:cursor-default"
+          : "flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-default"
+      }
+      style={{
+        borderColor: esActiva ? C.ember : "#00000010",
+        background: esActiva ? "#D9773B0D" : "white",
+      }}
+    >
+      {entrada.foto_url ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- URL pública de Supabase Storage */}
+          <img
+            src={entrada.foto_url}
+            alt=""
+            className="w-full h-auto"
+          />
+          <div className="min-w-0 px-4 py-3">
+            <div className="font-mono text-[11px]" style={{ color: C.muted }}>
+              {formatearHora(entrada.created_at)}
+            </div>
+            <div className="mt-0.5 text-[14px] leading-snug" style={{ color: C.ink }}>
+              {entrada.texto}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-[11px]" style={{ color: C.muted }}>
+            {formatearHora(entrada.created_at)}
+          </div>
+          <div className="mt-0.5 text-[14px] leading-snug" style={{ color: C.ink }}>
+            {entrada.texto}
+          </div>
+        </div>
+      )}
+    </motion.button>
+  );
+}
+
+function idMasReciente(entradas: readonly EntradaMinutoAMinutoPublica[]): number {
+  // 0 con la lista vacía: los ids empiezan en 1, así que cualquier entrada
+  // que llegue después cuenta como nueva.
+  return entradas[0]?.id ?? 0;
 }
 
 function formatearHora(iso: string): string {
