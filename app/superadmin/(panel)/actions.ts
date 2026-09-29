@@ -15,6 +15,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
+import { esRutaPredefinida } from "@/lib/rutas/catalogo";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verificarSesionSuperadmin, NOMBRE_COOKIE_SUPERADMIN_SESION } from "@/lib/auth/superadmin-session";
 
@@ -52,6 +53,16 @@ const esquemaNombre = z
   .min(1, "El nombre es obligatorio.")
   .max(100, "El nombre no puede superar 100 caracteres.");
 
+function validarRuta(data: { ruta_tipo: "predefinida" | "libre"; ruta_id?: string }, ctx: z.RefinementCtx): void {
+  if (data.ruta_tipo === "predefinida" && !(data.ruta_id && esRutaPredefinida(data.ruta_id))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Elige una ruta predefinida válida.",
+      path: ["ruta_id"],
+    });
+  }
+}
+
 const esquemaCrearReto = z
   .object({
     slug: esquemaSlug,
@@ -60,15 +71,7 @@ const esquemaCrearReto = z
     ruta_tipo: z.enum(["predefinida", "libre"]),
     ruta_id: z.string().optional(),
   })
-  .superRefine((data, ctx) => {
-    if (data.ruta_tipo === "predefinida" && !data.ruta_id) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "ruta_id es obligatorio cuando ruta_tipo es predefinida.",
-        path: ["ruta_id"],
-      });
-    }
-  });
+  .superRefine(validarRuta);
 
 const esquemaEditarReto = z
   .object({
@@ -78,15 +81,11 @@ const esquemaEditarReto = z
     ruta_id: z.string().optional(),
     activo: z.boolean(),
   })
-  .superRefine((data, ctx) => {
-    if (data.ruta_tipo === "predefinida" && !data.ruta_id) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "ruta_id es obligatorio cuando ruta_tipo es predefinida.",
-        path: ["ruta_id"],
-      });
-    }
-  });
+  .superRefine(validarRuta);
+
+function rutaIdAGuardar(data: { ruta_tipo: "predefinida" | "libre"; ruta_id?: string }): string | null {
+  return data.ruta_tipo === "predefinida" ? (data.ruta_id ?? null) : null;
+}
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -122,7 +121,7 @@ export async function crearReto(formData: FormData): Promise<void> {
       nombre: resultado.data.nombre,
       descripcion: resultado.data.descripcion ?? null,
       ruta_tipo: resultado.data.ruta_tipo,
-      ruta_id: resultado.data.ruta_id ?? null,
+      ruta_id: rutaIdAGuardar(resultado.data),
       activo: true,
     })
     .select("id")
@@ -174,7 +173,7 @@ export async function editarReto(id: number, formData: FormData): Promise<void> 
       nombre: resultado.data.nombre,
       descripcion: resultado.data.descripcion ?? null,
       ruta_tipo: resultado.data.ruta_tipo,
-      ruta_id: resultado.data.ruta_id ?? null,
+      ruta_id: rutaIdAGuardar(resultado.data),
       activo: resultado.data.activo,
     })
     .eq("id", id);

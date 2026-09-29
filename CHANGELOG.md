@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-29 — Superadmin: desplegable de rutas y reto renombrado a `santi-ago`
+
+**Tipo:** Mejora (plataforma)
+
+En el panel superadmin, la ruta predefinida se elige en un desplegable
+alimentado por el catálogo `lib/rutas/catalogo.ts`, en vez de escribirse a
+mano. El servidor solo acepta ids del catálogo. Así se evitan errores de
+tecleo y valores que acabarían en una ruta de fichero arbitraria al cargar la
+traza. Si el reto es de ruta libre, `ruta_id` se guarda vacío. El reto
+existente pasa a tener slug `santi-ago` y nombre "Santi·ago" (su ruta sigue
+siendo `portuguesa-110`).
+
+---
+
 ## 2026-09-29 — FP2: Panel superadmin y gestión de retos
 
 **Tipo:** Feature (plataforma)

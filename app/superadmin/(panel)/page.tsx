@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { RUTAS_PREDEFINIDAS } from "@/lib/rutas/catalogo";
 import { listarTodosLosRetos } from "@/lib/supabase/retos";
 import { crearReto, editarReto, cerrarSesionSuperadmin } from "./actions";
 import BotonEliminarReto from "./BotonEliminarReto";
@@ -97,7 +98,9 @@ function RetoCard({ reto, modoEdicion }: { reto: Reto; modoEdicion: boolean }) {
           </span>
           <p className="text-[15px] font-medium">{reto.nombre}</p>
           <p className="text-[13px]" style={{ color: C.gris }}>
-            {reto.ruta_tipo === "predefinida" ? `predefinida · ${reto.ruta_id}` : "libre"}
+            {reto.ruta_tipo === "predefinida"
+              ? `predefinida · ${RUTAS_PREDEFINIDAS.find((r) => r.id === reto.ruta_id)?.nombre ?? reto.ruta_id}`
+              : "libre"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -141,7 +144,7 @@ function RetoCard({ reto, modoEdicion }: { reto: Reto; modoEdicion: boolean }) {
               <option value="libre">Libre</option>
             </select>
           </div>
-          <CampoTexto label="ruta_id" name="ruta_id" defaultValue={reto.ruta_id ?? ""} />
+          <SelectorRuta defaultValue={reto.ruta_id ?? undefined} />
           <div>
             <label className="mb-1 block text-[13px] font-medium">Estado</label>
             <select
@@ -203,7 +206,7 @@ function FormularioCrearReto() {
           <option value="libre">Libre</option>
         </select>
       </div>
-      <CampoTexto label="ruta_id" name="ruta_id" placeholder="portuguesa-110" />
+      <SelectorRuta />
       <button
         type="submit"
         className="rounded-full px-4 py-2 text-[13px] font-medium text-white"
@@ -212,6 +215,30 @@ function FormularioCrearReto() {
         Crear reto
       </button>
     </form>
+  );
+}
+
+// Solo se tiene en cuenta si el tipo de ruta es "predefinida".
+function SelectorRuta({ defaultValue }: { defaultValue?: string }) {
+  return (
+    <div>
+      <label className="mb-1 block text-[13px] font-medium">Ruta predefinida</label>
+      <select
+        name="ruta_id"
+        defaultValue={defaultValue ?? RUTAS_PREDEFINIDAS[0]?.id}
+        className="w-full rounded-lg border px-3 py-2 text-[14px]"
+        style={{ borderColor: "#00000015" }}
+      >
+        {RUTAS_PREDEFINIDAS.map((ruta) => (
+          <option key={ruta.id} value={ruta.id}>
+            {ruta.nombre}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-[12px]" style={{ color: C.gris }}>
+        Se ignora si el tipo de ruta es libre.
+      </p>
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 // Login del panel admin: un solo campo de contraseña (admin único, sin
 // usuario). Tras un login exitoso, redirige a `returnTo` (query param) si
-// está presente y apunta a una ruta interna — por defecto /portuguesa-110/admin.
+// está presente y apunta a una ruta interna — por defecto /santi-ago/admin.
 // La validación de `returnTo` evita open redirects: debe comenzar por "/" y
 // no contener "//", "http" ni cualquier otro esquema externo.
 
@@ -23,7 +23,7 @@ function AdminLoginForm() {
     if (returnTo && /^\/[a-z0-9-]+\/admin(\/.*)?$/.test(returnTo)) {
       return returnTo;
     }
-    return "/portuguesa-110/admin";
+    return "/santi-ago/admin";
   }
 
   async function enviar(evento: React.FormEvent) {
