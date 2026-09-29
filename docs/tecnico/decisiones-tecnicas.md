@@ -1749,3 +1749,46 @@ La raíz `/` en `app/page.tsx` hace `redirect('/portuguesa-110')` estático para
 ### Deuda generada
 
 Las caches en memoria (`lib/progreso-cache.ts`, `lib/historico-cache.ts`) no tienen clave por reto. Funciona para FP1 (un reto activo a la vez). En FP2, cuando haya múltiples retos activos simultáneos, necesitan keying por `reto_id`. Registrar en DEBT.md al cerrar FP1.
+
+---
+
+## DT-027 — FP2: Superadmin, CRUD de retos y home dinámica
+
+**Fecha:** 2026-09-29 · **Tarea:** FP2 — Superadmin y gestión de retos
+
+### Decisión
+
+Se implementa un panel `/superadmin` con autenticación propia paralela al admin normal, operaciones CRUD sobre la tabla `retos`, y `app/page.tsx` como listado dinámico de retos activos.
+
+**Auth del superadmin (Opción A — módulo paralelo, secreto compartido):**
+Se crea `lib/auth/superadmin-session.ts` que espeja `lib/auth/admin-session.ts` con cookie `superadmin_session` y contraseña leída desde `SUPERADMIN_PASSWORD`. La firma HMAC reutiliza `ADMIN_SESSION_SECRET` (aceptable: admin y superadmin son el mismo sujeto, Santi; no existe un adversario con el secreto de firma que no tenga también la contraseña). La autenticación sigue el mismo patrón que DT-010: proxy como primera línea + verificación independiente en cada Server Action.
+
+`proxy.ts` añade una rama para `/superadmin` y `/superadmin/*` con `proxySuperAdmin()`, que verifica `superadmin_session`, redirige a `/superadmin/login` si inválida, y renueva el TTL rolling si válida. Patrón idéntico al de `proxyAdmin()`.
+
+**crearReto + primer intento:** la lógica se inlinea dentro de `crearReto` en `app/superadmin/actions.ts`. No se extrae a `lib/` porque el admin's `crearPrimerIntento` tiene pre-condiciones distintas (verificar que no existe intento activo, resolver reto por slug) que no aplican cuando el reto acaba de crearse.
+
+**`app/page.tsx`:** server component que llama a `listarRetosActivos()` (filtra `activo = true`). Si no hay retos activos muestra mensaje. Enlaza a `/:slug/`. No hace redirect automático aunque haya un solo reto: es un selector público.
+
+**`/superadmin` muestra todos los retos** (activos e inactivos) con acciones editar/eliminar. **`/`** muestra solo retos `activo = true`.
+
+### Alternativas valoradas
+
+**Opción B (auth) — layout-only, proxy solo bypasea tracking.** Descartada por inconsistencia con el patrón DT-010 ya establecido (pierde renovación TTL rolling).
+
+**Opción C (auth) — reutilizar la sesión de admin existente.** Descartada: el requisito pide auth separada con `SUPERADMIN_PASSWORD` propia.
+
+**Extracción de crearPrimerIntento a lib/.** Descartada: las pre-condiciones son distintas en cada contexto; extraer la lógica compartida (un solo INSERT) crea una abstracción que oculta diferencias semánticas importantes.
+
+### Estructura de archivos resultante
+
+**Nuevos:** `lib/auth/superadmin-session.ts`, `app/api/superadmin/login/route.ts`, `app/superadmin/login/page.tsx`, `app/superadmin/(panel)/layout.tsx`, `app/superadmin/(panel)/page.tsx`, `app/superadmin/(panel)/actions.ts`, `app/superadmin/(panel)/BotonEliminarReto.tsx`
+
+**Modificados:** `lib/supabase/retos.ts` (añade `listarRetosActivos` y `listarTodosLosRetos`), `proxy.ts` (rama `/superadmin/*`), `app/page.tsx` (listado dinámico)
+
+**Nueva env var de producción:** `SUPERADMIN_PASSWORD` (sin prefijo `NEXT_PUBLIC_`). `ADMIN_SESSION_SECRET` ya existe y se reutiliza para firmar la sesión superadmin.
+
+### Desviaciones de implementación
+
+**Route group `(panel)`:** El layout se implementó como `app/superadmin/(panel)/layout.tsx` en lugar de `app/superadmin/layout.tsx`. Un layout directo en `app/superadmin/` aplica también a `app/superadmin/login/`, provocando un redirect circular (el layout verifica la sesión y redirige al login, que está dentro del mismo layout). El route group `(panel)` excluye `/superadmin/login` de la protección sin alterar la URL pública (`/superadmin` sigue funcionando igual).
+
+**`listarTodosLosRetos` usa cliente admin:** La especificación decía "cliente público". Se cambió a cliente admin porque la política RLS de la tabla `retos` filtra retos inactivos para el rol `anon` — un cliente público solo vería los activos, haciendo imposible que el superadmin gestione retos inactivos. El cliente admin bypasea RLS y devuelve todos los retos.

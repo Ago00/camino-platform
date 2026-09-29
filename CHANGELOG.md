@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-29 — FP2: Panel superadmin y gestión de retos
+
+**Tipo:** Feature (plataforma)
+
+Se añade el panel `/superadmin` con autenticación propia (contraseña
+`SUPERADMIN_PASSWORD`, cookie `superadmin_session`) y CRUD completo de retos:
+crear, editar nombre/descripción/ruta/estado, eliminar (con cascada en base de
+datos). Al crear un reto se siembra automáticamente el primer intento en fase
+"antes" para que el panel admin funcione desde el primer momento. La página
+raíz `/` pasa de un redirect estático a un listado dinámico de retos activos.
+Si no hay retos activos, muestra un mensaje informativo.
+
+---
+
 ## 2026-09-29 — Fix de seguridad: Next.js 16.3.6, maplibre-gl 6.11.2, hardening de open redirect
 
 **Tipo:** Fix (seguridad)

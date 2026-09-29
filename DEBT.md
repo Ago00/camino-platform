@@ -2,6 +2,50 @@
 
 ---
 
+## `docs/producto/` no refleja el panel superadmin ni la nueva home de listado de retos (FP2)
+
+**Fecha:** 2026-09-29
+**Contexto:** Revisión de FP2 (DT-027). Mismo patrón registrado en LESSONS.md ("Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre"): FP2 añade dos superficies de usuario visibles (panel `/superadmin` para gestión de retos y la home `/` como listado dinámico de retos activos) con `CHANGELOG.md` y documentación técnica al día, pero `docs/producto/funcionalidades.md` no las describe.
+**Problema:** Documentación de producto ausente para las dos novedades de FP2.
+**Impacto:** Puramente documental.
+**Solución propuesta:** El Agente de Producto añade a `funcionalidades.md` una sección "Panel superadmin" (CRUD de retos, auth con SUPERADMIN_PASSWORD) y actualiza la descripción de la home (`/`) para reflejar el listado dinámico de retos activos con mensaje de vacío.
+**Prioridad:** Baja.
+
+---
+
+## Migración `0008_cascade_delete.sql` pendiente de aplicar en Supabase de producción
+
+**Fecha:** 2026-09-29
+**Contexto:** FP2 — Panel superadmin y gestión de retos. La acción `eliminarReto` hace un `DELETE` en la tabla `retos`. Sin `ON DELETE CASCADE` en las FK dependientes, Supabase rechaza el DELETE con violación de FK cuando el reto tiene datos asociados (intentos, intenciones, comentarios, etc.).
+**Problema:** Con el código de FP2 desplegado y la migración sin aplicar, `eliminarReto` falla con un error de Postgres para cualquier reto que ya tenga datos. La creación y edición de retos no se ven afectadas.
+**Impacto:** El botón "Eliminar" del panel superadmin no funciona para retos con datos hasta que la migración esté aplicada. Sin datos asociados (reto recién creado), la eliminación sí funciona.
+**Solución propuesta:** Aplicar `supabase/migrations/0008_cascade_delete.sql` en el editor SQL del proyecto Supabase de la plataforma. Una vez aplicada, la eliminación en cascada funciona sin ningún cambio de código adicional.
+**Prioridad:** Alta — sin esto, eliminar retos con datos falla en producción.
+
+---
+
+## `listarTodosLosRetos` usa el cliente admin en vez del público (decisión técnica FP2)
+
+**Fecha:** 2026-09-29
+**Contexto:** FP2 — La spec de CURRENT.md indicaba "ambas usan cliente público" para `listarRetosActivos` y `listarTodosLosRetos`. Sin embargo, la política RLS de la tabla `retos` solo permite a anon ver retos con `activo = true`. `listarTodosLosRetos` necesita ver también los inactivos (para el panel superadmin). Se resolvió como bloqueo menor: usar el cliente admin para esta función.
+**Problema:** No es un bug — es una decisión técnica necesaria. El riesgo es que si en el futuro se llama a `listarTodosLosRetos` desde un contexto público (sin auth previa del superadmin), expondría retos inactivos.
+**Impacto:** Bajo en la práctica: `listarTodosLosRetos` solo se llama desde el Server Component del panel superadmin, que ya está protegido por el layout y el proxy.
+**Solución propuesta:** Documentar explícitamente en el JSDoc de la función que es solo para uso autenticado. No hay cambio funcional pendiente.
+**Prioridad:** Baja.
+
+---
+
+## Panel superadmin: mensajes de error de server actions no llegan al usuario
+
+**Fecha:** 2026-09-29
+**Contexto:** FP2 — Las server actions de `app/superadmin/(panel)/actions.ts` lanzan `Error` cuando algo falla (validación Zod, error de BD). En Next.js 16 en producción, el mensaje de cualquier error lanzado desde un Server Action se redacta a un texto genérico con digest — el usuario ve un error opaco en lugar del mensaje descriptivo.
+**Problema:** El patrón correcto (seguido por `app/[slug]/admin/actions.ts` para `crearMinutoAMinuto` y `finalizarReto`) es devolver un tipo resultado `{ ok: true } | { ok: false; mensaje: string }` en lugar de lanzar. Las actions del superadmin usan `throw` porque son operaciones menos críticas (es el superadmin quien las ejecuta, no Santi en mitad del reto).
+**Impacto:** Si `crearReto`, `editarReto` o `eliminarReto` fallan en producción, el superadmin ve un error genérico sin saber el motivo. Para un usuario técnico, los logs de Vercel son suficientes.
+**Solución propuesta:** Migrar las actions a devolver `ResultadoOperacion` y mostrar el error inline en el formulario del panel superadmin. Requiere convertir parte del panel a "use client".
+**Prioridad:** Baja — el superadmin es el usuario más técnico y puede consultar logs.
+
+---
+
 ## `GET /[slug]/api/comentarios` no filtra por `reto_id` (FP1 → FP2)
 
 **Fecha:** 2026-09-29

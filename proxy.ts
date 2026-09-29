@@ -1,23 +1,21 @@
 /**
- * Proxy multi-tenant (DT-026, FP1): captura todas las rutas excepto las de
- * infraestructura (`api`, `_next/*`, `favicon.ico`, worker de MapLibre).
+ * Proxy multi-tenant (DT-026, FP1 / FP2): captura todas las rutas excepto
+ * las de infraestructura (`api`, `_next/*`, `favicon.ico`, worker de MapLibre).
  *
  * Bifurcación por `pathname`:
- * - `/` → pass-through; Next.js hace el redirect a `/portuguesa-110`.
+ * - `/` → pass-through; Next.js hace el redirect si aplica.
+ * - `/superadmin` y `/superadmin/*` → proxySuperAdmin (FP2).
  * - `/:slug/admin/*` → proxyAdmin (protege el panel con sesión).
  * - Todo lo demás → proxyPublico (captura visita para la pestaña "Tráfico").
  *
- * Las dos responsabilidades (sesión de admin y captura de visitas) se
- * mantienen igual que en la versión anterior; solo cambia el matcher y
- * la forma en que se extrae el slug para registrarVisita.
- *
- * IMPORTANTE: esto NO es la única defensa de `/:slug/admin/*`. Las Server
- * Actions de `app/[slug]/admin/actions.ts` verifican la sesión por sí mismas.
+ * IMPORTANTE: esto NO es la única defensa de cada panel. Las Server Actions
+ * y layouts verifican la sesión por sí mismos.
  */
 
 import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { crearSesion, NOMBRE_COOKIE_SESION, verificarSesion } from "@/lib/auth/admin-session";
+import { crearSesionSuperadmin, NOMBRE_COOKIE_SUPERADMIN_SESION, verificarSesionSuperadmin } from "@/lib/auth/superadmin-session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 
@@ -30,9 +28,15 @@ const TTL_COOKIE_SESION_SEGUNDOS = 7 * 24 * 60 * 60;
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
-  // Raíz → pass-through (redirect estático en app/page.tsx).
+  // Raíz → pass-through.
   if (pathname === "/") {
     return NextResponse.next();
+  }
+
+  // Superadmin: protege /superadmin y /superadmin/* (excepto /superadmin/login
+  // para evitar bucle de redirección infinita).
+  if (pathname === "/superadmin" || pathname.startsWith("/superadmin/")) {
+    return proxySuperAdmin(request);
   }
 
   if (pathname.match(/^\/[^/]+\/admin/)) {
@@ -40,6 +44,45 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   return proxyPublico(request);
+}
+
+// ---------------------------------------------------------------------------
+// /superadmin/* — sesión del superadmin (FP2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Protege /superadmin y /superadmin/* con la cookie `superadmin_session`.
+ * La página /superadmin/login pasa sin verificar para evitar bucle de
+ * redirección: si la sesión es inválida, se redirige a login, que NO
+ * está protegida aquí.
+ * No registra visita (uso interno, no público).
+ */
+function proxySuperAdmin(request: NextRequest): NextResponse {
+  const { pathname } = request.nextUrl;
+
+  // La página de login no está protegida: si la verificáramos aquí,
+  // habría un bucle de redirección al acceder sin sesión.
+  if (pathname === "/superadmin/login") {
+    return NextResponse.next();
+  }
+
+  const cookieSesion = request.cookies.get(NOMBRE_COOKIE_SUPERADMIN_SESION)?.value;
+
+  if (!verificarSesionSuperadmin(cookieSesion)) {
+    const loginUrl = new URL("/superadmin/login", request.url);
+    loginUrl.searchParams.set("returnTo", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const response = NextResponse.next();
+  response.cookies.set(NOMBRE_COOKIE_SUPERADMIN_SESION, crearSesionSuperadmin(), {
+    httpOnly: true,
+    secure: true,
+    sameSite: "strict",
+    path: "/",
+    maxAge: TTL_COOKIE_SESION_SEGUNDOS,
+  });
+  return response;
 }
 
 // ---------------------------------------------------------------------------

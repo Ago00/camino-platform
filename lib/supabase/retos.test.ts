@@ -1,7 +1,5 @@
 /**
- * Tests de obtenerRetoPorSlug con el cliente Supabase admin mockado.
- * Mismo patrón que lib/supabase/admin.test.ts (vi.resetModules + vi.stubEnv)
- * combinado con el mock de Supabase de los route tests.
+ * Tests de obtenerRetoPorSlug, listarRetosActivos y listarTodosLosRetos.
  *
  * React.cache se reemplaza por un pass-through en este entorno: en Vitest
  * (Node.js sin contexto React Fiber) el memoizado entre llamadas no aplica,
@@ -17,16 +15,28 @@ vi.mock("react", async (importOriginal) => {
   return { ...original, cache: (fn: <T>(...args: unknown[]) => T) => fn };
 });
 
+// Mocks para getSupabaseAdmin (obtenerRetoPorSlug, listarTodosLosRetos)
 const maybeSingleSpy = vi.fn();
 const eqSpy = vi.fn(() => ({ maybeSingle: maybeSingleSpy }));
-const selectSpy = vi.fn(() => ({ eq: eqSpy }));
-const fromSpy = vi.fn(() => ({ select: selectSpy }));
+const orderAdminSpy = vi.fn();
+const selectAdminSpy = vi.fn(() => ({ eq: eqSpy, order: orderAdminSpy }));
+const fromAdminSpy = vi.fn(() => ({ select: selectAdminSpy }));
 
 vi.mock("@/lib/supabase/admin", () => ({
-  getSupabaseAdmin: vi.fn(() => ({ from: fromSpy })),
+  getSupabaseAdmin: vi.fn(() => ({ from: fromAdminSpy })),
 }));
 
-const { obtenerRetoPorSlug } = await import("@/lib/supabase/retos");
+// Mocks para getSupabasePublic (listarRetosActivos)
+const orderPublicSpy = vi.fn();
+const eqPublicSpy = vi.fn(() => ({ order: orderPublicSpy }));
+const selectPublicSpy = vi.fn(() => ({ eq: eqPublicSpy }));
+const fromPublicSpy = vi.fn(() => ({ select: selectPublicSpy }));
+
+vi.mock("@/lib/supabase/public", () => ({
+  getSupabasePublic: vi.fn(() => ({ from: fromPublicSpy })),
+}));
+
+const { obtenerRetoPorSlug, listarRetosActivos, listarTodosLosRetos } = await import("@/lib/supabase/retos");
 
 const retoFijo = {
   id: 1,
@@ -42,8 +52,13 @@ const retoFijo = {
 beforeEach(() => {
   maybeSingleSpy.mockClear();
   eqSpy.mockClear();
-  selectSpy.mockClear();
-  fromSpy.mockClear();
+  orderAdminSpy.mockClear();
+  selectAdminSpy.mockClear();
+  fromAdminSpy.mockClear();
+  orderPublicSpy.mockClear();
+  eqPublicSpy.mockClear();
+  selectPublicSpy.mockClear();
+  fromPublicSpy.mockClear();
 });
 
 describe("obtenerRetoPorSlug", () => {
@@ -53,7 +68,7 @@ describe("obtenerRetoPorSlug", () => {
     const result = await obtenerRetoPorSlug("portuguesa-110");
 
     expect(result).toEqual(retoFijo);
-    expect(fromSpy).toHaveBeenCalledWith("retos");
+    expect(fromAdminSpy).toHaveBeenCalledWith("retos");
     expect(eqSpy).toHaveBeenCalledWith("slug", "portuguesa-110");
   });
 
@@ -74,12 +89,74 @@ describe("obtenerRetoPorSlug", () => {
   });
 
   it("devuelve null si getSupabaseAdmin lanza (env vars ausentes)", async () => {
-    fromSpy.mockImplementationOnce(() => {
+    fromAdminSpy.mockImplementationOnce(() => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL is not defined");
     });
 
     const result = await obtenerRetoPorSlug("portuguesa-110");
 
     expect(result).toBeNull();
+  });
+});
+
+describe("listarRetosActivos", () => {
+  it("devuelve los retos activos usando el cliente público", async () => {
+    orderPublicSpy.mockResolvedValue({ data: [retoFijo], error: null });
+
+    const result = await listarRetosActivos();
+
+    expect(result).toEqual([retoFijo]);
+    expect(fromPublicSpy).toHaveBeenCalledWith("retos");
+    expect(eqPublicSpy).toHaveBeenCalledWith("activo", true);
+    expect(orderPublicSpy).toHaveBeenCalledWith("created_at", { ascending: false });
+  });
+
+  it("devuelve array vacío si Supabase devuelve error", async () => {
+    orderPublicSpy.mockResolvedValue({ data: null, error: new Error("fallo de BD") });
+
+    const result = await listarRetosActivos();
+
+    expect(result).toEqual([]);
+  });
+
+  it("devuelve array vacío si getSupabasePublic lanza", async () => {
+    fromPublicSpy.mockImplementationOnce(() => {
+      throw new Error("env var ausente");
+    });
+
+    const result = await listarRetosActivos();
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("listarTodosLosRetos", () => {
+  it("devuelve todos los retos (activos e inactivos) usando el cliente admin", async () => {
+    const retoInactivo = { ...retoFijo, id: 2, activo: false, slug: "otro-reto" };
+    orderAdminSpy.mockResolvedValue({ data: [retoFijo, retoInactivo], error: null });
+
+    const result = await listarTodosLosRetos();
+
+    expect(result).toEqual([retoFijo, retoInactivo]);
+    expect(fromAdminSpy).toHaveBeenCalledWith("retos");
+    expect(orderAdminSpy).toHaveBeenCalledWith("created_at", { ascending: false });
+  });
+
+  it("devuelve array vacío si Supabase devuelve error", async () => {
+    orderAdminSpy.mockResolvedValue({ data: null, error: new Error("fallo de BD") });
+
+    const result = await listarTodosLosRetos();
+
+    expect(result).toEqual([]);
+  });
+
+  it("devuelve array vacío si getSupabaseAdmin lanza", async () => {
+    fromAdminSpy.mockImplementationOnce(() => {
+      throw new Error("env var ausente");
+    });
+
+    const result = await listarTodosLosRetos();
+
+    expect(result).toEqual([]);
   });
 });
