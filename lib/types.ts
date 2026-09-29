@@ -5,7 +5,8 @@
  * de datos y UI. Solo tipos — sin cliente de BD, sin lógica.
  *
  * Invariantes críticos:
- * - Solo puede haber un `Intento` con `cerrado = false` a la vez.
+ * - Solo puede haber un `Intento` con `cerrado = false` a la vez POR RETO
+ *   (índice `intentos_abierto_por_reto`, migración 0009; FP2.5, DT-028).
  * - Las `Posicion` con `descartado = true` no participan en cálculos de progreso.
  * - La `Fase` del intento activo determina qué muestra la web pública.
  * - Cada tabla top-level lleva `reto_id` FK a `retos` (DT-025, FP0).

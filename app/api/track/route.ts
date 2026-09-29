@@ -33,13 +33,20 @@
  *
  * Compatibilidad temporal con la migración sin aplicar (ver DEBT.md,
  * "recordatorio: aplicar supabase/migrations/0003_modo_intento.sql"): si la
- * columna `modo` todavía no existe en la BD real, la consulta del punto 4
+ * columna `modo` todavía no existe en la BD real, la consulta del punto 5
  * falla con un error de Postgres. Sin manejo explícito, ese error se leía
  * como "sin intento activo" y el punto GPS se descartaba en silencio — un
  * corte real de la ingesta, no solo un problema cosmético. En ese caso se
  * reintenta con el select mínimo (solo `id`) y se trata el intento como modo
  * 'guiado' (con el filtro geográfico activo), el comportamiento exacto que
  * este endpoint ya tenía antes de DT-016.
+ *
+ * Reto del tracker (FP2.5, DT-028): con varios retos puede haber varios
+ * intentos abiertos a la vez (uno por reto), así que el tracker indica a qué
+ * reto pertenece en la URL: `/api/track?t=<TRACK_TOKEN>&reto=<slug>` (el
+ * panel superadmin muestra la URL de cada reto). El token sigue siendo
+ * global. Sin `reto`, con un slug mal formado o inexistente, el punto se
+ * descarta con la misma respuesta vacía 200 — no se adivina el reto.
  */
 
 import { createHash, timingSafeEqual } from "crypto";
@@ -47,6 +54,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { consumir } from "@/lib/rate-limit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
+import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { separacionDeTrazaM } from "@/lib/traza/proyeccion";
 import { SEPARACION_TRAZA_MAX_KM } from "@/lib/traza/umbrales";
@@ -71,6 +80,16 @@ const payloadOwnTracks = z.object({
   batt: z.number().nullable().optional(),
   acc: z.number().nullable().optional(),
 });
+
+/**
+ * Slug del reto al que pertenece el tracker (`?reto=<slug>`). Mismo formato
+ * que el slug validado al crear retos en el panel superadmin.
+ */
+const slugRetoTracker = z
+  .string()
+  .min(1)
+  .max(60)
+  .regex(/^[a-z0-9-]+$/);
 
 /** Respuesta vacía OwnTracks-compatible. Nunca da pistas sobre el motivo. */
 function respuestaVacia(): NextResponse {
@@ -125,7 +144,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(null, { status: 429 });
   }
 
-  // 3. Parsear el payload OwnTracks.
+  // 3. Slug del reto en la query (`?reto=<slug>`, FP2.5/DT-028). Validación
+  // de formato antes de tocar BD; si falta o es inválido, respuesta vacía.
+  const slugReto = slugRetoTracker.safeParse(request.nextUrl.searchParams.get("reto"));
+  if (!slugReto.success) {
+    return respuestaVacia();
+  }
+
+  // Parsear el payload OwnTracks.
   let bodyJson: unknown;
   try {
     bodyJson = await request.json();
@@ -142,29 +168,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { lat, lon, tst, batt, acc } = payload.data;
 
-  // 4. Buscar el intento activo (not cerrado) y su modo — se resuelve ANTES
+  // 4. Resolver el reto de la URL. Sin reto válido no hay intento al que
+  // asignar el punto: se descarta con la misma respuesta vacía 200 para que
+  // OwnTracks no acumule reintentos de un punto que nunca se va a guardar.
+  const reto = await obtenerRetoPorSlug(slugReto.data);
+  if (!reto) {
+    return respuestaVacia();
+  }
+
+  // 5. Buscar el intento activo DE ESE RETO y su modo — se resuelve ANTES
   // de decidir si se aplica el filtro geográfico (DT-016): en modo libre no
   // hay traza fija, así que ese filtro no tiene sentido y se salta entero.
   const supabase = getSupabaseAdmin();
-  const { data: intentoActivo, error: errorIntento } = await supabase
-    .from("intentos")
-    .select("id, modo, reto_id")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error: errorIntento } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, modo"),
+    reto.id
+  ).maybeSingle();
 
   let intentoId: number;
   let modoIntento: "guiado" | "libre";
-  let retoId: number | null;
 
   if (errorIntento) {
     // Compatibilidad temporal: la columna `modo` puede no existir todavía
     // (migración sin aplicar, ver comentario de cabecera). Reintenta con el
     // select mínimo y trata el intento como modo guiado.
-    const { data: intentoActivoMinimo, error: errorIntentoMinimo } = await supabase
-      .from("intentos")
-      .select("id, reto_id")
-      .eq("cerrado", false)
-      .maybeSingle();
+    const { data: intentoActivoMinimo, error: errorIntentoMinimo } = await soloIntentoActivoDelReto(
+      supabase.from("intentos").select("id"),
+      reto.id
+    ).maybeSingle();
 
     if (errorIntentoMinimo || !intentoActivoMinimo) {
       return respuestaVacia();
@@ -172,34 +203,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     intentoId = intentoActivoMinimo.id;
     modoIntento = "guiado";
-    retoId = intentoActivoMinimo.reto_id ?? null;
   } else {
     if (!intentoActivo) {
       return respuestaVacia();
     }
     intentoId = intentoActivo.id;
     modoIntento = intentoActivo.modo;
-    retoId = intentoActivo.reto_id ?? null;
   }
 
-  // 5. Filtro de plausibilidad geográfica (DT-006, capa 1) — solo modo
-  // 'guiado' (DT-016). La ruta se obtiene desde el reto asociado al intento.
-  if (modoIntento === "guiado") {
-    let rutaId = "portuguesa-110";
-    if (retoId !== null) {
-      // Obtenemos el reto por id para conseguir su ruta_id. Buscamos por slug
-      // del único reto activo sería más directo, pero el intento ya expone
-      // reto_id directamente, así que consultamos por ese id.
-      const { data: retoData } = await supabase
-        .from("retos")
-        .select("ruta_id")
-        .eq("id", retoId)
-        .maybeSingle();
-      if (retoData?.ruta_id) {
-        rutaId = retoData.ruta_id;
-      }
-    }
-    const traza = cargarTrazaDeCalculo(rutaId);
+  // 6. Filtro de plausibilidad geográfica (DT-006, capa 1) — solo modo
+  // 'guiado' (DT-016) y solo si el reto tiene ruta: un reto de ruta libre
+  // (`ruta_id` null) no tiene traza contra la que comparar, igual que un
+  // intento en modo libre.
+  if (modoIntento === "guiado" && reto.ruta_id !== null) {
+    const traza = cargarTrazaDeCalculo(reto.ruta_id);
     const separacionM = separacionDeTrazaM(lat, lon, traza);
     const separacionMaximaM = SEPARACION_TRAZA_MAX_KM * 1000;
     if (separacionM > separacionMaximaM) {
@@ -207,7 +224,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // 6. Insertar la posición.
+  // 7. Insertar la posición.
   // No hay verificación de velocidad imposible aquí: eso lo hace
   // calcularProgreso() en el dominio, no la ingesta (no se duplica).
   await supabase.from("posiciones").insert({
@@ -220,6 +237,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     fuente: "app",
   });
 
-  // 7. Responder 200 con [] siempre.
+  // 8. Responder 200 con [] siempre.
   return respuestaVacia();
 }

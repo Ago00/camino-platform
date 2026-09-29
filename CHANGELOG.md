@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-29 — FP2.5: Cada reto ve y gestiona solo sus propios datos
+
+**Tipo:** Fix (plataforma)
+
+Varios retos pueden convivir y estar en marcha a la vez sin mezclarse: la web
+pública, el panel admin y sus acciones (fase, progreso, mapa, posiciones,
+minuto a minuto, comentarios, intenciones, textos y tráfico) solo leen y
+modifican los datos del reto de la URL. El GPS de OwnTracks debe incluir ahora
+el reto en su URL (`/api/track?reto=<slug>`); el panel superadmin muestra la
+URL exacta de cada reto. Los retos de ruta libre ya no muestran la traza del
+Camino Portugués. Requiere aplicar la migración `0009_intento_abierto_por_reto.sql`.
+
+---
+
 ## 2026-09-29 — Superadmin: desplegable de rutas y reto renombrado a `santi-ago`
 
 **Tipo:** Mejora (plataforma)

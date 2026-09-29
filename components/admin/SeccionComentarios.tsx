@@ -3,14 +3,27 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { FiltroComentario } from "@/lib/admin/navegacion";
+import type { Reto } from "@/lib/types";
 import FiltroComentarios from "@/components/admin/FiltroComentarios";
 import AccionesComentario from "@/components/admin/AccionesComentario";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
-export default async function SeccionComentarios({ filtro, slug }: { filtro: FiltroComentario; slug: string }) {
+export default async function SeccionComentarios({
+  reto,
+  filtro,
+  slug,
+}: {
+  reto: Reto;
+  filtro: FiltroComentario;
+  slug: string;
+}) {
   const supabase = getSupabaseAdmin();
-  let query = supabase.from("comentarios").select("*").order("created_at", { ascending: false });
+  let query = supabase
+    .from("comentarios")
+    .select("*")
+    .eq("reto_id", reto.id)
+    .order("created_at", { ascending: false });
 
   if (filtro === "publicos") query = query.eq("oculto", false);
   if (filtro === "ocultos") query = query.eq("oculto", true);

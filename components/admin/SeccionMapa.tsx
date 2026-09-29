@@ -6,11 +6,12 @@
 
 import Mapa from "@/components/mapa/Mapa";
 import { obtenerDatosMapaAdmin } from "@/lib/traza/datos-mapa-admin";
+import type { Reto } from "@/lib/types";
 
 const C = { muted: "#4A5450" };
 
-export default async function SeccionMapa() {
-  const datos = await obtenerDatosMapaAdmin();
+export default async function SeccionMapa({ reto }: { reto: Reto }) {
+  const datos = await obtenerDatosMapaAdmin(reto);
 
   if (datos.modo === "sin-intento") {
     return (

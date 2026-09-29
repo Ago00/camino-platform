@@ -15,6 +15,8 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
+import { limpiarCacheHistorico } from "@/lib/historico-cache";
+import { limpiarCacheProgreso } from "@/lib/progreso-cache";
 import { esRutaPredefinida } from "@/lib/rutas/catalogo";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verificarSesionSuperadmin, NOMBRE_COOKIE_SUPERADMIN_SESION } from "@/lib/auth/superadmin-session";
@@ -181,6 +183,10 @@ export async function editarReto(id: number, formData: FormData): Promise<void> 
   if (error) {
     throw new Error("No se pudo actualizar el reto.");
   }
+
+  // El progreso cacheado se calculó con la ruta anterior.
+  limpiarCacheProgreso(id);
+  limpiarCacheHistorico(id);
 
   revalidatePath("/superadmin");
   revalidatePath("/");

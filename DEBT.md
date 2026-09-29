@@ -46,47 +46,97 @@
 
 ---
 
-## `GET /[slug]/api/comentarios` no filtra por `reto_id` (FP1 → FP2)
+## Reconfigurar OwnTracks con la nueva URL del tracker (`?reto=<slug>`)
 
 **Fecha:** 2026-09-29
-**Contexto:** Revisión de FP1 (DT-026). El handler GET de `app/[slug]/api/comentarios/route.ts` no acepta `params` ni llama a `obtenerRetoPorSlug`. El original tampoco filtraba por `reto_id` (leía todos los comentarios públicos), así que no había hardcoding que sustituir. La spec de FP1 decía que todos los handlers debían recibir `params` y resolver el reto_id, pero dado que GET era una lectura sin inserción el impacto en FP1 (reto único) es nulo.
-**Problema:** En un escenario multi-reto, `GET /:slug-b/api/comentarios` devolvería comentarios de todos los retos, no solo del reto-b.
-**Impacto:** Inocuo en FP1. Aislamiento de datos roto en FP2 si dos retos tienen comentarios.
-**Solución propuesta:** Añadir `{ params }: { params: Promise<{ slug: string }> }` al handler GET, llamar `obtenerRetoPorSlug(slug)` y añadir `.eq("reto_id", reto.id)` al select. Aplicar el mismo patrón al GET de `minuto-a-minuto/route.ts` si en ese momento se decide abandonar la dependencia de RLS.
-**Prioridad:** Baja hasta FP2.
+**Contexto:** FP2.5 (DT-028). `/api/track` exige ahora el reto en la URL; sin `?reto=` descarta el punto con 200 vacío (a propósito, para que OwnTracks no reintente).
+**Problema:** Un OwnTracks configurado con la URL antigua (`/api/track?t=...`) deja de guardar posiciones en silencio en cuanto se despliegue FP2.5 — el móvil no ve ningún error.
+**Impacto:** Pérdida total de posiciones GPS del reto hasta reconfigurar el móvil.
+**Solución propuesta:** Tras desplegar, copiar la URL que muestra el panel superadmin para el reto (`<origen>/api/track?reto=<slug>`), añadirle `&t=<TRACK_TOKEN>` y configurarla en OwnTracks; mandar un punto de prueba y comprobarlo en la pestaña Posición del admin.
+**Prioridad:** Alta — operativa, obligatoria antes del próximo uso del GPS.
 
 ---
 
-## `calcularProgresoActual()` y `datos-mapa-admin.ts` hardcodean `"portuguesa-110"` (FP1 → FP2)
+## `lib/rate-limit.ts` comparte el mismo `Map` de contadores entre retos
 
 **Fecha:** 2026-09-29
-**Contexto:** Revisión de FP1 (DT-026). `lib/traza/progreso-actual.ts` (línea 110) y `lib/traza/datos-mapa-admin.ts` (línea 93) tienen un comentario `// FP1: obtener rutaId del reto activo en vez de hardcodear` y usan `cargarTrazaDeCalculo("portuguesa-110")`. Estos ficheros no estaban en el scope de modificación de FP1 (no aparecen en CURRENT.md). El `reto_id` ya fluye hasta `app/api/track/route.ts`, que hace su propia resolución, pero `calcularProgresoActual()` (usada también desde `crearMinutoAMinuto` en actions.ts y desde `api/progreso/route.ts`) no recibe el contexto del reto.
-**Problema:** Si en FP2 hubiera dos retos con `ruta_id` distintos, `calcularProgresoActual()` siempre usaría la traza de `portuguesa-110`, calculando progreso incorrecto para cualquier otro reto.
-**Impacto:** Inocuo en FP1 (único reto activo es `portuguesa-110`). Funcional incorrecto en FP2 con rutos distintos.
-**Solución propuesta:** Refactorizar `calcularProgresoActual()` para que reciba `rutaId: string` como parámetro en vez de hardcodearlo. Los callers (`crearMinutoAMinuto`, `api/progreso/route.ts`) ya tienen acceso al slug o al intento activo con su `reto_id` para resolverlo.
-**Prioridad:** Baja hasta FP2.
+**Contexto:** FP2.5 (DT-028). Las claves de rate limiting son la IP del cliente (APIs públicas) o el token (`/api/track`), sin componente de reto.
+**Problema:** Un mismo visitante navegando dos retos consume un único cupo por minuto; y como `TRACK_TOKEN` es global, dos trackers de retos distintos comparten los 40 req/min de `/api/track`.
+**Impacto:** Bajo y aceptado: los cupos (60 req/min por IP, 40 req/min por token) sobran para el uso real; solo afectaría con varios trackers de alta frecuencia a la vez.
+**Solución propuesta:** Si llega a notarse, incluir el slug en la clave de `/api/track` (`${token}:${slug}`) o pasar a tokens por reto.
+**Prioridad:** Baja.
 
 ---
 
-## Caché de progreso e histórico sin keying por reto (FP1 → FP2)
+## `iniciarReto` permite modo "guiado" en un reto sin ruta
 
 **Fecha:** 2026-09-29
-**Contexto:** FP1 (DT-026). Las cachés en memoria `lib/progreso-cache.ts` y `lib/historico-cache.ts` guardan un único valor global sin discriminar por `reto_id`. En FP1 solo existe un reto activo a la vez, así que no hay mezcla. En FP2, si dos retos tuvieran intento activo simultáneo, la caché devolvería el progreso del reto equivocado.
-**Problema:** `guardarCacheProgreso` y `guardarCacheHistorico` no llevan clave por `reto_id`.
-**Impacto:** Inocuo en FP1. Bloqueante (datos erróneos en producción) en cuanto haya dos retos activos simultáneos.
-**Solución propuesta:** Cambiar las cachés a `Map<number, { valor, timestamp }>` con clave `reto_id` en FP2 (junto con el routing multi-reto completo).
-**Prioridad:** Baja hasta FP2.
+**Contexto:** FP2.5 (DT-028). Un reto de ruta libre (`ruta_id` null) puede iniciarse en modo "guiado" desde el panel (es el default). FP2.5 lo trata en lectura como libre (progreso, web pública, mapa admin, filtro geográfico del tracker), pero no lo impide en la escritura.
+**Problema:** El intento queda guardado como "guiado" y sin destino, así que la vista libre no muestra distancia restante.
+**Impacto:** Bajo: solo cosmético en retos libres mal iniciados; no hay error ni mezcla de datos.
+**Solución propuesta:** En `iniciarReto` (y en la UI de `ActividadAcciones`), exigir modo libre con destino cuando `reto.ruta_id` es null.
+**Prioridad:** Baja.
 
 ---
 
-## `resetearContadorTrafico` usa `.eq("id", 1)` hardcodeado
+## `docs/producto/` no refleja la URL del GPS por reto (FP2.5)
 
 **Fecha:** 2026-09-29
-**Contexto:** FP1 (DT-026). La action `resetearContadorTrafico` en `app/[slug]/admin/actions.ts` aplica el reset a la fila de `config_trafico` con `id = 1` (la única existente). No filtra por `reto_id` del slug activo.
-**Problema:** Si en FP2 existieran múltiples filas en `config_trafico` (una por reto), resetear desde `/otro-reto/admin` podría afectar al registro equivocado.
-**Impacto:** Inocuo en FP1. Riesgo en FP2 si se añaden más retos con sus propias configuraciones de tráfico.
-**Solución propuesta:** En FP2, cambiar la query para filtrar por `reto_id` obtenido del slug en lugar de por `id`.
-**Prioridad:** Baja hasta FP2.
+**Contexto:** FP2.5 (DT-028). El panel superadmin muestra ahora la URL del tracker de cada reto y la configuración de OwnTracks cambia.
+**Problema:** `docs/producto/funcionalidades.md` no lo describe.
+**Impacto:** Puramente documental.
+**Solución propuesta:** El Agente de Producto añade la URL del GPS por reto a la sección del panel superadmin y actualiza las instrucciones de configuración del tracker.
+**Prioridad:** Baja.
+
+---
+
+## `app/[slug]/admin/actions.test.ts` no cubre todas las acciones aisladas por reto
+
+**Fecha:** 2026-09-29
+**Contexto:** Revisión de FP2.5 (DT-028). Los 8 tests cubren comentarios, intenciones, descartar posición, eliminar minuto a minuto y tráfico.
+**Problema:** Sin test: `mostrarComentario`, `editarMinutoAMinuto`, `guardarTexto` (upsert con `reto_id`), las transiciones `iniciar/finalizar/retomar/reiniciarReto` (filtro por reto del intento activo) y que `descartarPosicion`/`reiniciarReto` limpien solo la caché del reto propio (y no la de otro reto).
+**Impacto:** Bajo: el código es correcto hoy; el riesgo es una regresión futura sin red.
+**Solución propuesta:** Añadir casos con el mismo builder falso; para cachés, sembrar entradas de dos retos y comprobar que solo desaparece la del slug.
+**Prioridad:** Baja.
+
+---
+
+## Comentario obsoleto en `lib/supabase/admin.ts:75-76`
+
+**Fecha:** 2026-09-29
+**Contexto:** Revisión de FP2.5. El comentario del tipo `intenciones.Insert` dice "FP1 lo inyectará… en FP0 los callers usan reto_id: 1 (portuguesa-110)"; desde FP1/FP2.5 el `reto_id` sale siempre del slug.
+**Problema:** Documentación en código desactualizada (pre-existente, no introducida por FP2.5).
+**Impacto:** Puramente documental.
+**Solución propuesta:** Sustituir por "reto_id requerido (NOT NULL); lo aporta el reto resuelto desde el slug".
+**Prioridad:** Baja.
+
+---
+
+## ~~`GET /[slug]/api/comentarios` no filtra por `reto_id`~~ — RESUELTO
+
+**Fecha:** 2026-09-29 → Resuelto 2026-09-29 (FP2.5, DT-028)
+El GET ya resolvía el reto y filtraba por `reto_id` al revisar FP2.5; `GET /[slug]/api/minuto-a-minuto` deja además de depender de la RLS y filtra por el intento activo del reto.
+
+---
+
+## ~~`calcularProgresoActual()` y `datos-mapa-admin.ts` hardcodean `"portuguesa-110"`~~ — RESUELTO
+
+**Fecha:** 2026-09-29 → Resuelto 2026-09-29 (FP2.5, DT-028)
+Ambas reciben el reto y usan `reto.ruta_id`; si es null, progreso/mapa en modo libre. También se eliminó el fallback `"portuguesa-110"` de `app/[slug]/page.tsx` y de `/api/track`.
+
+---
+
+## ~~Caché de progreso e histórico sin keying por reto~~ — RESUELTO
+
+**Fecha:** 2026-09-29 → Resuelto 2026-09-29 (FP2.5, DT-028)
+`lib/progreso-cache.ts` y `lib/historico-cache.ts` son `Map<retoId, Entrada>`.
+
+---
+
+## ~~`resetearContadorTrafico` usa `.eq("id", 1)` hardcodeado~~ — RESUELTO
+
+**Fecha:** 2026-09-29 → Resuelto 2026-09-29 (FP2.5, DT-028)
+Upsert por `reto_id` (`onConflict: "reto_id"`); `SeccionTrafico` lee `config_trafico` por `reto_id`.
 
 ---
 

@@ -3,17 +3,27 @@
 // ocultamiento, a diferencia de comentarios/posiciones (ver modelo-datos.md).
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import type { Reto } from "@/lib/types";
 import EliminarIntencionBoton from "@/components/admin/EliminarIntencionBoton";
 import EnlacePaginacion from "@/components/admin/EnlacePaginacion";
 
 const TAMANO_PAGINA = 20;
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
-export default async function SeccionIntenciones({ offset, slug }: { offset: number; slug: string }) {
+export default async function SeccionIntenciones({
+  reto,
+  offset,
+  slug,
+}: {
+  reto: Reto;
+  offset: number;
+  slug: string;
+}) {
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from("intenciones")
     .select("id, texto, nombre, created_at")
+    .eq("reto_id", reto.id)
     .order("created_at", { ascending: false })
     .range(offset, offset + TAMANO_PAGINA - 1);
 

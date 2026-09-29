@@ -1792,3 +1792,37 @@ Se crea `lib/auth/superadmin-session.ts` que espeja `lib/auth/admin-session.ts` 
 **Route group `(panel)`:** El layout se implementó como `app/superadmin/(panel)/layout.tsx` en lugar de `app/superadmin/layout.tsx`. Un layout directo en `app/superadmin/` aplica también a `app/superadmin/login/`, provocando un redirect circular (el layout verifica la sesión y redirige al login, que está dentro del mismo layout). El route group `(panel)` excluye `/superadmin/login` de la protección sin alterar la URL pública (`/superadmin` sigue funcionando igual).
 
 **`listarTodosLosRetos` usa cliente admin:** La especificación decía "cliente público". Se cambió a cliente admin porque la política RLS de la tabla `retos` filtra retos inactivos para el rol `anon` — un cliente público solo vería los activos, haciendo imposible que el superadmin gestione retos inactivos. El cliente admin bypasea RLS y devuelve todos los retos.
+
+---
+
+## DT-028 — FP2.5: Aislamiento de datos por reto
+
+**Fecha:** 2026-09-29 · **Tarea:** FP2.5 — Aislamiento de datos por reto
+
+### Contexto
+
+Tras FP0–FP2 todas las tablas top-level llevan `reto_id` (y `posiciones`/`minuto_a_minuto` cuelgan de `intentos`), pero muchas consultas no filtraban por reto: el intento activo se buscaba con `.eq("cerrado", false).maybeSingle()` a secas, `textos`/`comentarios`/`intenciones`/`visitas_web` del panel se leían sin filtro, los borrados/ediciones iban solo por `id`, las cachés de progreso e histórico tenían un único hueco global, `config_trafico` se leía/escribía con `id = 1` y había fallbacks hardcodeados a `"portuguesa-110"`. En BD, `intentos_activo_unico ON intentos ((true)) WHERE NOT cerrado` impedía más de un intento abierto en todo el sistema (y por tanto crear un segundo reto, que siembra su intento inicial).
+
+### Decisión
+
+1. **Migración `0009_intento_abierto_por_reto.sql`:** `drop index intentos_activo_unico` y `create unique index intentos_abierto_por_reto on intentos (reto_id) where not cerrado`. Sin índice global sobre "durante": dos retos pueden estar en marcha a la vez.
+2. **Helper `lib/supabase/intentos.ts` → `soloIntentoActivoDelReto(consulta, retoId)`:** aplica juntos `.eq("reto_id", retoId).eq("cerrado", false)` sobre un builder ya seleccionado. Toda búsqueda del intento activo pasa por él.
+3. **Reto resuelto una vez y propagado:** `app/[slug]/admin/page.tsx` pasa `reto` a cada `Seccion*`; las APIs `app/[slug]/api/{fase,progreso,minuto-a-minuto}` resuelven el reto con `obtenerRetoPorSlug` (404 si no existe); `app/[slug]/page.tsx` filtra intento/textos/cachés por `reto.id`. Firmas: `obtenerFaseActual(retoId)`, `calcularProgresoActual(reto)`, `obtenerDatosMapaAdmin(reto)`, `obtenerTextos(retoId)`, `obtenerIntentoActivo(retoId)`, `obtenerIntentoActividad(retoId)`.
+4. **Server actions:** reto al inicio de cada acción; filas con `reto_id` propio se filtran por `id` **y** `reto_id`; `posiciones`/`minuto_a_minuto` por el intento activo del reto; `config_trafico` por `upsert({reto_id, cuenta_desde}, {onConflict: "reto_id"})` (el unique ya existía en 0007).
+5. **Cachés en memoria por reto:** `lib/progreso-cache.ts` y `lib/historico-cache.ts` pasan a `Map<retoId, Entrada>`; `limpiar(retoId?)` sin argumento vacía todo.
+6. **Retos sin ruta (`ruta_id` null):** sin traza que pintar ni sobre la que proyectar; el progreso se mide como modo libre aunque el intento esté en modo "guiado" (el default de BD), y el progreso vacío es el libre.
+7. **`/api/track?reto=<slug>` (opción B elegida por el usuario):** el tracker indica su reto en la URL; el `TRACK_TOKEN` sigue siendo global. Slug validado con Zod (`^[a-z0-9-]+$`, máx. 60) y resuelto con `obtenerRetoPorSlug`; sin reto, mal formado o inexistente → la misma respuesta vacía 200 (OwnTracks no reintenta). El filtro geográfico usa la traza de `reto.ruta_id` y se omite si es null.
+8. **Panel superadmin:** cada tarjeta de reto muestra la URL del GPS para OwnTracks (`<origen>/api/track?reto=<slug>`, origen desde `x-forwarded-host`/`host` + `x-forwarded-proto`; relativa si no hay host válido). El token no se muestra.
+
+### Alternativas valoradas
+
+**Track — opción A: un token por reto** (resolver el reto a partir del token). Descartada por el usuario: exige gestionar N secretos y un cambio de esquema; con un solo operador el token global basta.
+**Track — opción C: inferir el reto del único intento en "durante".** Descartada: ambigua con dos retos en marcha, que es justo lo que habilita la migración.
+**Helper genérico sobre las columnas** (`obtenerIntentoActivoDelReto(supabase, retoId, columnas)`, lo que proponía el plan): descartado al implementar, ver nota de cierre.
+
+### Notas de cierre (desviaciones de implementación)
+
+- **Helper con forma distinta a la del plan.** El plan proponía `obtenerIntentoActivoDelReto(supabase, retoId, columnas)`. Con `columnas` como genérico `extends string`, TypeScript tiene que instanciar en diferido el parser de columnas de PostgREST y `tsc --noEmit` agota la memoria del proceso (reproducido: OOM a los ~50 s; sin el helper, 10 s). Se implementó `soloIntentoActivoDelReto(consulta, retoId)`, que recibe el builder ya con `select(...)`: mismo objetivo (un único punto que añade los dos filtros), tipado estricto del resultado según las columnas pedidas y cada caller conserva su fallback de compatibilidad con 0003.
+- **Reto sin ruta con intento "guiado"** (punto 6): el plan decía "si null → progreso libre vacío" para el progreso vacío; se extendió el mismo criterio al cálculo con histórico (se mide como libre) y a la vista pública/mapa admin, porque no existe traza con la que calcular un progreso guiado.
+- **`app/[slug]/page.tsx` y `app/[slug]/admin/page.tsx`** responden `notFound()` si el reto no se resuelve (antes la pública degradaba a `"portuguesa-110"`): el layout ya da 404 en ese caso, y sin reto no hay nada que filtrar.
+- **Invalidación del histórico:** `descartarPosicion` y `reiniciarReto` limpian también la caché de histórico del reto (antes solo la de progreso), porque con la caché por reto un reinicio dejaba hasta 20 s el histórico del intento anterior.

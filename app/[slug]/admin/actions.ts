@@ -6,9 +6,17 @@
  * Cada acción recibe `slug: string` como primer parámetro. Los componentes
  * cliente lo vinculan con `.bind(null, slug)` antes de llamar. El slug se
  * usa para:
- *   1. Resolver `reto_id` (obtenerRetoPorSlug — con React.cache, una sola
+ *   1. Resolver el reto (obtenerRetoPorSlug — con React.cache, una sola
  *      consulta por request aunque lo llamen varias acciones seguidas).
  *   2. Invalidar la ruta correcta con `revalidatePath`.
+ *
+ * Aislamiento por reto (FP2.5, DT-028): toda lectura y escritura queda
+ * acotada al reto del slug. El intento activo se busca siempre con
+ * `soloIntentoActivoDelReto`; las filas con `reto_id` propio (comentarios,
+ * intenciones, config_trafico) se filtran por `reto_id` además de por `id`;
+ * las que cuelgan de un intento (posiciones, minuto_a_minuto) se filtran por
+ * el intento activo del reto. Así un admin en `/reto-a/admin` no puede
+ * modificar datos de `reto-b` aunque envíe un id ajeno.
  *
  * Todas las demás reglas de seguridad permanecen igual que en la versión
  * anterior (app/admin/actions.ts): cada acción verifica la sesión con
@@ -19,12 +27,14 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import { subirFotoMinutoAMinuto, subirFotoLlegada, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import { guardarCacheProgreso, limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
+import { limpiarCacheHistorico } from "@/lib/historico-cache";
 import { calcularProgresoActual } from "@/lib/traza/progreso-actual";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
-import type { ResultadoPublicacion } from "@/lib/types";
+import type { ResultadoPublicacion, Reto } from "@/lib/types";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
 
@@ -40,6 +50,34 @@ async function requerirSesion(): Promise<void> {
   if (!verificarSesion(cookieSesion)) {
     throw new SesionInvalidaError();
   }
+}
+
+/** Reto del slug; lanza si no existe (las acciones no pueden seguir sin él). */
+async function requerirReto(slug: string): Promise<Reto> {
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) throw new Error(`Reto '${slug}' no encontrado.`);
+  return reto;
+}
+
+/**
+ * Id del intento activo del reto, o null si no hay ninguno (o la consulta
+ * falla). Para las acciones que acotan filas hijas (posiciones,
+ * minuto_a_minuto) al intento del reto.
+ */
+async function obtenerIdIntentoActivo(retoId: number): Promise<number | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    retoId
+  ).maybeSingle();
+  if (error || !data) return null;
+  return data.id;
+}
+
+/** Invalida las cachés en memoria que dependen del histórico del reto. */
+function limpiarCachesDelReto(retoId: number): void {
+  limpiarCacheProgreso(retoId);
+  limpiarCacheHistorico(retoId);
 }
 
 function revalidarAdmin(slug: string): void {
@@ -58,27 +96,24 @@ export async function cerrarSesion(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Siembra la primera fila de `intentos` cuando la tabla está completamente
- * vacía (arranque desde cero, sin SQL manual). Distinta de `reiniciarReto()`:
- * esa exige una fila activa previa que cerrar; esta exige que NO exista
- * ninguna. Mantenerlas separadas evita que una sola función tenga dos
- * caminos con significado distinto según el estado de la BD.
+ * Siembra la primera fila de `intentos` del reto cuando no tiene ningún
+ * intento activo (arranque desde cero, sin SQL manual). Distinta de
+ * `reiniciarReto()`: esa exige una fila activa previa que cerrar; esta exige
+ * que NO exista ninguna. Mantenerlas separadas evita que una sola función
+ * tenga dos caminos con significado distinto según el estado de la BD.
  */
 export async function crearPrimerIntento(slug: string): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo, error: errorBusqueda } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    reto.id
+  ).maybeSingle();
 
   if (errorBusqueda) throw new Error("No se pudo comprobar si ya existe un intento activo.");
   if (intentoActivo) throw new Error("Ya existe un intento activo.");
-
-  const reto = await obtenerRetoPorSlug(slug);
-  if (!reto) throw new Error(`Reto '${slug}' no encontrado.`);
 
   const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes", reto_id: reto.id });
   if (errorCreacion) throw new Error("No se pudo crear el intento.");
@@ -106,7 +141,7 @@ const parametrosIniciarReto = z.discriminatedUnion("modo", [
 ]);
 
 /**
- * antes → durante, sobre el intento activo actual. En modo libre guarda
+ * antes → durante, sobre el intento activo del reto. En modo libre guarda
  * destino_lat/destino_lon junto con la transición de fase.
  */
 export async function iniciarReto(slug: string, params: IniciarRetoParams): Promise<void> {
@@ -117,13 +152,13 @@ export async function iniciarReto(slug: string, params: IniciarRetoParams): Prom
     throw new Error("El modo libre exige un destino (lat/lon) válido.");
   }
 
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo, error: errorBusqueda } = await supabase
-    .from("intentos")
-    .select("id, fase")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, fase"),
+    reto.id
+  ).maybeSingle();
 
   if (errorBusqueda || !intentoActivo || intentoActivo.fase !== "antes") {
     throw new Error("No hay ningún intento en fase 'antes' que iniciar.");
@@ -148,11 +183,13 @@ export async function iniciarReto(slug: string, params: IniciarRetoParams): Prom
   const { error } = await supabase.from("intentos").update(cambios).eq("id", intentoActivo.id);
 
   if (error) throw new Error("No se pudo iniciar el reto.");
+  // /api/progreso es público y puede haber cacheado el progreso vacío de "antes".
+  limpiarCachesDelReto(reto.id);
   revalidarAdmin(slug);
 }
 
 /**
- * durante → llegada, sobre el intento activo actual, con el mensaje de
+ * durante → llegada, sobre el intento activo del reto, con el mensaje de
  * llegada editado y, opcional, la foto de llegada (DT-024).
  */
 export async function finalizarReto(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
@@ -171,6 +208,11 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
   }
   if (mensajeLimpio.length > 1000) {
     return { ok: false, mensaje: "El mensaje de llegada no puede superar 1000 caracteres." };
+  }
+
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) {
+    return { ok: false, mensaje: "No se ha encontrado el reto." };
   }
 
   const cambios: {
@@ -202,11 +244,10 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
   }
 
   const supabase = getSupabaseAdmin();
-  const { data: intentoActivo, error: errorBusqueda } = await supabase
-    .from("intentos")
-    .select("id, fase")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, fase"),
+    reto.id
+  ).maybeSingle();
 
   if (errorBusqueda || !intentoActivo || intentoActivo.fase !== "durante") {
     return { ok: false, mensaje: "No hay ningún intento en fase 'durante' que finalizar." };
@@ -215,7 +256,7 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
   const { error } = await supabase.from("intentos").update(cambios).eq("id", intentoActivo.id);
 
   if (error) return { ok: false, mensaje: "No se pudo finalizar el reto." };
-  limpiarCacheProgreso();
+  limpiarCacheProgreso(reto.id);
   revalidarAdmin(slug);
   return { ok: true };
 }
@@ -225,13 +266,13 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
  */
 export async function retomarReto(slug: string): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo, error: errorBusqueda } = await supabase
-    .from("intentos")
-    .select("id, fase")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, fase"),
+    reto.id
+  ).maybeSingle();
 
   if (errorBusqueda || !intentoActivo || intentoActivo.fase !== "llegada") {
     throw new Error("No hay ningún intento en fase 'llegada' que retomar.");
@@ -243,22 +284,22 @@ export async function retomarReto(slug: string): Promise<void> {
     .eq("id", intentoActivo.id);
 
   if (error) throw new Error("No se pudo retomar el reto.");
-  limpiarCacheProgreso();
+  limpiarCacheProgreso(reto.id);
   revalidarAdmin(slug);
 }
 
 /**
- * Cierra el intento actual y abre uno nuevo en blanco, en `antes`.
+ * Cierra el intento actual del reto y abre uno nuevo en blanco, en `antes`.
  */
 export async function reiniciarReto(slug: string): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo, error: errorBusqueda } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    reto.id
+  ).maybeSingle();
 
   if (errorBusqueda || !intentoActivo) {
     throw new Error("No hay ningún intento activo que reiniciar.");
@@ -271,13 +312,10 @@ export async function reiniciarReto(slug: string): Promise<void> {
 
   if (errorCierre) throw new Error("No se pudo cerrar el intento actual.");
 
-  const reto = await obtenerRetoPorSlug(slug);
-  if (!reto) throw new Error(`Reto '${slug}' no encontrado.`);
-
   const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes", reto_id: reto.id });
   if (errorCreacion) throw new Error("No se pudo abrir un nuevo intento.");
 
-  limpiarCacheProgreso();
+  limpiarCachesDelReto(reto.id);
   revalidarAdmin(slug);
 }
 
@@ -285,13 +323,24 @@ export async function reiniciarReto(slug: string): Promise<void> {
 // Posición (DT-006 capa 2: descartar cualquier punto del histórico)
 // ---------------------------------------------------------------------------
 
+/**
+ * Solo puede descartar posiciones del intento activo del reto — el único
+ * histórico que muestra la pestaña Posición.
+ */
 export async function descartarPosicion(slug: string, id: number): Promise<void> {
   await requerirSesion();
-  const supabase = getSupabaseAdmin();
+  const reto = await requerirReto(slug);
+  const intentoId = await obtenerIdIntentoActivo(reto.id);
+  if (intentoId === null) throw new Error("No hay ningún intento activo en este reto.");
 
-  const { error } = await supabase.from("posiciones").update({ descartado: true }).eq("id", id);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("posiciones")
+    .update({ descartado: true })
+    .eq("id", id)
+    .eq("intento_id", intentoId);
   if (error) throw new Error("No se pudo descartar la posición.");
-  limpiarCacheProgreso();
+  limpiarCachesDelReto(reto.id);
   revalidarAdmin(slug);
 }
 
@@ -301,9 +350,10 @@ export async function descartarPosicion(slug: string, id: number): Promise<void>
 
 export async function eliminarIntencion(slug: string, id: number): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { error } = await supabase.from("intenciones").delete().eq("id", id);
+  const { error } = await supabase.from("intenciones").delete().eq("id", id).eq("reto_id", reto.id);
   if (error) throw new Error("No se pudo eliminar la intención.");
   revalidarAdmin(slug);
 }
@@ -314,27 +364,38 @@ export async function eliminarIntencion(slug: string, id: number): Promise<void>
 
 export async function ocultarComentario(slug: string, id: number): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { error } = await supabase.from("comentarios").update({ oculto: true }).eq("id", id);
+  const { error } = await supabase
+    .from("comentarios")
+    .update({ oculto: true })
+    .eq("id", id)
+    .eq("reto_id", reto.id);
   if (error) throw new Error("No se pudo ocultar el comentario.");
   revalidarAdmin(slug);
 }
 
 export async function mostrarComentario(slug: string, id: number): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { error } = await supabase.from("comentarios").update({ oculto: false }).eq("id", id);
+  const { error } = await supabase
+    .from("comentarios")
+    .update({ oculto: false })
+    .eq("id", id)
+    .eq("reto_id", reto.id);
   if (error) throw new Error("No se pudo mostrar el comentario.");
   revalidarAdmin(slug);
 }
 
 export async function eliminarComentario(slug: string, id: number): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
-  const { error } = await supabase.from("comentarios").delete().eq("id", id);
+  const { error } = await supabase.from("comentarios").delete().eq("id", id).eq("reto_id", reto.id);
   if (error) throw new Error("No se pudo eliminar el comentario.");
   revalidarAdmin(slug);
 }
@@ -353,8 +414,7 @@ export async function guardarTexto(slug: string, clave: string, valor: string): 
     throw new Error(`Clave de texto desconocida: ${clave}`);
   }
 
-  const reto = await obtenerRetoPorSlug(slug);
-  if (!reto) throw new Error(`Reto '${slug}' no encontrado.`);
+  const reto = await requerirReto(slug);
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
@@ -370,8 +430,8 @@ export async function guardarTexto(slug: string, clave: string, valor: string): 
 // ---------------------------------------------------------------------------
 
 /**
- * Crea una entrada del feed "minuto a minuto" sobre el intento activo.
- * Devuelve el fallo en vez de lanzarlo (DT-017).
+ * Crea una entrada del feed "minuto a minuto" sobre el intento activo del
+ * reto. Devuelve el fallo en vez de lanzarlo (DT-017).
  */
 export async function crearMinutoAMinuto(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
   try {
@@ -391,6 +451,11 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
     return { ok: false, mensaje: "El texto no puede superar 500 caracteres." };
   }
 
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) {
+    return { ok: false, mensaje: "No se ha encontrado el reto." };
+  }
+
   const foto = formData.get("foto");
   let fotoUrl: string | null = null;
   if (foto instanceof File && foto.size > 0) {
@@ -407,26 +472,21 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
 
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo, error: errorBusquedaIntento } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
-
-  if (errorBusquedaIntento || !intentoActivo) {
+  const intentoId = await obtenerIdIntentoActivo(reto.id);
+  if (intentoId === null) {
     return { ok: false, mensaje: "No hay ningún intento activo sobre el que publicar." };
   }
 
-  const cacheProgreso = obtenerCacheProgreso();
+  const cacheProgreso = obtenerCacheProgreso(reto.id);
   let ultimaPosicion = cacheProgreso?.valor.ultimaPosicion ?? null;
   if (!cacheProgreso) {
-    const progresoRecalculado = await calcularProgresoActual();
-    guardarCacheProgreso(progresoRecalculado);
+    const progresoRecalculado = await calcularProgresoActual(reto);
+    guardarCacheProgreso(reto.id, progresoRecalculado);
     ultimaPosicion = progresoRecalculado.ultimaPosicion;
   }
 
   const { error: errorInsercion } = await supabase.from("minuto_a_minuto").insert({
-    intento_id: intentoActivo.id,
+    intento_id: intentoId,
     texto,
     foto_url: fotoUrl,
     lat: ultimaPosicion?.lat ?? null,
@@ -441,7 +501,8 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
 }
 
 /**
- * Corrige solo el texto de una entrada existente.
+ * Corrige solo el texto de una entrada existente del intento activo del reto
+ * (las únicas que muestra la pestaña Minuto a minuto).
  */
 export async function editarMinutoAMinuto(slug: string, id: number, texto: string): Promise<void> {
   await requerirSesion();
@@ -454,24 +515,37 @@ export async function editarMinutoAMinuto(slug: string, id: number, texto: strin
     throw new Error("El texto no puede superar 500 caracteres.");
   }
 
+  const reto = await requerirReto(slug);
+  const intentoId = await obtenerIdIntentoActivo(reto.id);
+  if (intentoId === null) throw new Error("No hay ningún intento activo en este reto.");
+
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("minuto_a_minuto")
     .update({ texto: textoLimpio, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("intento_id", intentoId);
 
   if (error) throw new Error("No se pudo editar la entrada.");
   revalidarAdmin(slug);
 }
 
 /**
- * Hard delete, igual que `intenciones`.
+ * Hard delete, igual que `intenciones`. Solo entradas del intento activo del
+ * reto.
  */
 export async function eliminarMinutoAMinuto(slug: string, id: number): Promise<void> {
   await requerirSesion();
-  const supabase = getSupabaseAdmin();
+  const reto = await requerirReto(slug);
+  const intentoId = await obtenerIdIntentoActivo(reto.id);
+  if (intentoId === null) throw new Error("No hay ningún intento activo en este reto.");
 
-  const { error } = await supabase.from("minuto_a_minuto").delete().eq("id", id);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("minuto_a_minuto")
+    .delete()
+    .eq("id", id)
+    .eq("intento_id", intentoId);
   if (error) throw new Error("No se pudo eliminar la entrada.");
   revalidarAdmin(slug);
 }
@@ -481,16 +555,18 @@ export async function eliminarMinutoAMinuto(slug: string, id: number): Promise<v
 // ---------------------------------------------------------------------------
 
 /**
- * Adelanta `config_trafico.cuenta_desde` a ahora.
+ * Adelanta `config_trafico.cuenta_desde` del reto a ahora. Upsert por
+ * `reto_id` (unique en BD): si el reto todavía no tiene fila de
+ * configuración, se crea en vez de no hacer nada.
  */
 export async function resetearContadorTrafico(slug: string): Promise<void> {
   await requerirSesion();
+  const reto = await requerirReto(slug);
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase
     .from("config_trafico")
-    .update({ cuenta_desde: new Date().toISOString() })
-    .eq("id", 1);
+    .upsert({ reto_id: reto.id, cuenta_desde: new Date().toISOString() }, { onConflict: "reto_id" });
 
   if (error) throw new Error("No se pudo resetear el contador de tráfico.");
   revalidarAdmin(slug);

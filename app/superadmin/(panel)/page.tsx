@@ -2,8 +2,10 @@
 // Listado de todos los retos (activos e inactivos) + formulario de creación.
 // Edición inline: pasar ?edit=<id> en la URL muestra el formulario de edición
 // para ese reto; el servidor renderiza el estado sin necesidad de JS de cliente.
+// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028).
 
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { RUTAS_PREDEFINIDAS } from "@/lib/rutas/catalogo";
 import { listarTodosLosRetos } from "@/lib/supabase/retos";
@@ -23,7 +25,7 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
   const sp = await searchParams;
   const editarId = sp.edit ? Number(sp.edit) : null;
 
-  const retos = await listarTodosLosRetos();
+  const [retos, origen] = await Promise.all([listarTodosLosRetos(), obtenerOrigenPeticion()]);
 
   // Acción de logout: redirige al login tras borrar la cookie.
   async function logout() {
@@ -62,6 +64,7 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
                   key={reto.id}
                   reto={reto}
                   modoEdicion={editarId === reto.id}
+                  urlTracker={urlTrackerDelReto(origen, reto.slug)}
                 />
               ))}
             </div>
@@ -79,10 +82,45 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
 }
 
 // ---------------------------------------------------------------------------
+// URL del tracker GPS (FP2.5, DT-028)
+// ---------------------------------------------------------------------------
+
+/**
+ * Origen (`https://host`) de la petición actual, para mostrar la URL completa
+ * del tracker. Null si no se puede determinar (sin cabecera Host válida): en
+ * ese caso se muestra la ruta relativa. Solo se usa para mostrar texto en un
+ * panel autenticado, nunca para redirigir ni construir enlaces.
+ */
+async function obtenerOrigenPeticion(): Promise<string | null> {
+  const cabeceras = await headers();
+  const host = cabeceras.get("x-forwarded-host") ?? cabeceras.get("host");
+  if (!host || !/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return null;
+  const protocolo = cabeceras.get("x-forwarded-proto") === "http" ? "http" : "https";
+  return `${protocolo}://${host}`;
+}
+
+/**
+ * URL que hay que configurar en OwnTracks para el reto: `/api/track` con el
+ * slug en `?reto=`. El token (`t=`) no se muestra: es un secreto global que
+ * vive en la env var `TRACK_TOKEN`.
+ */
+function urlTrackerDelReto(origen: string | null, slug: string): string {
+  return `${origen ?? ""}/api/track?reto=${encodeURIComponent(slug)}`;
+}
+
+// ---------------------------------------------------------------------------
 // Componente de tarjeta de reto
 // ---------------------------------------------------------------------------
 
-function RetoCard({ reto, modoEdicion }: { reto: Reto; modoEdicion: boolean }) {
+function RetoCard({
+  reto,
+  modoEdicion,
+  urlTracker,
+}: {
+  reto: Reto;
+  modoEdicion: boolean;
+  urlTracker: string;
+}) {
   const editarConId = editarReto.bind(null, reto.id);
 
   return (
@@ -111,6 +149,23 @@ function RetoCard({ reto, modoEdicion }: { reto: Reto; modoEdicion: boolean }) {
             {reto.activo ? "activo" : "inactivo"}
           </span>
         </div>
+      </div>
+
+      {/* URL del GPS para OwnTracks (solo lectura) */}
+      <div className="mt-2">
+        <p className="text-[12px] font-medium" style={{ color: C.gris }}>
+          URL del GPS (OwnTracks)
+        </p>
+        <code
+          className="mt-0.5 block select-all break-all rounded-md px-2 py-1 font-mono text-[12.5px]"
+          style={{ background: C.paper }}
+        >
+          {urlTracker}
+        </code>
+        <p className="mt-0.5 text-[12px]" style={{ color: C.gris }}>
+          Añade <span className="font-mono">&amp;t=</span> seguido del valor de{" "}
+          <span className="font-mono">TRACK_TOKEN</span>.
+        </p>
       </div>
 
       {/* Acciones */}

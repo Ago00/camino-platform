@@ -1,6 +1,8 @@
 /**
- * calcularProgresoActual(): calcula el `ProgresoPublico` del intento activo
- * en este preciso momento — consulta el intento activo (con compatibilidad
+ * calcularProgresoActual(reto): calcula el `ProgresoPublico` del intento
+ * activo DE ESE RETO en este preciso momento (FP2.5, DT-028: filtra por
+ * `reto.id` y usa la traza de `reto.ruta_id`; si el reto no tiene ruta, el
+ * progreso se mide como modo libre) — consulta el intento activo (con compatibilidad
  * temporal si la migración `0003_modo_intento.sql` todavía no está aplicada,
  * ver `DEBT.md`), trae el histórico completo de posiciones (paginado, DT-018;
  * ambos modos desde CURRENT.md/DT-020 — ver nota de cierre de DT-018 en
@@ -33,7 +35,8 @@ import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
-import type { Posicion, ProgresoPublico } from "@/lib/types";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
+import type { Posicion, ProgresoPublico, Reto } from "@/lib/types";
 
 interface IntentoActivoConModo {
   id: number;
@@ -79,26 +82,30 @@ interface IntentoActivoConModo {
  *   misma caché compartida TTL 20 s que ya paga modo guiado
  *   (`lib/progreso-cache.ts`, DT-007).
  */
-export async function calcularProgresoActual(): Promise<ProgresoPublico> {
+export async function calcularProgresoActual(
+  reto: Pick<Reto, "id" | "ruta_id">
+): Promise<ProgresoPublico> {
   const supabase = getSupabasePublic();
 
-  const { data: intentoActivo, error: errorIntento } = await supabase
-    .from("intentos")
-    .select("id, modo, destino_lat, destino_lon")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error: errorIntento } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, modo, destino_lat, destino_lon"),
+    reto.id
+  ).maybeSingle();
 
   const intento: IntentoActivoConModo | null = errorIntento
-    ? await obtenerIntentoActivoModoGuiado(supabase)
+    ? await obtenerIntentoActivoModoGuiado(supabase, reto.id)
     : intentoActivo;
 
   if (!intento) {
-    return progresoVacio();
+    return progresoVacio(reto.ruta_id);
   }
 
   const historico = await obtenerHistoricoCompleto(supabase, intento.id);
 
-  if (intento.modo === "libre") {
+  // Un reto sin ruta (ruta libre, `ruta_id` null) no tiene traza sobre la que
+  // proyectar: aunque el intento se iniciara en modo "guiado" (el default de
+  // BD), solo se puede medir como modo libre.
+  if (intento.modo === "libre" || reto.ruta_id === null) {
     const destino =
       intento.destino_lat !== null && intento.destino_lon !== null
         ? { lat: intento.destino_lat, lon: intento.destino_lon }
@@ -106,8 +113,7 @@ export async function calcularProgresoActual(): Promise<ProgresoPublico> {
     return calcularProgresoLibre(historico, destino);
   }
 
-  // FP1: obtener rutaId del reto activo en vez de hardcodear.
-  const traza = cargarTrazaDeCalculo("portuguesa-110");
+  const traza = cargarTrazaDeCalculo(reto.ruta_id);
   const progreso = calcularProgreso(historico, traza);
 
   return aProgresoPublico(progreso);
@@ -146,19 +152,22 @@ export async function obtenerHistoricoCompleto(
  * inexistentes, y trata el intento como modo 'guiado' sin destino.
  */
 async function obtenerIntentoActivoModoGuiado(
-  supabase: ReturnType<typeof getSupabasePublic>
+  supabase: ReturnType<typeof getSupabasePublic>,
+  retoId: number
 ): Promise<IntentoActivoConModo | null> {
-  const { data } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    retoId
+  ).maybeSingle();
 
   return data ? { id: data.id, modo: "guiado", destino_lat: null, destino_lon: null } : null;
 }
 
-function progresoVacio(): ProgresoPublico {
-  // FP1: obtener rutaId del reto activo en vez de hardcodear.
-  const traza = cargarTrazaDeCalculo("portuguesa-110");
+/** Progreso en cero; en modo libre si el reto no tiene ruta (no hay traza). */
+function progresoVacio(rutaId: string | null): ProgresoPublico {
+  if (rutaId === null) {
+    return calcularProgresoLibre([], null);
+  }
+  const traza = cargarTrazaDeCalculo(rutaId);
   return aProgresoPublico(calcularProgreso([], traza));
 }

@@ -1,10 +1,12 @@
 // Panel admin bajo ruta dinámica /:slug/admin (DT-026, FP1).
 // Idéntico en UI al panel anterior (app/admin/page.tsx), pero recibe el
 // slug desde los params y lo pasa a todas las secciones para que puedan
-// usarlo en sus Server Actions.
+// usarlo en sus Server Actions. Desde FP2.5 (DT-028) también les pasa el
+// `reto` resuelto para que cada sección lea solo los datos de ese reto.
 
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 import {
   esFaseTraficoValida,
   esFiltroComentarioValido,
@@ -42,6 +44,11 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
     redirect(`/admin/login?returnTo=/${slug}/admin`);
   }
 
+  // El layout ya validó el slug (consulta deduplicada con React.cache). Cada
+  // sección recibe el reto resuelto y filtra sus datos por él (FP2.5, DT-028).
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) notFound();
+
   const sp = await searchParams;
   const tab: TabAdmin = esTabValida(sp.tab ?? null) ? (sp.tab as TabAdmin) : "actividad";
   const posOffset = numeroDesdeQuery(sp.posOffset);
@@ -63,14 +70,14 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
         <TabsAdmin activa={tab} />
 
         <main className="mt-5">
-          {tab === "actividad" && <SeccionActividad slug={slug} />}
-          {tab === "posicion" && <SeccionPosicion offset={posOffset} slug={slug} />}
-          {tab === "mapa" && <SeccionMapa />}
-          {tab === "intenciones" && <SeccionIntenciones offset={intOffset} slug={slug} />}
-          {tab === "comentarios" && <SeccionComentarios filtro={filtroComentarios} slug={slug} />}
-          {tab === "minutoaminuto" && <SeccionMinutoAMinuto slug={slug} />}
-          {tab === "trafico" && <SeccionTrafico granularidad={granularidad} faseQuery={faseTraficoQuery} slug={slug} />}
-          {tab === "textos" && <SeccionTextos slug={slug} />}
+          {tab === "actividad" && <SeccionActividad reto={reto} slug={slug} />}
+          {tab === "posicion" && <SeccionPosicion reto={reto} offset={posOffset} slug={slug} />}
+          {tab === "mapa" && <SeccionMapa reto={reto} />}
+          {tab === "intenciones" && <SeccionIntenciones reto={reto} offset={intOffset} slug={slug} />}
+          {tab === "comentarios" && <SeccionComentarios reto={reto} filtro={filtroComentarios} slug={slug} />}
+          {tab === "minutoaminuto" && <SeccionMinutoAMinuto reto={reto} slug={slug} />}
+          {tab === "trafico" && <SeccionTrafico reto={reto} granularidad={granularidad} faseQuery={faseTraficoQuery} slug={slug} />}
+          {tab === "textos" && <SeccionTextos reto={reto} slug={slug} />}
         </main>
       </div>
     </div>

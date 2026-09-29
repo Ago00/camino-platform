@@ -18,6 +18,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import type { Feature, LineString } from "geojson";
+import { esRutaPredefinida } from "@/lib/rutas/catalogo";
 
 const trazaMapaCache = new Map<string, [number, number][]>();
 
@@ -31,6 +32,7 @@ export function cargarTrazaDeMapa(rutaId: string): [number, number][] {
   const cacheada = trazaMapaCache.get(rutaId);
   if (cacheada) return cacheada;
 
+  if (!esRutaPredefinida(rutaId)) throw new Error(`Ruta desconocida: '${rutaId}'`);
   const rutaFichero = join(process.cwd(), "lib", "rutas", rutaId, "traza-mapa.geojson");
   const geojsonRaw = readFileSync(rutaFichero, "utf-8");
   const geojson = JSON.parse(geojsonRaw) as {

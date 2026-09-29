@@ -12,6 +12,10 @@
  * la siguiente petición; no invalida retroactivamente un valor ya guardado
  * aquí, así que los lectores de esta caché (como `crearMinutoAMinuto`) no
  * comprueban el TTL, solo si hay algo escrito.
+ *
+ * Una entrada por reto (FP2.5, DT-028): cada reto tiene su propio intento
+ * activo y su propio progreso. Con un único hueco global, dos retos en marcha
+ * a la vez se pisarían y la web de uno serviría el progreso del otro.
  */
 
 import type { ProgresoPublico } from "@/lib/types";
@@ -23,8 +27,8 @@ export const CACHE_TTL_MS = 20_000;
  * mandando GPS), así que no tiene sentido recalcular sobre el histórico
  * completo de `posiciones` cada 20 s indefinidamente. Las acciones de admin
  * que sí pueden invalidar ese resultado (retomar el reto, reiniciar,
- * descartar una posición) llaman a `limpiarCacheProgreso()` explícitamente
- * (app/admin/actions.ts), así que este TTL puede ser generoso sin arriesgar
+ * descartar una posición) llaman a `limpiarCacheProgreso(retoId)` explícitamente
+ * (app/[slug]/admin/actions.ts), así que este TTL puede ser generoso sin arriesgar
  * mostrar un dato desactualizado tras esas acciones.
  */
 export const CACHE_TTL_LLEGADA_MS = 6 * 60 * 60 * 1000;
@@ -34,17 +38,24 @@ export interface EntradaCacheProgreso {
   valor: ProgresoPublico;
 }
 
-let cache: EntradaCacheProgreso | null = null;
+const cachePorReto = new Map<number, EntradaCacheProgreso>();
 
-export function obtenerCacheProgreso(): EntradaCacheProgreso | null {
-  return cache;
+export function obtenerCacheProgreso(retoId: number): EntradaCacheProgreso | null {
+  return cachePorReto.get(retoId) ?? null;
 }
 
-export function guardarCacheProgreso(valor: ProgresoPublico): void {
-  cache = { timestamp: Date.now(), valor };
+export function guardarCacheProgreso(retoId: number, valor: ProgresoPublico): void {
+  cachePorReto.set(retoId, { timestamp: Date.now(), valor });
 }
 
-/** Invalidable en tests: fuerza el recálculo/lectura en fresco siguiente. */
-export function limpiarCacheProgreso(): void {
-  cache = null;
+/**
+ * Fuerza el recálculo/lectura en fresco siguiente del reto indicado. Sin
+ * argumento vacía la caché de todos los retos (uso en tests).
+ */
+export function limpiarCacheProgreso(retoId?: number): void {
+  if (retoId === undefined) {
+    cachePorReto.clear();
+    return;
+  }
+  cachePorReto.delete(retoId);
 }

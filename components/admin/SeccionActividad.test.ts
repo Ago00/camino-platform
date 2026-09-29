@@ -21,6 +21,8 @@ interface IntentoConFotoMock {
 let dataConFotoMock: IntentoConFotoMock | null = null;
 let errorConFotoMock: { message: string } | null = null;
 let dataSinFotoMock: Omit<IntentoConFotoMock, "foto_llegada_url"> | null = null;
+const eqIntentosSpy = vi.fn();
+const RETO_ID = 5;
 
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => ({
@@ -28,7 +30,10 @@ vi.mock("@/lib/supabase/admin", () => ({
       if (tabla !== "intentos") throw new Error(`Tabla no mockada: ${tabla}`);
       return {
         select: vi.fn((columnas: string) => ({
-          eq: vi.fn().mockReturnThis(),
+          eq: vi.fn(function (this: unknown, columna: string, valor: unknown) {
+            eqIntentosSpy(columna, valor);
+            return this;
+          }),
           maybeSingle: vi.fn().mockResolvedValue(
             columnas.includes("foto_llegada_url")
               ? { data: dataConFotoMock, error: errorConFotoMock }
@@ -46,6 +51,7 @@ beforeEach(() => {
   dataConFotoMock = null;
   errorConFotoMock = null;
   dataSinFotoMock = null;
+  eqIntentosSpy.mockClear();
 });
 
 describe("obtenerIntentoActividad()", () => {
@@ -58,7 +64,7 @@ describe("obtenerIntentoActividad()", () => {
       foto_llegada_url: "https://example.com/llegada.jpg",
     };
 
-    const resultado = await obtenerIntentoActividad();
+    const resultado = await obtenerIntentoActividad(RETO_ID);
 
     expect(resultado).toEqual(dataConFotoMock);
   });
@@ -72,7 +78,7 @@ describe("obtenerIntentoActividad()", () => {
       mensaje_llegada: "¡Llegamos!",
     };
 
-    const resultado = await obtenerIntentoActividad();
+    const resultado = await obtenerIntentoActividad(RETO_ID);
 
     expect(resultado).toEqual({
       id: 3,
@@ -87,7 +93,7 @@ describe("obtenerIntentoActividad()", () => {
     errorConFotoMock = { message: "column intentos.foto_llegada_url does not exist" };
     dataSinFotoMock = null;
 
-    const resultado = await obtenerIntentoActividad();
+    const resultado = await obtenerIntentoActividad(RETO_ID);
 
     expect(resultado).toBeNull();
   });
@@ -96,8 +102,23 @@ describe("obtenerIntentoActividad()", () => {
     dataConFotoMock = null;
     errorConFotoMock = null;
 
-    const resultado = await obtenerIntentoActividad();
+    const resultado = await obtenerIntentoActividad(RETO_ID);
 
     expect(resultado).toBeNull();
+  });
+});
+
+describe("obtenerIntentoActividad() — aislamiento por reto (FP2.5, DT-028)", () => {
+  it("filtra el intento activo por el reto del panel, también en el select de fallback", async () => {
+    errorConFotoMock = { message: "column intentos.foto_llegada_url does not exist" };
+
+    await obtenerIntentoActividad(RETO_ID);
+
+    const filtrosPorReto = eqIntentosSpy.mock.calls.filter(([columna]) => columna === "reto_id");
+    expect(filtrosPorReto).toEqual([
+      ["reto_id", RETO_ID],
+      ["reto_id", RETO_ID],
+    ]);
+    expect(eqIntentosSpy).toHaveBeenCalledWith("cerrado", false);
   });
 });

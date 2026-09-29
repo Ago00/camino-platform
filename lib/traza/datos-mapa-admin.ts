@@ -14,6 +14,9 @@
  * "guiado"/"libre" de `ModoIntento`) para cuando no hay ningún intento activo
  * — mismo criterio que ya usa `SeccionPosicion.tsx` ("No hay ningún intento
  * activo."), aquí como valor tipado en vez de JSX condicional.
+ *
+ * Opera sobre el reto del panel (FP2.5, DT-028): intento activo filtrado por
+ * `reto.id` y trazas de `reto.ruta_id`.
  */
 
 import { getSupabaseAdmin, type BaseDeDatos } from "@/lib/supabase/admin";
@@ -23,7 +26,8 @@ import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { cargarTrazaDeMapa } from "@/lib/traza/cargar-traza-mapa";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
-import type { ModoIntento } from "@/lib/types";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
+import type { ModoIntento, Reto } from "@/lib/types";
 
 interface PuntoLatLon {
   lat: number;
@@ -58,17 +62,18 @@ interface IntentoActivoConModo {
  * 'guiado' — mismo patrón ya usado en `app/page.tsx` y
  * `lib/traza/progreso-actual.ts`.
  */
-export async function obtenerDatosMapaAdmin(): Promise<DatosMapaAdmin> {
+export async function obtenerDatosMapaAdmin(
+  reto: Pick<Reto, "id" | "ruta_id">
+): Promise<DatosMapaAdmin> {
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo, error } = await supabase
-    .from("intentos")
-    .select("id, modo")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo, error } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, modo"),
+    reto.id
+  ).maybeSingle();
 
   const intento: IntentoActivoConModo | null = error
-    ? await obtenerIntentoActivoModoGuiado(supabase)
+    ? await obtenerIntentoActivoModoGuiado(supabase, reto.id)
     : intentoActivo;
 
   if (!intento) {
@@ -78,7 +83,10 @@ export async function obtenerDatosMapaAdmin(): Promise<DatosMapaAdmin> {
   const historico = await obtenerHistoricoCompleto(supabase, intento.id);
   const trazaReal: PuntoLatLon[] = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
 
-  if (intento.modo === "libre") {
+  // Sin ruta en el reto no hay traza oficial que pintar ni sobre la que
+  // proyectar: se muestra como modo libre (mismo criterio que
+  // `calcularProgresoActual`).
+  if (intento.modo === "libre" || reto.ruta_id === null) {
     const progresoLibre = calcularProgresoLibre(historico, null);
     return {
       modo: "libre",
@@ -89,13 +97,12 @@ export async function obtenerDatosMapaAdmin(): Promise<DatosMapaAdmin> {
     };
   }
 
-  // FP1: obtener rutaId del reto activo en vez de hardcodear.
-  const traza = cargarTrazaDeCalculo("portuguesa-110");
+  const traza = cargarTrazaDeCalculo(reto.ruta_id);
   const progreso = calcularProgreso(historico, traza);
 
   return {
     modo: "guiado",
-    trazaOficial: cargarTrazaDeMapa("portuguesa-110"),
+    trazaOficial: cargarTrazaDeMapa(reto.ruta_id),
     trazaReal,
     posicionActual: progreso.ultimaPosicion
       ? { lat: progreso.ultimaPosicion.lat, lon: progreso.ultimaPosicion.lon }
@@ -105,13 +112,13 @@ export async function obtenerDatosMapaAdmin(): Promise<DatosMapaAdmin> {
 }
 
 async function obtenerIntentoActivoModoGuiado(
-  supabase: SupabaseClient<BaseDeDatos>
+  supabase: SupabaseClient<BaseDeDatos>,
+  retoId: number
 ): Promise<IntentoActivoConModo | null> {
-  const { data } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    retoId
+  ).maybeSingle();
 
   return data ? { id: data.id, modo: "guiado" } : null;
 }

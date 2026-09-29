@@ -54,7 +54,7 @@ pero solo uno activo a la vez.
 | `foto_llegada_url` | text | Foto opcional de llegada (DT-024). URL pública del bucket `minuto-a-minuto` (prefijo `llegada-` en el nombre del objeto). `null` = sin foto |
 | `created_at` | timestamptz | Automático |
 
-**Invariante crítico:** `CREATE UNIQUE INDEX intentos_activo_unico ON intentos ((true)) WHERE NOT cerrado` — solo un intento abierto a la vez. La BD lo garantiza, no solo el código.
+**Invariante crítico:** `CREATE UNIQUE INDEX intentos_abierto_por_reto ON intentos (reto_id) WHERE NOT cerrado` — como mucho un intento abierto **por reto** (migración `0009_intento_abierto_por_reto.sql`, FP2.5/DT-028; sustituye al antiguo `intentos_activo_unico ON intentos ((true))`, que limitaba a uno en todo el sistema). La BD lo garantiza, no solo el código: toda búsqueda del intento activo filtra por `reto_id` (`lib/supabase/intentos.ts`).
 
 **Invariante de modo (DT-016):** `modo` se escribe una sola vez, en la transición `antes` → `durante` (`iniciarReto()`, `app/admin/actions.ts`). Ningún otro código de la app actualiza esta columna — no hay ninguna vía para cambiar el modo de un intento ya iniciado salvo "Reiniciar" (que cierra el intento actual y abre uno nuevo con `modo` en su default `'guiado'` hasta el siguiente Iniciar). `destino_lat`/`destino_lon` solo se escriben junto con `modo = 'libre'`; en modo guiado la actualización de `iniciarReto()` ni siquiera incluye esas dos columnas en el `UPDATE`, así que quedan en su default de BD (`null`).
 

@@ -3,19 +3,20 @@
 // que SeccionComentarios.tsx (Server Component que pide sus propios datos).
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
+import type { Reto } from "@/lib/types";
 import ComposerMinutoAMinuto from "@/components/admin/ComposerMinutoAMinuto";
 import EntradaMinutoAMinuto from "@/components/admin/EntradaMinutoAMinuto";
 
 const C = { muted: "#4A5450" };
 
-export default async function SeccionMinutoAMinuto({ slug }: { slug: string }) {
+export default async function SeccionMinutoAMinuto({ reto, slug }: { reto: Reto; slug: string }) {
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    reto.id
+  ).maybeSingle();
 
   const entradas = intentoActivo
     ? ((

@@ -4,21 +4,29 @@
 // pagina por querystring ?posOffset= propia (no colisiona con ?tab=).
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import type { Posicion } from "@/lib/types";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
+import type { Posicion, Reto } from "@/lib/types";
 import DescartarPosicionBoton from "@/components/admin/DescartarPosicionBoton";
 import EnlacePaginacion from "@/components/admin/EnlacePaginacion";
 
 const TAMANO_PAGINA = 20;
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
-export default async function SeccionPosicion({ offset, slug }: { offset: number; slug: string }) {
+export default async function SeccionPosicion({
+  reto,
+  offset,
+  slug,
+}: {
+  reto: Reto;
+  offset: number;
+  slug: string;
+}) {
   const supabase = getSupabaseAdmin();
 
-  const { data: intentoActivo } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    reto.id
+  ).maybeSingle();
 
   if (!intentoActivo) {
     return (

@@ -2,15 +2,20 @@
  * GET /[slug]/api/minuto-a-minuto — feed público del "minuto a minuto".
  *
  * Carga paginada (offset/limit) + poll incremental (despuesDeId).
- * Comportamiento idéntico al anterior app/api/minuto-a-minuto/route.ts:
- * la RLS de `minuto_a_minuto` ya filtra por el intento activo, no hace
- * falta filtrar por slug en el código (DT-026, FP1).
+ *
+ * El slug se resuelve a un reto (404 si no existe) y el feed se limita a las
+ * entradas del intento activo de ESE reto (FP2.5, DT-028). Antes se confiaba
+ * en que la RLS de `minuto_a_minuto` filtrara por "el" intento activo, lo que
+ * con varios retos con intento abierto mezclaba los feeds de todos. Sin
+ * intento activo en el reto, el feed está vacío.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import { getSupabasePublic } from "@/lib/supabase/public";
+import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 
 export const runtime = "nodejs";
 
@@ -28,7 +33,8 @@ const queryFeed = z.object({
 });
 
 export async function GET(
-  request: NextRequest
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
   if (!consumir(obtenerIpCliente(request), LIMITE_GET_POR_MINUTO, VENTANA_MS)) {
     return new NextResponse(null, { status: 429 });
@@ -44,13 +50,33 @@ export async function GET(
     return NextResponse.json({ error: "parámetros inválidos" }, { status: 400 });
   }
 
+  const { slug } = await params;
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) {
+    return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
+  }
+
   const { offset, limit, despuesDeId } = parsed.data;
   const supabase = getSupabasePublic();
+
+  const { data: intentoActivo, error: errorIntento } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id"),
+    reto.id
+  ).maybeSingle();
+
+  if (errorIntento) {
+    return NextResponse.json({ error: "no se pudo consultar el feed" }, { status: 500 });
+  }
+
+  if (!intentoActivo) {
+    return NextResponse.json({ entradas: [], siguienteOffset: null });
+  }
 
   if (despuesDeId !== undefined) {
     const { data, error } = await supabase
       .from("minuto_a_minuto")
       .select(CAMPOS_PUBLICOS)
+      .eq("intento_id", intentoActivo.id)
       .gt("id", despuesDeId)
       .order("created_at", { ascending: false })
       .limit(LIMITE_POLL);
@@ -65,6 +91,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("minuto_a_minuto")
     .select(CAMPOS_PUBLICOS)
+    .eq("intento_id", intentoActivo.id)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 

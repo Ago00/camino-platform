@@ -1,195 +1,77 @@
-# Tarea en curso — FP2: Superadmin y gestión de retos
+# Tarea en curso — FP2.5: Aislamiento de datos por reto
+
+> La tarea anterior (FP2, superadmin) estaba cerrada y sin archivar en este
+> fichero; el Implementador la copió tal cual a
+> `docs/tareas/historico/2026-09-29-fp2-superadmin.md` antes de sobrescribir.
 
 ## Decisión técnica
 
-**DT-027** (`docs/tecnico/decisiones-tecnicas.md`). Panel `/superadmin` con auth propia paralela al admin (módulo `lib/auth/superadmin-session.ts`, cookie `superadmin_session`, env var `SUPERADMIN_PASSWORD`, secreto de firma compartido con `ADMIN_SESSION_SECRET`). CRUD de retos en `app/superadmin/actions.ts`. `app/page.tsx` pasa a ser server component que lista retos `activo = true`. Proxy protege `/superadmin/*` igual que ya protege `/:slug/admin/*`.
+**DT-028** (`docs/tecnico/decisiones-tecnicas.md`). Todas las lecturas y escrituras de la web pública, el panel admin, sus APIs y `/api/track` quedan acotadas al reto del slug. Migración `0009` (un intento abierto por reto), helper del intento activo por reto, cachés por reto, `/api/track?reto=<slug>` (opción B elegida por el usuario) y URL del GPS en el panel superadmin.
 
-## Alcance exacto de FP2
+## Problema
 
-### 1. Módulo de sesión del superadmin
+Las tablas tienen `reto_id` (o cuelgan de `intentos`), pero muchas consultas no filtraban por reto: `.from("intentos")...eq("cerrado", false).maybeSingle()` sin `reto_id`, textos/comentarios/intenciones/visitas sin filtro, borrados solo por id, cachés de un único hueco, `"portuguesa-110"` hardcodeado. En BD, `intentos_activo_unico ON intentos ((true)) WHERE NOT cerrado` limitaba a un intento abierto en todo el sistema.
 
-**`lib/auth/superadmin-session.ts`** (nuevo):
-- Espeja `lib/auth/admin-session.ts` en su totalidad
-- `NOMBRE_COOKIE_SUPERADMIN_SESION = "superadmin_session"`
-- `crearSesionSuperadmin()` y `verificarSesionSuperadmin()`
-- Firma HMAC con `ADMIN_SESSION_SECRET`
-- Test: `lib/auth/superadmin-session.test.ts` — mismos casos que `admin-session.test.ts`
+## Decisiones aprobadas
 
-### 2. API de login del superadmin
+1. Migración `supabase/migrations/0009_intento_abierto_por_reto.sql`: `drop index if exists intentos_activo_unico; create unique index intentos_abierto_por_reto on intentos (reto_id) where not cerrado;` (sin índice global de "durante").
+2. `/api/track?reto=<slug>`: TRACK_TOKEN global; slug validado (`^[a-z0-9-]+$`), resuelto con `obtenerRetoPorSlug`, intento activo de ESE reto, traza de su `ruta_id` (sin filtro si null). Sin reto o inexistente → `respuestaVacia()` sin guardar.
+3. Panel superadmin: URL del GPS por reto (`<origen>/api/track?reto=<slug>`), solo lectura, seleccionable.
 
-**`app/api/superadmin/login/route.ts`** (nuevo):
-- Espeja `app/api/admin/login/route.ts`
-- Lee `process.env.SUPERADMIN_PASSWORD`
-- Fija cookie `superadmin_session` con `crearSesionSuperadmin()`
-- Mismo rate limiting
-- Test: `app/api/superadmin/login/route.test.ts`
-
-### 3. Página de login del superadmin
-
-**`app/superadmin/login/page.tsx`** (nuevo):
-- Espeja `app/admin/login/page.tsx`
-- Llama a `/api/superadmin/login`
-- `returnTo` por defecto: `/superadmin`
-
-### 4. Layout del superadmin
-
-**`app/superadmin/layout.tsx`** (nuevo):
-- Server Component
-- Verifica `superadmin_session` con `verificarSesionSuperadmin()`
-- Si inválida: `redirect('/superadmin/login')`
-
-### 5. `lib/supabase/retos.ts` — nuevas funciones
-
-**Añadir:**
-- `listarRetosActivos(): Promise<Reto[]>` — `WHERE activo = true ORDER BY created_at DESC`; para `app/page.tsx`
-- `listarTodosLosRetos(): Promise<Reto[]>` — `ORDER BY created_at DESC`; para `app/superadmin/page.tsx`
-- Ambas usan cliente público (no admin)
-
-### 6. Panel del superadmin
-
-**`app/superadmin/page.tsx`** (nuevo):
-- Server Component
-- Llama a `listarTodosLosRetos()` — lista todos (activos e inactivos)
-- Por cada reto: slug (inmutable), nombre, ruta_tipo, activo (badge), botones Editar / Eliminar
-- Formulario "Crear reto nuevo": slug, nombre, descripción, ruta_tipo, ruta_id
-- Botón "Cerrar sesión"
-- Estilo funcional idéntico al admin normal
-
-### 7. Server Actions del superadmin
-
-**`app/superadmin/actions.ts`** (nuevo):
-
-Función interna `requerirSesionSuperadmin()` — lanza si sesión inválida.
-
-**`crearReto(formData: FormData)`**:
-- Valida con zod: slug (`^[a-z0-9-]+$`, max 60), nombre (1-100), descripcion, ruta_tipo, ruta_id (requerido si predefinida)
-- INSERT en `retos` con `activo: true`
-- Captura `id` del reto creado
-- INSERT en `intentos` con `{ fase: "antes", reto_id: id }`
-- `revalidatePath('/superadmin')` + `revalidatePath('/')`
-
-**`editarReto(id: number, formData: FormData)`**:
-- Mismas validaciones (sin slug — inmutable)
-- UPDATE `retos WHERE id = $id`
-- `revalidatePath('/superadmin')` + `revalidatePath('/')` + `revalidatePath('/', 'layout')`
-
-**`eliminarReto(id: number)`**:
-- DELETE `retos WHERE id = $id` (cascada en BD)
-- `revalidatePath('/superadmin')` + `revalidatePath('/')`
-
-**`cerrarSesionSuperadmin()`**:
-- `cookies().delete(NOMBRE_COOKIE_SUPERADMIN_SESION)`
-
-### 8. `proxy.ts` — rama superadmin
-
-**Añadir** antes de `proxyPublico`:
-```ts
-if (pathname === '/superadmin' || pathname.startsWith('/superadmin/')) {
-  return proxySuperAdmin(request);
-}
-```
-
-**`proxySuperAdmin()`**: misma lógica que `proxyAdmin` pero con `superadmin_session` y redirect a `/superadmin/login`. No registra visita.
-
-### 9. `app/page.tsx` — listado dinámico
-
-- Server Component (eliminar el `redirect` estático)
-- Llama a `listarRetosActivos()`
-- Si vacío: "No hay retos activos en este momento."
-- Si hay retos: lista con links `<a href="/${reto.slug}">{reto.nombre}</a>`
-
-### 10. Migración de BD
-
-Verificar que las FK de `retos.id` en las tablas hijas tienen `ON DELETE CASCADE`. Si no, crear `supabase/migrations/0008_cascade_delete.sql`. Confirmar contra Supabase antes de cerrar la tarea.
-
-### 11. Nueva env var de producción
-
-- `SUPERADMIN_PASSWORD` — en Vercel, sin `NEXT_PUBLIC_`
-
-## Archivos a crear
-
-| Archivo | Tipo |
-|---|---|
-| `lib/auth/superadmin-session.ts` | Nuevo |
-| `lib/auth/superadmin-session.test.ts` | Nuevo |
-| `app/api/superadmin/login/route.ts` | Nuevo |
-| `app/api/superadmin/login/route.test.ts` | Nuevo |
-| `app/superadmin/login/page.tsx` | Nuevo |
-| `app/superadmin/layout.tsx` | Nuevo |
-| `app/superadmin/page.tsx` | Nuevo |
-| `app/superadmin/actions.ts` | Nuevo |
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---|---|
-| `lib/supabase/retos.ts` | Añadir `listarRetosActivos` y `listarTodosLosRetos` |
-| `proxy.ts` | Añadir rama `/superadmin/*` con `proxySuperAdmin()` |
-| `app/page.tsx` | Listado dinámico de retos activos |
-
-## Archivos sin cambios
-
-- `lib/types.ts`, `lib/auth/admin-session.ts`, `app/[slug]/admin/actions.ts`
-
-## Quality gates
-
-- `pnpm typecheck` — 0 errores
-- `pnpm lint` — 0 errores
-- `pnpm test` — todos en verde
-- `pnpm build` — build limpio
-- Verificar migración cascade delete en Supabase real
-- Verificación manual: `/` lista retos, `/superadmin` redirige al login, login funciona, CRUD operativo
-
-## Qué NO hace FP2
-
-- No cambia el panel admin normal
-- No añade paginación al listado de retos en superadmin
-- No actualiza caches para multi-reto (deuda FP1)
-
-## Archivos creados/modificados
+## Archivos creados/modificados (Implementador)
 
 | Archivo | Estado |
 |---|---|
-| `lib/auth/superadmin-session.ts` | Creado |
-| `lib/auth/superadmin-session.test.ts` | Creado (12 tests) |
-| `app/api/superadmin/login/route.ts` | Creado |
-| `app/api/superadmin/login/route.test.ts` | Creado (10 tests) |
-| `app/superadmin/login/page.tsx` | Creado |
-| `app/superadmin/(panel)/layout.tsx` | Creado (route group para evitar redirect circular) |
-| `app/superadmin/(panel)/page.tsx` | Creado |
-| `app/superadmin/(panel)/actions.ts` | Creado |
-| `app/superadmin/(panel)/BotonEliminarReto.tsx` | Creado (client component para confirmación) |
-| `lib/supabase/retos.ts` | Modificado: añadidas `listarRetosActivos` y `listarTodosLosRetos` |
-| `lib/supabase/retos.test.ts` | Modificado: añadidos tests para las nuevas funciones (+6 tests) |
-| `proxy.ts` | Modificado: añadida rama `/superadmin/*` con `proxySuperAdmin()` |
-| `app/page.tsx` | Modificado: listado dinámico de retos activos |
-| `supabase/migrations/0008_cascade_delete.sql` | Creado |
+| `supabase/migrations/0009_intento_abierto_por_reto.sql` | Creado (NO aplicado — lo aplica el orquestador) |
+| `lib/supabase/intentos.ts` | Creado: `soloIntentoActivoDelReto(consulta, retoId)` |
+| `lib/fase-actual.ts` | `obtenerFaseActual(retoId)` |
+| `lib/fase-actual.test.ts` | Creado (3 tests) |
+| `lib/progreso-cache.ts`, `lib/historico-cache.ts` | `Map<retoId, Entrada>`; `obtener/guardar(retoId, …)`, `limpiar(retoId?)` |
+| `lib/progreso-cache.test.ts`, `lib/historico-cache.test.ts` | Adaptados + tests de aislamiento |
+| `lib/textos/obtener-textos.ts` (+ test) | `obtenerTextos(retoId)` con `.eq("reto_id")`; test de colisión de clave entre retos |
+| `lib/traza/progreso-actual.ts` (+ test) | `calcularProgresoActual(reto)`; traza de `reto.ruta_id`; sin ruta → libre |
+| `lib/traza/datos-mapa-admin.ts` (+ test) | `obtenerDatosMapaAdmin(reto)`; ídem |
+| `lib/types.ts` | Invariante "un intento abierto por reto" |
+| `app/api/track/route.ts` (+ test) | `?reto=<slug>`; test multi-reto, sin reto, slug inválido/inexistente |
+| `app/[slug]/page.tsx` | Reto → intento/textos/cachés por reto; `notFound()` sin reto; sin traza si `ruta_id` null |
+| `app/[slug]/admin/page.tsx` | Resuelve el reto y lo pasa como prop a cada sección |
+| `app/[slug]/admin/actions.ts` | Reto al inicio; filtros por `reto_id` / intento activo del reto; upsert `config_trafico` por `reto_id` |
+| `app/[slug]/admin/actions.test.ts` | Creado (8 tests) |
+| `app/[slug]/api/fase/route.ts`, `progreso/route.ts`, `minuto-a-minuto/route.ts` | Resuelven reto (404); fase/progreso/feed del reto |
+| `components/admin/Seccion{Actividad,Textos,Posicion,MinutoAMinuto,Comentarios,Intenciones,Mapa,Trafico}.tsx` | Reciben `reto` y filtran por él |
+| `components/admin/SeccionActividad.test.ts` | Adaptado + test de filtro por reto |
+| `app/superadmin/(panel)/page.tsx` | URL del GPS por reto en cada tarjeta |
+| `docs/tecnico/decisiones-tecnicas.md` | DT-028 (con notas de cierre de las desviaciones) |
+| `docs/tecnico/modelo-datos.md`, `docs/tecnico/arquitectura.md` | Invariante del intento abierto por reto |
+| `CHANGELOG.md`, `DEBT.md` | Actualizados |
 
 ## Quality gates
 
 - `pnpm typecheck`: 0 errores
 - `pnpm lint`: 0 errores
-- `pnpm test`: 328 tests en verde (32 ficheros)
-- Migración `0008_cascade_delete.sql`: creada, pendiente de aplicar en Supabase
+- `pnpm test`: 372 tests en verde (35 ficheros)
+- `pnpm build`: OK
+- Migración `0009`: creada, **pendiente de aplicar** en Supabase (orquestador)
 
-## Decisiones de implementación (bloqueos menores resueltos)
+## Decisiones de implementación (bloqueos menores resueltos) — revisar
 
-1. **Route group en lugar de `app/superadmin/layout.tsx`**: el spec indicaba crear el layout directamente en `app/superadmin/layout.tsx`, pero ese layout habría envuelto también `/superadmin/login`, causando un redirect circular. Se usó el patrón Next.js de route groups: `app/superadmin/(panel)/layout.tsx` protege solo el panel, dejando el login fuera del grupo. La URL `/superadmin` no cambia.
+1. **Helper con otra forma:** `soloIntentoActivoDelReto(consulta, retoId)` en vez de `obtenerIntentoActivoDelReto(supabase, retoId, columnas)`. El genérico sobre `select<Columnas>()` hacía que `tsc` agotara la memoria (OOM reproducido). Mismo objetivo, tipado estricto. Documentado en DT-028.
+2. **Reto sin ruta con intento "guiado":** se mide y se muestra como libre (progreso, web pública, mapa admin; sin filtro geográfico en track). Documentado en DT-028; deuda de validar en `iniciarReto` registrada.
+3. **`notFound()`** en `app/[slug]/page.tsx` y `app/[slug]/admin/page.tsx` si el reto no se resuelve (antes la pública caía a `"portuguesa-110"`).
+4. **Caché de histórico** también se invalida en `descartarPosicion` y `reiniciarReto` (antes solo la de progreso).
+5. **`/[slug]/api/minuto-a-minuto`** devuelve 500 si falla la consulta del intento activo, y feed vacío si el reto no tiene intento activo.
+6. **Superadmin:** se muestra la URL sin el token, con una nota "añade `&t=` + `TRACK_TOKEN`" (el token es secreto y no debe renderizarse).
+7. **Acciones de minuto a minuto / posiciones:** si el reto no tiene intento activo, `editar/eliminarMinutoAMinuto` y `descartarPosicion` lanzan error sin tocar BD (solo se pueden gestionar filas del intento activo, que es lo único que muestran las pestañas).
 
-2. **`listarTodosLosRetos` usa cliente admin**: la spec decía "ambas usan cliente público", pero la política RLS de `retos` bloquea retos inactivos al rol anon. `listarTodosLosRetos` necesita verlos para el panel superadmin; se usa el cliente admin. Registrado en DEBT.md.
+## Pendiente operativo tras el merge
 
-3. **`proxySuperAdmin` excluye `/superadmin/login`**: para evitar bucle de redirect, el proxy no verifica sesión si el pathname es `/superadmin/login` — pasa directamente a Next.js.
+- Aplicar `0009` en Supabase y verificar el índice.
+- Reconfigurar OwnTracks con la URL del panel superadmin + `&t=<TRACK_TOKEN>` (sin `?reto=` los puntos se descartan en silencio).
 
 ## Historial de revisión
 
-### Ronda 1 — Reviewer (2026-09-29)
+### Reviewer — 2026-09-29 — APROBADO (pasa a Seguridad)
 
-**Veredicto: BLOQUEANTE**
+Sin bloqueantes. Grep completo de `comentarios/intenciones/textos/intentos/posiciones/minuto_a_minuto/visitas_web/config_trafico` en `app/`, `components/`, `lib/` y `proxy.ts`: toda lectura/escritura filtra por `reto_id` o por el intento activo del reto (las consultas por `intento_id` usan ids obtenidos del intento activo del reto). Cachés por reto correctas; sin estado de módulo compartido salvo rate-limit (ya en DEBT). Migración 0009 correcta. Desviaciones 1–7 aceptadas.
 
-Bloqueante: `docs/tecnico/decisiones-tecnicas.md` — DT-027 no documentaba las dos desviaciones de implementación (route group `(panel)` y cliente admin en `listarTodosLosRetos`). Violación de la regla de LESSONS.md sobre desviaciones conscientes.
-
-### Ronda 2 — Reviewer (2026-09-29)
-
-**Veredicto: APROBADO**
-
-Bloqueante resuelto. La sección "Desviaciones de implementación" añadida al final de DT-027 documenta ambas desviaciones con contexto completo. La lista de archivos en "Estructura de archivos resultante" también fue corregida para reflejar el route group real. No quedan bloqueantes.
+Recomendaciones (registradas en DEBT.md): invalidar cachés del reto en `iniciarReto` y `editarReto` (superadmin); ampliar `actions.test.ts` (mostrarComentario, editarMinutoAMinuto, guardarTexto, transiciones, invalidación de caché solo del reto propio); comentario obsoleto en `lib/supabase/admin.ts:75-76`.

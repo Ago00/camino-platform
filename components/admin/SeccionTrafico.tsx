@@ -10,6 +10,9 @@
 // activo, el más reciente) — con `lib/trafico/fases.ts`. La granularidad
 // (5 min/30 min/1 h, ?gran=) y la fase mostrada (?fase=) llegan como query
 // string, mismo patrón que el resto del panel.
+//
+// Todo va acotado al reto del panel (FP2.5, DT-028): intentos, visitas y
+// `config_trafico` se filtran por `reto_id`.
 
 import Link from "next/link";
 import { resetearContadorTrafico } from "@/app/[slug]/admin/actions";
@@ -25,7 +28,8 @@ import {
   type IntentoParaFase,
 } from "@/lib/trafico/fases";
 import type { FaseTraficoTab } from "@/lib/admin/navegacion";
-import type { VisitaWeb } from "@/lib/types";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
+import type { Reto, VisitaWeb } from "@/lib/types";
 import BotonConfirmable from "@/components/admin/BotonConfirmable";
 import GraficoTraficoScroll from "@/components/admin/GraficoTraficoScroll";
 
@@ -75,21 +79,21 @@ const ALTO_SVG_PX = ALTO_GRAFICO_PX + MARGEN_SUPERIOR_PX + 36; // + hueco debajo
 const MARGEN_HORIZONTAL_PX = 22;
 
 interface SeccionTraficoProps {
+  reto: Reto;
   granularidad: GranularidadTrafico;
   /** Fase pedida por la URL (`?fase=`), ya validada; `undefined` si no vino o no era válida. */
   faseQuery: FaseTraficoTab | undefined;
   slug: string;
 }
 
-export default async function SeccionTrafico({ granularidad, faseQuery, slug }: SeccionTraficoProps) {
+export default async function SeccionTrafico({ reto, granularidad, faseQuery, slug }: SeccionTraficoProps) {
   const supabase = getSupabaseAdmin();
   const ahora = new Date();
 
-  const { data: intentoActivo } = await supabase
-    .from("intentos")
-    .select("id, started_at, ended_at")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoActivo } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, started_at, ended_at"),
+    reto.id
+  ).maybeSingle();
 
   const intentoRelevante =
     intentoActivo ??
@@ -97,6 +101,7 @@ export default async function SeccionTrafico({ granularidad, faseQuery, slug }: 
       await supabase
         .from("intentos")
         .select("id, started_at, ended_at")
+        .eq("reto_id", reto.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -109,12 +114,13 @@ export default async function SeccionTrafico({ granularidad, faseQuery, slug }: 
       }
     : null;
 
-  const cuentaDesde = await obtenerCuentaDesde(intentoParaFase, ahora);
+  const cuentaDesde = await obtenerCuentaDesde(reto.id, intentoParaFase, ahora);
 
   const visitas = await obtenerTodasLasFilas<VisitaWeb>((rangoDesde, rangoHasta) =>
     supabase
       .from("visitas_web")
       .select("*")
+      .eq("reto_id", reto.id)
       .gte("ts", cuentaDesde.toISOString())
       .order("ts", { ascending: true })
       .range(rangoDesde, rangoHasta)
@@ -182,7 +188,8 @@ export default async function SeccionTrafico({ granularidad, faseQuery, slug }: 
 }
 
 /**
- * Lee `config_trafico` (fila única, id=1). Si la tabla o la fila no existen
+ * Lee la fila de `config_trafico` del reto (unique `reto_id`; antes de
+ * FP2.5/DT-028 se leía `id = 1`, la fila única del esquema mono-reto). Si la tabla o la fila no existen
  * todavía (migración 0005 sin aplicar contra producción, mismo criterio que
  * 0003/0004 — ver DEBT.md), NO cae a "desde siempre": eso significaría traer
  * el histórico COMPLETO de `visitas_web` sin límite temporal, con tráfico
@@ -196,9 +203,17 @@ export default async function SeccionTrafico({ granularidad, faseQuery, slug }: 
  * nunca "desde siempre" sin ningún límite. Sin log — es un estado esperado
  * mientras la migración no se aplique, no un error real.
  */
-async function obtenerCuentaDesde(intento: IntentoParaFase | null, ahora: Date): Promise<Date> {
+async function obtenerCuentaDesde(
+  retoId: number,
+  intento: IntentoParaFase | null,
+  ahora: Date
+): Promise<Date> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("config_trafico").select("cuenta_desde").eq("id", 1).maybeSingle();
+  const { data, error } = await supabase
+    .from("config_trafico")
+    .select("cuenta_desde")
+    .eq("reto_id", retoId)
+    .maybeSingle();
 
   if (!error && data) return new Date(data.cuenta_desde);
   if (intento?.startedAt) return intento.startedAt;

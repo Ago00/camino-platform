@@ -5,8 +5,14 @@
 // FP1 (DT-026): ruta dinámica `/:slug/`. El slug se resuelve a un `Reto`
 // (validado en el layout) y su `ruta_id` se usa para cargar la traza correcta.
 // El `slug` se pasa como prop a los componentes cliente que hacen fetch.
+//
+// FP2.5 (DT-028): todo se lee del reto del slug — intento activo filtrado por
+// `reto_id`, textos del reto, cachés de progreso/histórico por reto. Un reto
+// sin `ruta_id` (ruta libre) no pinta traza y se muestra en modo libre.
 
+import { notFound } from "next/navigation";
 import { getSupabasePublic } from "@/lib/supabase/public";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
 import { CACHE_TTL_MS, guardarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
 import { guardarCacheHistorico, obtenerCacheHistorico } from "@/lib/historico-cache";
@@ -36,21 +42,34 @@ export const dynamic = "force-dynamic";
 
 const C = { paper: "#F4F3EF", ink: "#1B211D" };
 
+// Constante de módulo (no literal inline): referencia estable como prop de
+// componentes cliente con efectos (ver docs/LESSONS.md).
+const SIN_TRAZA: [number, number][] = [];
+
 interface SlugPageProps {
   params: Promise<{ slug: string }>;
 }
 
 export default async function SlugPage({ params }: SlugPageProps) {
   const { slug } = await params;
-  // El layout ya validó que el reto existe; null solo si hay un error de BD
-  // puntual — se degradaa fase "antes" como en el resto de fallos.
+  // El layout ya validó que el reto existe (misma consulta deduplicada con
+  // React.cache); sin reto no hay datos que filtrar, así que 404 igual que
+  // el layout en vez de adivinar uno.
   const reto = await obtenerRetoPorSlug(slug);
-  const rutaId = reto?.ruta_id ?? "portuguesa-110";
+  if (!reto) notFound();
 
-  const [intentoActivo, textos] = await Promise.all([obtenerIntentoActivo(), obtenerTextos()]);
-  const trazaCoords = cargarTrazaDeMapa(rutaId);
+  const rutaId = reto.ruta_id;
+
+  const [intentoActivo, textos] = await Promise.all([
+    obtenerIntentoActivo(reto.id),
+    obtenerTextos(reto.id),
+  ]);
+  // Un reto de ruta libre no tiene traza oficial que pintar.
+  const trazaCoords = rutaId !== null ? cargarTrazaDeMapa(rutaId) : SIN_TRAZA;
   const fase = intentoActivo?.fase ?? "antes";
-
+  // Durante/llegada: sin ruta no hay traza sobre la que proyectar un progreso
+  // guiado, así que el intento se muestra como libre aunque su `modo` sea
+  // "guiado" (el default de BD) — mismo criterio que `calcularProgresoActual`.
   return (
     <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
       <RefrescoAlCambiarFase faseActual={fase} slug={slug} />
@@ -58,8 +77,9 @@ export default async function SlugPage({ params }: SlugPageProps) {
       <div className="mx-auto w-full max-w-[480px] px-5 pb-28">
         {fase === "antes" && <ModoAntes textos={textos} trazaCoords={trazaCoords} slug={slug} />}
         {fase === "durante" && intentoActivo && (
-          intentoActivo.modo === "libre" ? (
+          intentoActivo.modo === "libre" || rutaId === null ? (
             <ModoDuranteLibreConectado
+              retoId={reto.id}
               intentoId={intentoActivo.id}
               destino={destinoDelIntento(intentoActivo)}
               startedAt={intentoActivo.started_at}
@@ -68,6 +88,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
             />
           ) : (
             <ModoDuranteConectado
+              retoId={reto.id}
               intentoId={intentoActivo.id}
               startedAt={intentoActivo.started_at}
               trazaCoords={trazaCoords}
@@ -78,8 +99,9 @@ export default async function SlugPage({ params }: SlugPageProps) {
           )
         )}
         {fase === "llegada" && intentoActivo && (
-          intentoActivo.modo === "libre" ? (
+          intentoActivo.modo === "libre" || rutaId === null ? (
             <ModoLlegadaLibreConectado
+              retoId={reto.id}
               intentoId={intentoActivo.id}
               destino={destinoDelIntento(intentoActivo)}
               mensajeLlegada={intentoActivo.mensaje_llegada}
@@ -90,6 +112,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
             />
           ) : (
             <ModoLlegadaConectado
+              retoId={reto.id}
               intentoId={intentoActivo.id}
               startedAt={intentoActivo.started_at}
               endedAt={intentoActivo.ended_at}
@@ -107,6 +130,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
 }
 
 async function ModoDuranteConectado({
+  retoId,
   intentoId,
   startedAt,
   trazaCoords,
@@ -114,6 +138,7 @@ async function ModoDuranteConectado({
   rutaId,
   slug,
 }: {
+  retoId: number;
   intentoId: number;
   startedAt: string | null;
   trazaCoords: [number, number][];
@@ -122,8 +147,8 @@ async function ModoDuranteConectado({
   slug: string;
 }) {
   const [progresoInicial, historico] = await Promise.all([
-    calcularProgresoDelIntento(intentoId, rutaId),
-    obtenerHistoricoPosicionesCacheado(intentoId),
+    calcularProgresoDelIntento(retoId, intentoId, rutaId),
+    obtenerHistoricoPosicionesCacheado(retoId, intentoId),
   ]);
   const puntosGpsIniciales = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
   return (
@@ -139,6 +164,7 @@ async function ModoDuranteConectado({
 }
 
 async function ModoLlegadaConectado({
+  retoId,
   intentoId,
   startedAt,
   endedAt,
@@ -148,6 +174,7 @@ async function ModoLlegadaConectado({
   rutaId,
   slug,
 }: {
+  retoId: number;
   intentoId: number;
   startedAt: string | null;
   endedAt: string | null;
@@ -158,9 +185,9 @@ async function ModoLlegadaConectado({
   slug: string;
 }) {
   const [progreso, entradasMinutoAMinuto, historico, fotoLlegadaUrl] = await Promise.all([
-    calcularProgresoDelIntento(intentoId, rutaId),
+    calcularProgresoDelIntento(retoId, intentoId, rutaId),
     cargarEntradasMinutoAMinuto(intentoId),
-    obtenerHistoricoPosicionesCacheado(intentoId),
+    obtenerHistoricoPosicionesCacheado(retoId, intentoId),
     obtenerFotoLlegadaUrl(intentoId),
   ]);
   const tiempoTotal = formatearTiempoTotal(startedAt, endedAt) ?? "—";
@@ -204,19 +231,21 @@ export async function obtenerFotoLlegadaUrl(intentoId: number): Promise<string |
 }
 
 async function ModoDuranteLibreConectado({
+  retoId,
   intentoId,
   destino,
   startedAt,
   textos,
   slug,
 }: {
+  retoId: number;
   intentoId: number;
   destino: { lat: number; lon: number } | null;
   startedAt: string | null;
   textos: Textos;
   slug: string;
 }) {
-  const { progreso, puntosGps } = await calcularProgresoLibreDelIntento(intentoId, destino);
+  const { progreso, puntosGps } = await calcularProgresoLibreDelIntento(retoId, intentoId, destino);
   return (
     <ModoDuranteLibre
       progresoInicial={progreso}
@@ -229,6 +258,7 @@ async function ModoDuranteLibreConectado({
 }
 
 async function ModoLlegadaLibreConectado({
+  retoId,
   intentoId,
   destino,
   mensajeLlegada,
@@ -237,6 +267,7 @@ async function ModoLlegadaLibreConectado({
   textos,
   slug,
 }: {
+  retoId: number;
   intentoId: number;
   destino: { lat: number; lon: number } | null;
   mensajeLlegada: string | null;
@@ -246,7 +277,7 @@ async function ModoLlegadaLibreConectado({
   slug: string;
 }) {
   const [{ progreso, puntosGps }, entradasMinutoAMinuto] = await Promise.all([
-    calcularProgresoLibreDelIntento(intentoId, destino),
+    calcularProgresoLibreDelIntento(retoId, intentoId, destino),
     cargarEntradasMinutoAMinuto(intentoId),
   ]);
 
@@ -289,26 +320,28 @@ export interface IntentoActivo {
 }
 
 /**
+ * Intento activo del reto indicado (FP2.5, DT-028).
+ *
  * Compatibilidad temporal con la migración 0003 sin aplicar. Si la consulta
  * con `modo`/`destino_lat`/`destino_lon` falla, reintenta con el select mínimo
  * y trata el intento como modo guiado.
  */
-export async function obtenerIntentoActivo(): Promise<IntentoActivo | null> {
+export async function obtenerIntentoActivo(retoId: number): Promise<IntentoActivo | null> {
   try {
     const supabase = getSupabasePublic();
-    const { data, error } = await supabase
-      .from("intentos")
-      .select("id, fase, modo, destino_lat, destino_lon, started_at, ended_at, mensaje_llegada")
-      .eq("cerrado", false)
-      .maybeSingle();
+    const { data, error } = await soloIntentoActivoDelReto(
+      supabase
+        .from("intentos")
+        .select("id, fase, modo, destino_lat, destino_lon, started_at, ended_at, mensaje_llegada"),
+      retoId
+    ).maybeSingle();
 
     if (!error) return data;
 
-    const { data: dataMinima } = await supabase
-      .from("intentos")
-      .select("id, fase, started_at, ended_at, mensaje_llegada")
-      .eq("cerrado", false)
-      .maybeSingle();
+    const { data: dataMinima } = await soloIntentoActivoDelReto(
+      supabase.from("intentos").select("id, fase, started_at, ended_at, mensaje_llegada"),
+      retoId
+    ).maybeSingle();
 
     return dataMinima ? { ...dataMinima, modo: "guiado", destino_lat: null, destino_lon: null } : null;
   } catch {
@@ -341,55 +374,60 @@ async function obtenerHistoricoPosiciones(intentoId: number): Promise<Posicion[]
 
 /**
  * Fix S2 (DT-021): reutiliza la misma caché compartida para no pagar el fetch
- * paginado en cada visita.
+ * paginado en cada visita. Caché por reto (FP2.5, DT-028).
  */
-export async function obtenerHistoricoPosicionesCacheado(intentoId: number): Promise<Posicion[]> {
-  const cache = obtenerCacheHistorico();
+export async function obtenerHistoricoPosicionesCacheado(
+  retoId: number,
+  intentoId: number
+): Promise<Posicion[]> {
+  const cache = obtenerCacheHistorico(retoId);
   if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS) {
     return cache.valor;
   }
 
   const historico = await obtenerHistoricoPosiciones(intentoId);
-  guardarCacheHistorico(historico);
+  guardarCacheHistorico(retoId, historico);
   return historico;
 }
 
 /**
- * S2 (DT-018): reutiliza la caché compartida de /api/progreso. `rutaId` viene
- * del reto activo en vez de estar hardcodeado.
+ * S2 (DT-018): reutiliza la caché compartida de /api/progreso (por reto,
+ * FP2.5). `rutaId` es la ruta del reto.
  */
 export async function calcularProgresoDelIntento(
+  retoId: number,
   intentoId: number,
   rutaId: string
 ): Promise<ProgresoPublicoGuiado> {
-  const cache = obtenerCacheProgreso();
+  const cache = obtenerCacheProgreso(retoId);
   if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS && cache.valor.modo === "guiado") {
     return cache.valor;
   }
 
-  const historico = await obtenerHistoricoPosicionesCacheado(intentoId);
+  const historico = await obtenerHistoricoPosicionesCacheado(retoId, intentoId);
   const traza = cargarTrazaDeCalculo(rutaId);
   const progreso = aProgresoPublico(calcularProgreso(historico, traza));
 
-  guardarCacheProgreso(progreso);
+  guardarCacheProgreso(retoId, progreso);
 
   return progreso;
 }
 
 /**
- * Progreso + puntos GPS del modo libre (DT-016).
+ * Progreso + puntos GPS del modo libre (DT-016). Caché por reto (FP2.5).
  */
 export async function calcularProgresoLibreDelIntento(
+  retoId: number,
   intentoId: number,
   destino: { lat: number; lon: number } | null
 ): Promise<{ progreso: ProgresoPublicoLibre; puntosGps: { lat: number; lon: number }[] }> {
-  const cache = obtenerCacheProgreso();
+  const cache = obtenerCacheProgreso(retoId);
   if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS && cache.valor.modo === "libre") {
-    const historico = await obtenerHistoricoPosicionesCacheado(intentoId);
+    const historico = await obtenerHistoricoPosicionesCacheado(retoId, intentoId);
     return { progreso: cache.valor, puntosGps: historico.map((p) => ({ lat: p.lat, lon: p.lon })) };
   }
 
-  const historico = await obtenerHistoricoPosicionesCacheado(intentoId);
+  const historico = await obtenerHistoricoPosicionesCacheado(retoId, intentoId);
   const puntosGps = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
 
   const progreso: ProgresoPublicoLibre = {
@@ -397,7 +435,7 @@ export async function calcularProgresoLibreDelIntento(
     modo: "libre",
   };
 
-  guardarCacheProgreso(progreso);
+  guardarCacheProgreso(retoId, progreso);
 
   return { progreso, puntosGps };
 }

@@ -31,6 +31,8 @@ let errorIntentoMock: { message: string } | null = null;
 // DEBT.md).
 let intentoActivoMinimoMock: { id: number } | null = null;
 let posicionesMock: Posicion[] = [];
+const eqIntentosSpy = vi.fn();
+const cargarTrazaSpy = vi.fn();
 
 const rangeMock = vi.fn(() => Promise.resolve({ data: posicionesMock, error: null }));
 const limitMock = vi.fn().mockReturnThis();
@@ -48,14 +50,20 @@ vi.mock("@/lib/supabase/public", () => ({
     from: vi.fn((tabla: string) => {
       if (tabla === "intentos") {
         return {
-          select: vi.fn((columnas: string) => ({
-            eq: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue(
-              columnas.includes("modo")
-                ? { data: intentoActivoMock, error: errorIntentoMock }
-                : { data: intentoActivoMinimoMock, error: null }
-            ),
-          })),
+          select: vi.fn((columnas: string) => {
+            const consulta = {
+              eq: vi.fn((columna: string, valor: unknown) => {
+                eqIntentosSpy(columna, valor);
+                return consulta;
+              }),
+              maybeSingle: vi.fn().mockResolvedValue(
+                columnas.includes("modo")
+                  ? { data: intentoActivoMock, error: errorIntentoMock }
+                  : { data: intentoActivoMinimoMock, error: null }
+              ),
+            };
+            return consulta;
+          }),
         };
       }
       if (tabla === "posiciones") {
@@ -85,8 +93,14 @@ const TRAZA_SINTETICA: TrazaPreparada = {
 };
 
 vi.mock("@/lib/traza/cargar-traza", () => ({
-  cargarTrazaDeCalculo: vi.fn(() => TRAZA_SINTETICA),
+  cargarTrazaDeCalculo: vi.fn((rutaId: string) => {
+    cargarTrazaSpy(rutaId);
+    return TRAZA_SINTETICA;
+  }),
 }));
+
+const RETO_GUIADO = { id: 7, ruta_id: "ruta-del-reto-7" };
+const RETO_SIN_RUTA = { id: 8, ruta_id: null };
 
 function posicion(overrides: Partial<Posicion>): Posicion {
   return {
@@ -112,12 +126,14 @@ beforeEach(() => {
   rangeMock.mockClear();
   limitMock.mockClear();
   maybeSingleUltimaPosicionMock.mockClear();
+  eqIntentosSpy.mockClear();
+  cargarTrazaSpy.mockClear();
 });
 
 describe("calcularProgresoActual", () => {
   it("devuelve progreso en cero, modo guiado, cuando no hay intento activo", async () => {
     const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
-    const progreso = await calcularProgresoActual();
+    const progreso = await calcularProgresoActual(RETO_GUIADO);
 
     expect(progreso.modo).toBe("guiado");
     expect(progreso.ultimaPosicion).toBeNull();
@@ -136,7 +152,7 @@ describe("calcularProgresoActual", () => {
     ];
 
     const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
-    const progreso = await calcularProgresoActual();
+    const progreso = await calcularProgresoActual(RETO_GUIADO);
 
     expect(progreso.modo).toBe("guiado");
     if (progreso.modo === "guiado") {
@@ -159,7 +175,7 @@ describe("calcularProgresoActual", () => {
     ];
 
     const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
-    const progreso = await calcularProgresoActual();
+    const progreso = await calcularProgresoActual(RETO_GUIADO);
 
     expect(progreso.modo).toBe("libre");
     if (progreso.modo === "libre") {
@@ -192,11 +208,76 @@ describe("calcularProgresoActual", () => {
     ];
 
     const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
-    const progreso = await calcularProgresoActual();
+    const progreso = await calcularProgresoActual(RETO_GUIADO);
 
     expect(progreso.modo).toBe("guiado");
     if (progreso.modo === "guiado") {
       expect(progreso.porcentaje).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("calcularProgresoActual — aislamiento por reto (FP2.5, DT-028)", () => {
+  it("busca el intento activo filtrando por el id del reto y por cerrado = false", async () => {
+    intentoActivoMock = { id: 1, modo: "guiado" };
+
+    const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
+    await calcularProgresoActual(RETO_GUIADO);
+
+    expect(eqIntentosSpy).toHaveBeenCalledWith("reto_id", RETO_GUIADO.id);
+    expect(eqIntentosSpy).toHaveBeenCalledWith("cerrado", false);
+  });
+
+  it("el select mínimo de compatibilidad también filtra por el reto", async () => {
+    errorIntentoMock = { message: "column intentos.modo does not exist" };
+    intentoActivoMinimoMock = { id: 3 };
+
+    const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
+    await calcularProgresoActual(RETO_GUIADO);
+
+    const filtrosPorReto = eqIntentosSpy.mock.calls.filter(([columna]) => columna === "reto_id");
+    expect(filtrosPorReto).toHaveLength(2);
+    expect(filtrosPorReto.every(([, valor]) => valor === RETO_GUIADO.id)).toBe(true);
+  });
+
+  it("calcula el progreso guiado con la traza de la ruta del reto", async () => {
+    intentoActivoMock = { id: 1, modo: "guiado" };
+
+    const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
+    await calcularProgresoActual(RETO_GUIADO);
+
+    expect(cargarTrazaSpy).toHaveBeenCalledWith("ruta-del-reto-7");
+  });
+
+  it("sin intento activo, el progreso vacío usa también la traza de la ruta del reto", async () => {
+    const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
+    const progreso = await calcularProgresoActual(RETO_GUIADO);
+
+    expect(progreso.modo).toBe("guiado");
+    expect(cargarTrazaSpy).toHaveBeenCalledWith("ruta-del-reto-7");
+  });
+
+  it("reto sin ruta y sin intento activo: progreso libre vacío, sin cargar ninguna traza", async () => {
+    const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
+    const progreso = await calcularProgresoActual(RETO_SIN_RUTA);
+
+    expect(progreso.modo).toBe("libre");
+    expect(progreso.ultimaPosicion).toBeNull();
+    expect(cargarTrazaSpy).not.toHaveBeenCalled();
+  });
+
+  it("reto sin ruta con intento en modo guiado: se mide como libre, sin cargar ninguna traza", async () => {
+    intentoActivoMock = { id: 4, modo: "guiado", destino_lat: null, destino_lon: null };
+    posicionesMock = [
+      posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-09-12T09:00:00.000Z" }),
+      posicion({ id: 2, lat: 42.01, lon: -8.01, ts: "2026-09-12T10:00:00.000Z" }),
+    ];
+
+    const { calcularProgresoActual } = await import("@/lib/traza/progreso-actual");
+    const progreso = await calcularProgresoActual(RETO_SIN_RUTA);
+
+    expect(progreso.modo).toBe("libre");
+    expect(progreso.odometroKm).toBeGreaterThan(0);
+    expect(cargarTrazaSpy).not.toHaveBeenCalled();
   });
 });

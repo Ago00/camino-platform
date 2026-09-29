@@ -15,6 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { reiniciarRateLimit } from "@/lib/rate-limit";
+import type { Reto } from "@/lib/types";
 
 const TRACK_TOKEN_TEST = "token-secreto-de-prueba-larga-y-aleatoria";
 
@@ -34,28 +35,75 @@ interface IntentoActivoMock {
   modo: "guiado" | "libre";
 }
 
+// Dos retos (FP2.5, DT-028): el principal con ruta predefinida (traza real
+// de portuguesa-110, la que usa el filtro geográfico) y otro de ruta libre.
+const RETO_PRINCIPAL: Reto = {
+  id: 1,
+  slug: "santi-ago",
+  nombre: "Santi·ago",
+  descripcion: null,
+  ruta_tipo: "predefinida",
+  ruta_id: "portuguesa-110",
+  activo: true,
+  created_at: "2026-09-01T00:00:00.000Z",
+};
+const RETO_LIBRE: Reto = {
+  id: 2,
+  slug: "otro-reto",
+  nombre: "Otro reto",
+  descripcion: null,
+  ruta_tipo: "libre",
+  ruta_id: null,
+  activo: true,
+  created_at: "2026-09-02T00:00:00.000Z",
+};
+
+// Intento activo de RETO_PRINCIPAL (el reto por defecto de las peticiones).
 let intentoActivoMock: IntentoActivoMock | null = null;
 let erroIntentoMock: Error | null = null;
 // Mock del intento activo devuelto por el select mínimo de fallback (solo
 // `id`), usado cuando la consulta con `modo` falla (columna inexistente,
 // migración 0003_modo_intento.sql sin aplicar — ver DEBT.md).
 let intentoActivoMinimoMock: { id: number } | null = null;
+// Intento activo de RETO_LIBRE.
+let intentoActivoRetoLibreMock: IntentoActivoMock | null = null;
 const insertSpy = vi.fn().mockResolvedValue({ data: null, error: null });
+
+/**
+ * El builder de `intentos` aplica de verdad el filtro por `reto_id`: devuelve
+ * el intento del reto filtrado. Si la consulta NO filtra por reto y hay dos
+ * retos con intento abierto, responde como PostgREST con `maybeSingle()`
+ * sobre varias filas (error) — así un route que olvide el filtro falla.
+ */
+function crearConsultaIntentos(columnas: string) {
+  let retoFiltrado: number | null = null;
+  const consulta = {
+    eq: vi.fn((columna: string, valor: unknown) => {
+      if (columna === "reto_id" && typeof valor === "number") retoFiltrado = valor;
+      return consulta;
+    }),
+    maybeSingle: vi.fn(() => {
+      if (retoFiltrado === RETO_LIBRE.id) {
+        return Promise.resolve({ data: intentoActivoRetoLibreMock, error: null });
+      }
+      if (retoFiltrado === null && intentoActivoMock && intentoActivoRetoLibreMock) {
+        return Promise.resolve({ data: null, error: { message: "multiple rows returned" } });
+      }
+      return Promise.resolve(
+        columnas.includes("modo")
+          ? { data: intentoActivoMock, error: erroIntentoMock }
+          : { data: intentoActivoMinimoMock, error: null }
+      );
+    }),
+  };
+  return consulta;
+}
 
 function crearBuilderFalso() {
   return {
     from: vi.fn((tabla: string) => {
       if (tabla === "intentos") {
-        return {
-          select: vi.fn((columnas: string) => ({
-            eq: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue(
-              columnas.includes("modo")
-                ? { data: intentoActivoMock, error: erroIntentoMock }
-                : { data: intentoActivoMinimoMock, error: null }
-            ),
-          })),
-        };
+        return { select: vi.fn(crearConsultaIntentos) };
       }
       if (tabla === "posiciones") {
         return {
@@ -71,6 +119,14 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => crearBuilderFalso()),
 }));
 
+const obtenerRetoPorSlugSpy = vi.fn(async (slug: string): Promise<Reto | null> =>
+  [RETO_PRINCIPAL, RETO_LIBRE].find((r) => r.slug === slug) ?? null
+);
+
+vi.mock("@/lib/supabase/retos", () => ({
+  obtenerRetoPorSlug: (slug: string) => obtenerRetoPorSlugSpy(slug),
+}));
+
 // Import dinámico posterior al mock (el propio route.ts importa getSupabaseAdmin).
 const { POST } = await import("@/app/api/track/route");
 
@@ -78,12 +134,18 @@ const { POST } = await import("@/app/api/track/route");
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** `reto` null omite el parámetro `?reto=` de la URL. */
+function urlTrack(token: string, reto: string | null = RETO_PRINCIPAL.slug): string {
+  const base = `http://localhost/api/track?t=${encodeURIComponent(token)}`;
+  return reto === null ? base : `${base}&reto=${encodeURIComponent(reto)}`;
+}
+
 function crearPeticion(
   token: string,
-  body: unknown
+  body: unknown,
+  reto: string | null = RETO_PRINCIPAL.slug
 ): NextRequest {
-  const url = `http://localhost/api/track?t=${encodeURIComponent(token)}`;
-  return new NextRequest(url, {
+  return new NextRequest(urlTrack(token, reto), {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "content-type": "application/json" },
@@ -107,7 +169,9 @@ beforeEach(() => {
   intentoActivoMock = null;
   erroIntentoMock = null;
   intentoActivoMinimoMock = null;
+  intentoActivoRetoLibreMock = null;
   insertSpy.mockClear();
+  obtenerRetoPorSlugSpy.mockClear();
   reiniciarRateLimit();
 });
 
@@ -146,7 +210,7 @@ describe("POST /api/track — token", () => {
 describe("POST /api/track — cuerpo vacío o malformado", () => {
   it("responde 200 [] sin insertar cuando el body está vacío", async () => {
     intentoActivoMock = { id: 1, modo: "guiado" };
-    const url = `http://localhost/api/track?t=${encodeURIComponent(TRACK_TOKEN_TEST)}`;
+    const url = urlTrack(TRACK_TOKEN_TEST);
     const request = new NextRequest(url, {
       method: "POST",
       body: "",
@@ -161,7 +225,7 @@ describe("POST /api/track — cuerpo vacío o malformado", () => {
 
   it("responde 200 [] sin insertar cuando el body es JSON malformado", async () => {
     intentoActivoMock = { id: 1, modo: "guiado" };
-    const url = `http://localhost/api/track?t=${encodeURIComponent(TRACK_TOKEN_TEST)}`;
+    const url = urlTrack(TRACK_TOKEN_TEST);
     const request = new NextRequest(url, {
       method: "POST",
       body: "{ esto no es json valido",
@@ -348,6 +412,89 @@ describe("POST /api/track — compatibilidad con la migración 0003_modo_intento
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([]);
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/track — reto del tracker (?reto=<slug>, FP2.5/DT-028)", () => {
+  it("inserta en el intento del reto indicado aunque otro reto tenga también un intento abierto", async () => {
+    intentoActivoMock = { id: 42, modo: "guiado" };
+    intentoActivoRetoLibreMock = { id: 99, modo: "libre" };
+
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido(), RETO_LIBRE.slug));
+
+    expect(response.status).toBe(200);
+    expect(obtenerRetoPorSlugSpy).toHaveBeenCalledWith(RETO_LIBRE.slug);
+    expect(insertSpy).toHaveBeenCalledTimes(1);
+    expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({ intento_id: 99 }));
+  });
+
+  it("con el reto principal, inserta en su intento y no en el del otro reto abierto", async () => {
+    intentoActivoMock = { id: 42, modo: "guiado" };
+    intentoActivoRetoLibreMock = { id: 99, modo: "libre" };
+
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido(), RETO_PRINCIPAL.slug));
+
+    expect(response.status).toBe(200);
+    expect(insertSpy).toHaveBeenCalledTimes(1);
+    expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({ intento_id: 42 }));
+  });
+
+  it("no aplica el filtro geográfico en un reto sin ruta aunque su intento esté en modo guiado", async () => {
+    intentoActivoRetoLibreMock = { id: 99, modo: "guiado" };
+
+    const response = await POST(
+      crearPeticion(
+        TRACK_TOKEN_TEST,
+        payloadValido({ lat: PUNTO_MADRID.lat, lon: PUNTO_MADRID.lon }),
+        RETO_LIBRE.slug
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({ intento_id: 99 }));
+  });
+
+  it("responde 200 [] sin insertar ni consultar retos cuando falta el parámetro reto", async () => {
+    intentoActivoMock = { id: 42, modo: "guiado" };
+
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido(), null));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+    expect(obtenerRetoPorSlugSpy).not.toHaveBeenCalled();
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("responde 200 [] sin insertar ni consultar retos cuando el slug tiene un formato inválido", async () => {
+    intentoActivoMock = { id: 42, modo: "guiado" };
+
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido(), "Santi_Ago/../x"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+    expect(obtenerRetoPorSlugSpy).not.toHaveBeenCalled();
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("responde 200 [] sin insertar cuando el slug no corresponde a ningún reto", async () => {
+    intentoActivoMock = { id: 42, modo: "guiado" };
+
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido(), "reto-inexistente"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+    expect(obtenerRetoPorSlugSpy).toHaveBeenCalledWith("reto-inexistente");
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("responde 200 [] sin insertar cuando el reto existe pero no tiene intento activo, aunque otro reto sí lo tenga", async () => {
+    intentoActivoMock = { id: 42, modo: "guiado" };
+    intentoActivoRetoLibreMock = null;
+
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido(), RETO_LIBRE.slug));
+
+    expect(response.status).toBe(200);
     expect(insertSpy).not.toHaveBeenCalled();
   });
 });

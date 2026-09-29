@@ -14,16 +14,22 @@ import { TEXTOS_POR_DEFECTO, type ClaveTexto } from "@/lib/textos/defaults";
 export type Textos = Record<ClaveTexto, string>;
 
 /**
- * Devuelve todos los textos de la web, con el override de BD aplicado sobre
- * los valores por defecto. No lanza: cualquier error de red o de consulta se
- * trata igual que "no hay overrides" (fallback completo a los defaults).
+ * Devuelve todos los textos de la web del reto indicado, con el override de
+ * BD aplicado sobre los valores por defecto. Cada reto tiene sus propios
+ * overrides (unique `(reto_id, clave)`, FP2.5/DT-028): sin el filtro por
+ * reto, la misma clave de dos retos distintos colisionaría y ganaría la
+ * última fila leída. No lanza: cualquier error de red o de consulta se trata
+ * igual que "no hay overrides" (fallback completo a los defaults).
  */
-export async function obtenerTextos(): Promise<Textos> {
+export async function obtenerTextos(retoId: number): Promise<Textos> {
   const textos: Textos = { ...TEXTOS_POR_DEFECTO };
 
   try {
     const supabase = getSupabasePublic();
-    const { data, error } = await supabase.from("textos").select("clave, valor");
+    const { data, error } = await supabase
+      .from("textos")
+      .select("clave, valor")
+      .eq("reto_id", retoId);
 
     if (error || !data) {
       return textos;

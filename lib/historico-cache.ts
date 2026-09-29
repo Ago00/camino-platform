@@ -12,10 +12,14 @@
  * (hasta 50 páginas × 1.000 filas, `lib/supabase/paginacion.ts`), reabriendo
  * para modo guiado el mismo vector de coste que S2 ya había cerrado.
  *
- * Mismo patrón exacto que `lib/progreso-cache.ts` (un único slot en memoria,
- * mismo TTL): válido por el mismo invariante — solo hay un intento activo a
- * la vez (`docs/tecnico/arquitectura.md`), así que no hace falta cachear por
- * `intentoId`.
+ * Mismo patrón exacto que `lib/progreso-cache.ts` (una entrada por reto,
+ * mismo TTL; FP2.5, DT-028): hay como mucho un intento activo por reto
+ * (índice `intentos_abierto_por_reto`, migración 0009), así que la clave
+ * `retoId` identifica sin ambigüedad el histórico cacheado.
+ *
+ * Invalidación: `app/[slug]/admin/actions.ts` limpia esta caché junto con la
+ * de progreso en las acciones que cambian el histórico o el intento activo
+ * (descartar posición, reiniciar).
  */
 
 import type { Posicion } from "@/lib/types";
@@ -28,17 +32,24 @@ export interface EntradaCacheHistorico {
   valor: Posicion[];
 }
 
-let cache: EntradaCacheHistorico | null = null;
+const cachePorReto = new Map<number, EntradaCacheHistorico>();
 
-export function obtenerCacheHistorico(): EntradaCacheHistorico | null {
-  return cache;
+export function obtenerCacheHistorico(retoId: number): EntradaCacheHistorico | null {
+  return cachePorReto.get(retoId) ?? null;
 }
 
-export function guardarCacheHistorico(valor: Posicion[]): void {
-  cache = { timestamp: Date.now(), valor };
+export function guardarCacheHistorico(retoId: number, valor: Posicion[]): void {
+  cachePorReto.set(retoId, { timestamp: Date.now(), valor });
 }
 
-/** Invalidable en tests: fuerza el recálculo/lectura en fresco siguiente. */
-export function limpiarCacheHistorico(): void {
-  cache = null;
+/**
+ * Fuerza la lectura en fresco siguiente del reto indicado. Sin argumento
+ * vacía la caché de todos los retos (uso en tests).
+ */
+export function limpiarCacheHistorico(retoId?: number): void {
+  if (retoId === undefined) {
+    cachePorReto.clear();
+    return;
+  }
+  cachePorReto.delete(retoId);
 }

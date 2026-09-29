@@ -3,11 +3,12 @@
 // ActividadAcciones.tsx para el detalle de qué botón aparece según fase).
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import ActividadAcciones from "@/components/admin/ActividadAcciones";
 import CrearPrimerIntentoBoton from "@/components/admin/CrearPrimerIntentoBoton";
-import type { Fase } from "@/lib/types";
+import type { Fase, Reto } from "@/lib/types";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
@@ -32,27 +33,28 @@ interface IntentoActividad {
  * fallo de esta columna sola no debe tumbar la lectura de fase/mensaje, que
  * no dependen de ella.
  */
-export async function obtenerIntentoActividad(): Promise<IntentoActividad | null> {
+export async function obtenerIntentoActividad(retoId: number): Promise<IntentoActividad | null> {
   const supabase = getSupabaseAdmin();
-  const { data: intentoConFoto, error } = await supabase
-    .from("intentos")
-    .select("id, fase, started_at, mensaje_llegada, foto_llegada_url")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoConFoto, error } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, fase, started_at, mensaje_llegada, foto_llegada_url"),
+    retoId
+  ).maybeSingle();
 
   if (!error) return intentoConFoto;
 
-  const { data: intentoSinFoto } = await supabase
-    .from("intentos")
-    .select("id, fase, started_at, mensaje_llegada")
-    .eq("cerrado", false)
-    .maybeSingle();
+  const { data: intentoSinFoto } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, fase, started_at, mensaje_llegada"),
+    retoId
+  ).maybeSingle();
 
   return intentoSinFoto ? { ...intentoSinFoto, foto_llegada_url: null } : null;
 }
 
-export default async function SeccionActividad({ slug }: { slug: string }) {
-  const [intentoActivo, textos] = await Promise.all([obtenerIntentoActividad(), obtenerTextos()]);
+export default async function SeccionActividad({ reto, slug }: { reto: Reto; slug: string }) {
+  const [intentoActivo, textos] = await Promise.all([
+    obtenerIntentoActividad(reto.id),
+    obtenerTextos(reto.id),
+  ]);
 
   if (!intentoActivo) {
     return (

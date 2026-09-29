@@ -211,7 +211,15 @@ en cada petición.
 
 ## Invariantes de sesión
 
-- Solo puede haber un `Intento` con `cerrado = false` a la vez (índice único en BD).
+- Solo puede haber un `Intento` con `cerrado = false` a la vez **por reto** (índice
+  único `intentos_abierto_por_reto`, migración 0009). Toda búsqueda del intento
+  activo pasa por `soloIntentoActivoDelReto` (`lib/supabase/intentos.ts`), que
+  filtra por `reto_id`; nunca `.eq("cerrado", false)` a secas (FP2.5, DT-028).
+- Toda lectura/escritura del panel admin, la web pública y sus APIs queda acotada
+  al reto del slug: tablas con `reto_id` se filtran por él; `posiciones` y
+  `minuto_a_minuto` por el intento activo del reto. Las cachés en memoria
+  (`lib/progreso-cache.ts`, `lib/historico-cache.ts`) van por `reto_id`.
+- `/api/track` recibe el reto en la URL (`?reto=<slug>`); sin reto válido no guarda nada.
 - Las posiciones con `descartado = true` no participan en ningún cálculo.
 - La `Fase` del intento activo determina qué muestra la web pública.
 - Las intenciones son siempre privadas: ninguna política RLS de anon las alcanza.

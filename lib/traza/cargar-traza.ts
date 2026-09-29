@@ -14,6 +14,7 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
+import { esRutaPredefinida } from "@/lib/rutas/catalogo";
 import { prepararTraza } from "@/lib/traza/proyeccion";
 import type { TrazaPreparada } from "@/lib/types";
 
@@ -29,6 +30,8 @@ export function cargarTrazaDeCalculo(rutaId: string): TrazaPreparada {
   const cacheada = trazaCache.get(rutaId);
   if (cacheada) return cacheada;
 
+  // ruta_id viene de BD y acaba en una ruta de fichero: solo ids del catálogo.
+  if (!esRutaPredefinida(rutaId)) throw new Error(`Ruta desconocida: '${rutaId}'`);
   const rutaFichero = join(process.cwd(), "lib", "rutas", rutaId, "traza.geojson");
   const geojsonRaw = readFileSync(rutaFichero, "utf-8");
   const geojson = JSON.parse(geojsonRaw);
