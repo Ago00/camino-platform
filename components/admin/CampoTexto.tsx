@@ -1,12 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { guardarTexto } from "@/app/admin/actions";
+import { guardarTexto } from "@/app/[slug]/admin/actions";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 
 const C = { ink: "#1B211D", muted: "#4A5450", eucalipto: "#2F5D50" };
 
-export default function CampoTexto({ clave, valorInicial }: { clave: ClaveTexto; valorInicial: string }) {
+interface CampoTextoProps {
+  clave: ClaveTexto;
+  valorInicial: string;
+  slug: string;
+}
+
+export default function CampoTexto({ clave, valorInicial, slug }: CampoTextoProps) {
   const [valor, setValor] = useState(valorInicial);
   const [pendiente, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -15,7 +21,7 @@ export default function CampoTexto({ clave, valorInicial }: { clave: ClaveTexto;
 
   function guardar() {
     startTransition(async () => {
-      await guardarTexto(clave, valor);
+      await guardarTexto(slug, clave, valor);
       setGuardado(true);
       setTimeout(() => setGuardado(false), 2000);
     });

@@ -1,21 +1,17 @@
 /**
- * GET /api/comentarios — muro de comentarios públicos, paginado por offset.
- * POST /api/comentarios — nuevo comentario de un seguidor.
+ * GET /[slug]/api/comentarios — muro de comentarios públicos, paginado por offset.
+ * POST /[slug]/api/comentarios — nuevo comentario de un seguidor.
  *
- * Cliente anon (lib/supabase/public.ts, sujeto a RLS): la política de
- * `comentarios` ya limita el SELECT a `visibilidad = 'publico' AND NOT
- * oculto`, y el INSERT no puede fijar `oculto = true` (ver
- * docs/tecnico/modelo-datos.md). Principio de mínimo privilegio (DT-007):
- * no hace falta el cliente admin para ninguna de las dos operaciones.
- *
- * Rate limiting por IP (DT-011): 60 req/min en GET, 10 req/min en POST.
- * Responde 429 sin cuerpo al exceder el límite.
+ * El slug se resuelve a un reto_id mediante obtenerRetoPorSlug (DT-026, FP1).
+ * GET filtra por reto_id y oculto = false (defensa en profundidad: los comentarios
+ * moderados como ocultos no se exponen aunque la RLS no lo impida directamente).
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabasePublic } from "@/lib/supabase/public";
+import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 
 export const runtime = "nodejs";
 
@@ -35,7 +31,10 @@ const nuevoComentario = z.object({
   visibilidad: z.enum(["publico", "privado"]),
 });
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+): Promise<NextResponse> {
   if (!consumir(obtenerIpCliente(request), LIMITE_GET_POR_MINUTO, VENTANA_MS)) {
     return new NextResponse(null, { status: 429 });
   }
@@ -49,12 +48,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "parámetros de paginación inválidos" }, { status: 400 });
   }
 
+  const { slug } = await params;
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) {
+    return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
+  }
+
   const { offset, limit } = paginacion.data;
   const supabase = getSupabasePublic();
 
   const { data, error } = await supabase
     .from("comentarios")
     .select("id, nombre, texto, created_at")
+    .eq("reto_id", reto.id)
+    .eq("oculto", false)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -70,7 +77,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   });
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+): Promise<NextResponse> {
   if (!consumir(obtenerIpCliente(request), LIMITE_POST_POR_MINUTO, VENTANA_MS)) {
     return new NextResponse(null, { status: 429 });
   }
@@ -88,14 +98,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const { nombre, texto, visibilidad } = parsed.data;
+  const { slug } = await params;
+
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) {
+    return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
+  }
+
   const supabase = getSupabasePublic();
 
-  // No se envía `oculto` ni `parent_id`: la política RLS de INSERT para anon
-  // ya impide fijar oculto a true (default BD false); parent_id queda
-  // dormido hasta FP3 (hilos de respuesta), default null.
-  // FP1: obtener reto_id del contexto del reto activo en vez de hardcodear.
   const { error } = await supabase.from("comentarios").insert({
-    reto_id: 1,
+    reto_id: reto.id,
     nombre,
     texto,
     visibilidad,

@@ -9,7 +9,7 @@ import EnlacePaginacion from "@/components/admin/EnlacePaginacion";
 const TAMANO_PAGINA = 20;
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
-export default async function SeccionIntenciones({ offset }: { offset: number }) {
+export default async function SeccionIntenciones({ offset, slug }: { offset: number; slug: string }) {
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from("intenciones")
@@ -44,7 +44,7 @@ export default async function SeccionIntenciones({ offset }: { offset: number })
               {intencion.texto}
             </div>
           </div>
-          <EliminarIntencionBoton id={intencion.id} />
+          <EliminarIntencionBoton id={intencion.id} slug={slug} />
         </div>
       ))}
 

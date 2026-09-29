@@ -1,8 +1,7 @@
 // Detecta cambios de fase del intento activo y recarga la página entera
 // cuando ocurren (DT-012, docs/tecnico/decisiones-tecnicas.md). Se renderiza
-// una única vez en app/page.tsx, junto al modo activo — cubre los 3 modos
-// (antes/durante/llegada) sin tocar ModoAntes, ModoDurante ni ModoLlegada.
-// No renderiza nada visible.
+// una única vez en app/[slug]/page.tsx, junto al modo activo.
+// FP1 (DT-026): recibe `slug` para construir la URL correcta del endpoint.
 
 "use client";
 
@@ -13,13 +12,14 @@ const POLLING_MS = 30_000;
 
 interface RefrescoAlCambiarFaseProps {
   faseActual: Fase;
+  slug: string;
 }
 
-export default function RefrescoAlCambiarFase({ faseActual }: RefrescoAlCambiarFaseProps) {
+export default function RefrescoAlCambiarFase({ faseActual, slug }: RefrescoAlCambiarFaseProps) {
   useEffect(() => {
     const id = setInterval(async () => {
       try {
-        const response = await fetch("/api/fase");
+        const response = await fetch(`/${slug}/api/fase`);
         if (!response.ok) return;
         const { fase }: { fase: Fase } = await response.json();
         if (fase !== faseActual) {
@@ -27,12 +27,11 @@ export default function RefrescoAlCambiarFase({ faseActual }: RefrescoAlCambiarF
         }
       } catch {
         // Fallo puntual de red (o 429, etc.): no se hace nada, el siguiente
-        // intervalo de polling reintenta (mismo criterio de tolerancia a
-        // fallos que ModoDurante).
+        // intervalo de polling reintenta.
       }
     }, POLLING_MS);
     return () => clearInterval(id);
-  }, [faseActual]);
+  }, [faseActual, slug]);
 
   return null;
 }

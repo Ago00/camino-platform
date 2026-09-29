@@ -1,14 +1,18 @@
 /**
- * Tests de proxy.ts:
- * - /admin/*: redirección a /admin/login sin sesión válida, paso libre a
- *   /admin/login, acceso permitido con cookie válida (DT-010).
- * - /: captura de visitas en visitas_web (DT-022) — genera/reutiliza la
- *   cookie de visitante, y un fallo del insert nunca impide
+ * Tests de proxy.ts (actualizados para FP1, DT-026):
+ * - /:slug/admin/*: redirección a /admin/login sin sesión válida, acceso
+ *   permitido con cookie válida (DT-010).
+ * - /:slug/* (rutas públicas): captura de visitas en visitas_web (DT-022) —
+ *   genera/reutiliza la cookie de visitante, y un fallo del insert nunca impide
  *   NextResponse.next().
+ * - /: pass-through puro sin captura de visita (redirect estático a /portuguesa-110).
  *
  * Mock de lib/supabase/admin: mismo patrón que app/api/track/route.test.ts —
  * builder falso que registra la llamada a `.from("visitas_web").insert(...)`
  * sin tocar red.
+ *
+ * Mock de lib/supabase/retos: obtenerRetoPorSlug devuelve un reto falso para
+ * "portuguesa-110" y null para cualquier otro slug.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,7 +42,20 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-// Import dinámico posterior al mock (proxy.ts importa getSupabaseAdmin).
+// ---------------------------------------------------------------------------
+// Mock de lib/supabase/retos
+// ---------------------------------------------------------------------------
+
+vi.mock("@/lib/supabase/retos", () => ({
+  obtenerRetoPorSlug: vi.fn(async (slug: string) => {
+    if (slug === "portuguesa-110") {
+      return { id: 1, slug: "portuguesa-110", ruta_id: "portuguesa-110" };
+    }
+    return null;
+  }),
+}));
+
+// Import dinámico posterior al mock (proxy.ts importa getSupabaseAdmin y obtenerRetoPorSlug).
 const { proxy, NOMBRE_COOKIE_VISITANTE } = await import("@/proxy");
 
 beforeEach(() => {
@@ -56,63 +73,65 @@ function peticionA(pathname: string, cookieValor?: string, headers?: Record<stri
 }
 
 // ---------------------------------------------------------------------------
-// /admin/* (DT-010)
+// /:slug/admin/* (DT-010)
 // ---------------------------------------------------------------------------
 
-describe("proxy — /admin/*", () => {
+describe("proxy — /:slug/admin/*", () => {
   it("deja pasar /admin/login sin cookie de sesión", async () => {
+    // El login sigue en /admin/login (sin slug): va a proxyPublico, no a proxyAdmin.
+    // obtenerRetoPorSlug("admin") devuelve null → sin inserción, pero 200.
     const response = await proxy(peticionA("/admin/login"));
-    expect(response.status).toBe(200); // NextResponse.next() no redirige
+    expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
   });
 
   it("redirige a /admin/login cuando no hay cookie de sesión", async () => {
-    const response = await proxy(peticionA("/admin"));
+    const response = await proxy(peticionA("/portuguesa-110/admin"));
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/admin/login");
   });
 
   it("redirige a /admin/login cuando la cookie es inválida (manipulada)", async () => {
-    const response = await proxy(peticionA("/admin", "cookie.invalida"));
+    const response = await proxy(peticionA("/portuguesa-110/admin", "cookie.invalida"));
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/admin/login");
   });
 
-  it("permite el acceso a /admin con una cookie de sesión válida", async () => {
+  it("permite el acceso a /portuguesa-110/admin con una cookie de sesión válida", async () => {
     const cookieValida = crearSesion();
-    const response = await proxy(peticionA("/admin", cookieValida));
+    const response = await proxy(peticionA("/portuguesa-110/admin", cookieValida));
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("renueva la cookie (Set-Cookie) en cada petición válida a /admin/*", async () => {
+  it("renueva la cookie (Set-Cookie) en cada petición válida a /:slug/admin/*", async () => {
     const cookieValida = crearSesion();
-    const response = await proxy(peticionA("/admin/posicion", cookieValida));
+    const response = await proxy(peticionA("/portuguesa-110/admin/posicion", cookieValida));
     const setCookie = response.cookies.get(NOMBRE_COOKIE_SESION);
     expect(setCookie).toBeDefined();
     expect(setCookie?.value).not.toBe(""); // hay una cookie nueva fijada
   });
 
-  it("no inserta ninguna visita al pasar por /admin/*", async () => {
-    await proxy(peticionA("/admin/login"));
+  it("no inserta ninguna visita al pasar por /:slug/admin/*", async () => {
+    await proxy(peticionA("/portuguesa-110/admin/login"));
     expect(insertSpy).not.toHaveBeenCalled();
   });
 });
 
 // ---------------------------------------------------------------------------
-// / (DT-022 — captura de visitas)
+// /:slug/* (DT-022 — captura de visitas)
 // ---------------------------------------------------------------------------
 
 function peticionPublica(headers?: Record<string, string>): NextRequest {
-  return new NextRequest("http://localhost/", { headers });
+  return new NextRequest("http://localhost/portuguesa-110", { headers });
 }
 
 function peticionPublicaConCookieVisitante(visitanteId: string): NextRequest {
-  const request = new NextRequest("http://localhost/");
+  const request = new NextRequest("http://localhost/portuguesa-110");
   request.cookies.set("visitante_id", visitanteId);
   return request;
 }
 
-describe("proxy — / (captura de visitas)", () => {
+describe("proxy — /:slug/* (captura de visitas)", () => {
   it("responde sin redirigir y sirve la petición normalmente", async () => {
     const response = await proxy(peticionPublica());
     expect(response.status).toBe(200);
@@ -143,7 +162,7 @@ describe("proxy — / (captura de visitas)", () => {
 
     expect(insertSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        ruta: "/",
+        ruta: "/portuguesa-110",
         referer: "https://ejemplo.com/pagina",
         visitante_id: expect.any(String),
         ts: expect.any(String),
@@ -173,5 +192,18 @@ describe("proxy — / (captura de visitas)", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// / (raíz — FP1: pass-through puro, el redirect lo hace app/page.tsx)
+// ---------------------------------------------------------------------------
+
+describe("proxy — / (pass-through)", () => {
+  it("responde sin redirigir ni capturar visita", async () => {
+    const response = await proxy(new NextRequest("http://localhost/"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(insertSpy).not.toHaveBeenCalled();
   });
 });

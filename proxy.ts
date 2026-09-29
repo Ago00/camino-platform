@@ -1,40 +1,28 @@
 /**
- * Dos responsabilidades distintas, bifurcadas por `pathname` (DT-022):
+ * Proxy multi-tenant (DT-026, FP1): captura todas las rutas excepto las de
+ * infraestructura (`api`, `_next/*`, `favicon.ico`, worker de MapLibre).
  *
- * 1. `/admin/*` — protege el panel (excepto `/admin/login`), sin cambios de
- *    comportamiento respecto a DT-010.
- * 2. `/` — captura de visitas a la web pública, server-side, para la pestaña
- *    "Tráfico" del admin: lee/crea una cookie anónima de visitante (sin
- *    datos personales, sin fingerprinting) e inserta una fila en
- *    `visitas_web` antes de responder.
+ * Bifurcación por `pathname`:
+ * - `/` → pass-through; Next.js hace el redirect a `/portuguesa-110`.
+ * - `/:slug/admin/*` → proxyAdmin (protege el panel con sesión).
+ * - Todo lo demás → proxyPublico (captura visita para la pestaña "Tráfico").
  *
- * Next.js 16 renombró `middleware.ts` a `proxy.ts` (función `proxy()`, no
- * `middleware()`) — ver node_modules/next/dist/docs/.../proxy.md y DT-010.
- * Proxy usa runtime Node.js por defecto en Next 16, así que `node:crypto`
- * (usado en lib/auth/admin-session.ts y aquí para `randomUUID()`) funciona
- * sin restricciones.
+ * Las dos responsabilidades (sesión de admin y captura de visitas) se
+ * mantienen igual que en la versión anterior; solo cambia el matcher y
+ * la forma en que se extrae el slug para registrarVisita.
  *
- * IMPORTANTE: esto NO es la única defensa de `/admin/*`. Las Server Actions
- * de `app/admin/actions.ts` se sirven como POST a la misma ruta donde se
- * invocan — un cambio de matcher aquí podría dejarlas sin cobertura sin que
- * se note. Cada Server Action verifica la sesión por sí misma.
- *
- * `proxy()` pasa a ser async (antes síncrono): la rama pública espera el
- * insert en `visitas_web` antes de responder. Si ese insert falla —incluida
- * la tabla no existiendo todavía en producción porque la migración
- * `0004_visitas_web.sql` no se ha aplicado aún, ver DEBT.md, mismo escenario
- * ya vivido con `0003_modo_intento.sql`— el error se ignora en silencio y la
- * petición del visitante real se sirve igual: nunca debe romperse la carga
- * de la web pública por esto (mismo criterio defensivo que `/api/track`).
+ * IMPORTANTE: esto NO es la única defensa de `/:slug/admin/*`. Las Server
+ * Actions de `app/[slug]/admin/actions.ts` verifican la sesión por sí mismas.
  */
 
 import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { crearSesion, NOMBRE_COOKIE_SESION, verificarSesion } from "@/lib/auth/admin-session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 
 export const config = {
-  matcher: ["/", "/admin/:path*"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|maplibre-gl-worker).*)"],
 };
 
 const TTL_COOKIE_SESION_SEGUNDOS = 7 * 24 * 60 * 60;
@@ -42,7 +30,12 @@ const TTL_COOKIE_SESION_SEGUNDOS = 7 * 24 * 60 * 60;
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/admin")) {
+  // Raíz → pass-through (redirect estático en app/page.tsx).
+  if (pathname === "/") {
+    return NextResponse.next();
+  }
+
+  if (pathname.match(/^\/[^/]+\/admin/)) {
     return proxyAdmin(request);
   }
 
@@ -50,20 +43,18 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 // ---------------------------------------------------------------------------
-// /admin/* — sesión (DT-010, sin cambios de comportamiento)
+// /:slug/admin/* — sesión (DT-010, sin cambios de comportamiento)
 // ---------------------------------------------------------------------------
 
 function proxyAdmin(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
-
-  if (pathname === "/admin/login") {
-    return NextResponse.next();
-  }
-
   const cookieSesion = request.cookies.get(NOMBRE_COOKIE_SESION)?.value;
 
   if (!verificarSesion(cookieSesion)) {
-    return NextResponse.redirect(new URL("/admin/login", request.url));
+    // returnTo incluye el slug para que login redirija al panel correcto.
+    const loginUrl = new URL("/admin/login", request.url);
+    loginUrl.searchParams.set("returnTo", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   const response = NextResponse.next();
@@ -78,7 +69,7 @@ function proxyAdmin(request: NextRequest): NextResponse {
 }
 
 // ---------------------------------------------------------------------------
-// / — captura de visitas (DT-022)
+// /:slug/* — captura de visitas (DT-022)
 // ---------------------------------------------------------------------------
 
 export const NOMBRE_COOKIE_VISITANTE = "visitante_id";
@@ -105,17 +96,23 @@ async function proxyPublico(request: NextRequest): Promise<NextResponse> {
 }
 
 /**
- * Inserta la visita en `visitas_web`. Nunca lanza: cualquier fallo (tabla
- * inexistente porque la migración 0004 no se aplicó todavía, env vars de
- * Supabase ausentes, error de red...) se ignora en silencio.
+ * Inserta la visita en `visitas_web`. El slug se extrae de la URL para
+ * resolver el reto_id. Nunca lanza: cualquier fallo se ignora en silencio.
  */
 async function registrarVisita(request: NextRequest, visitanteId: string): Promise<void> {
   try {
+    const { pathname } = request.nextUrl;
+    // pathname comienza con /; el segundo segmento es el slug.
+    const slug = pathname.split("/")[1];
+    if (!slug) return;
+
+    const reto = await obtenerRetoPorSlug(slug);
+    if (!reto) return;
+
     const supabase = getSupabaseAdmin();
-    // FP1: obtener reto_id del contexto del reto activo en vez de hardcodear.
     await supabase.from("visitas_web").insert({
-      reto_id: 1,
-      ruta: request.nextUrl.pathname,
+      reto_id: reto.id,
+      ruta: pathname,
       ts: new Date().toISOString(),
       visitante_id: visitanteId,
       referer: request.headers.get("referer"),

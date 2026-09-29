@@ -6,13 +6,13 @@ import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
 import CampoTexto from "@/components/admin/CampoTexto";
 
-export default async function SeccionTextos() {
+export default async function SeccionTextos({ slug }: { slug: string }) {
   const textos = await obtenerTextos();
 
   return (
     <div className="space-y-4">
       {CLAVES_TEXTOS.map((clave) => (
-        <CampoTexto key={clave} clave={clave} valorInicial={textos[clave]} />
+        <CampoTexto key={clave} clave={clave} valorInicial={textos[clave]} slug={slug} />
       ))}
     </div>
   );

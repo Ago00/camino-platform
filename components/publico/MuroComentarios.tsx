@@ -24,9 +24,10 @@ interface RespuestaComentarios {
 
 interface MuroComentariosProps {
   textos: Textos;
+  slug: string;
 }
 
-export default function MuroComentarios({ textos }: MuroComentariosProps) {
+export default function MuroComentarios({ textos, slug }: MuroComentariosProps) {
   const [comentarios, setComentarios] = useState<ComentarioPublico[]>([]);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(0);
   const [cargando, setCargando] = useState(false);
@@ -35,7 +36,7 @@ export default function MuroComentarios({ textos }: MuroComentariosProps) {
   const cargarPagina = useCallback(async (offset: number) => {
     setCargando(true);
     try {
-      const response = await fetch(`/api/comentarios?offset=${offset}&limit=${PAGINA}`);
+      const response = await fetch(`/${slug}/api/comentarios?offset=${offset}&limit=${PAGINA}`);
       if (!response.ok) return;
       const data: RespuestaComentarios = await response.json();
       setComentarios((previos) =>
@@ -45,7 +46,7 @@ export default function MuroComentarios({ textos }: MuroComentariosProps) {
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     if (cargadoInicial.current) return;

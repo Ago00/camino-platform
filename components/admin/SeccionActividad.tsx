@@ -51,7 +51,7 @@ export async function obtenerIntentoActividad(): Promise<IntentoActividad | null
   return intentoSinFoto ? { ...intentoSinFoto, foto_llegada_url: null } : null;
 }
 
-export default async function SeccionActividad() {
+export default async function SeccionActividad({ slug }: { slug: string }) {
   const [intentoActivo, textos] = await Promise.all([obtenerIntentoActividad(), obtenerTextos()]);
 
   if (!intentoActivo) {
@@ -60,7 +60,7 @@ export default async function SeccionActividad() {
         <p className="text-[14px]" style={{ color: C.muted }}>
           No hay ningún intento activo en la base de datos.
         </p>
-        <CrearPrimerIntentoBoton />
+        <CrearPrimerIntentoBoton slug={slug} />
       </div>
     );
   }
@@ -92,6 +92,7 @@ export default async function SeccionActividad() {
         fotoLlegadaUrlActual={intentoActivo.foto_llegada_url}
         llegadaKicker={textos.llegada_kicker}
         llegadaTitulo={textos.llegada_titulo}
+        slug={slug}
       />
     </div>
   );

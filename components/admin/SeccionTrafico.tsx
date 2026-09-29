@@ -12,7 +12,7 @@
 // string, mismo patrón que el resto del panel.
 
 import Link from "next/link";
-import { resetearContadorTrafico } from "@/app/admin/actions";
+import { resetearContadorTrafico } from "@/app/[slug]/admin/actions";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
 import { agruparVisitasEnTramos, type GranularidadTrafico, type TramoTrafico } from "@/lib/trafico/bucketing";
@@ -78,9 +78,10 @@ interface SeccionTraficoProps {
   granularidad: GranularidadTrafico;
   /** Fase pedida por la URL (`?fase=`), ya validada; `undefined` si no vino o no era válida. */
   faseQuery: FaseTraficoTab | undefined;
+  slug: string;
 }
 
-export default async function SeccionTrafico({ granularidad, faseQuery }: SeccionTraficoProps) {
+export default async function SeccionTrafico({ granularidad, faseQuery, slug }: SeccionTraficoProps) {
   const supabase = getSupabaseAdmin();
   const ahora = new Date();
 
@@ -148,7 +149,7 @@ export default async function SeccionTrafico({ granularidad, faseQuery }: Seccio
           etiqueta="Reset"
           etiquetaPendiente="Reseteando…"
           mensajeConfirmacion="¿Resetear el contador de tráfico? No se borra nada, pero todas las visitas de antes de ahora dejan de contar en el panel."
-          accion={resetearContadorTrafico}
+          accion={resetearContadorTrafico.bind(null, slug)}
           variante="peligro"
           className="shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium disabled:opacity-50"
         />

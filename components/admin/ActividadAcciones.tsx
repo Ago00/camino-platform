@@ -12,7 +12,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { iniciarReto, reiniciarReto, retomarReto } from "@/app/admin/actions";
+import { iniciarReto, reiniciarReto, retomarReto } from "@/app/[slug]/admin/actions";
 import BotonConfirmable from "@/components/admin/BotonConfirmable";
 import ModalFinalizar from "@/components/admin/ModalFinalizar";
 import type { ModoIntento } from "@/lib/types";
@@ -22,13 +22,11 @@ const C = { eucalipto: "#2F5D50", peligro: "#B03A2E" };
 interface ActividadAccionesProps {
   fase: "antes" | "durante" | "llegada";
   mensajeLlegadaDefault: string;
-  /** Foto de llegada ya subida en una finalización anterior, o null. Se le
-   * pasa al modal para que sepa si mostrar "Quitar foto" desde el principio. */
+  /** Foto de llegada ya subida en una finalización anterior, o null. */
   fotoLlegadaUrlActual: string | null;
-  /** Kicker/título de la pantalla de llegada (editables en la pestaña
-   * "Textos"), para la preview real del modal. */
   llegadaKicker: string;
   llegadaTitulo: string;
+  slug: string;
 }
 
 export default function ActividadAcciones({
@@ -37,9 +35,10 @@ export default function ActividadAcciones({
   fotoLlegadaUrlActual,
   llegadaKicker,
   llegadaTitulo,
+  slug,
 }: ActividadAccionesProps) {
   if (fase === "antes") {
-    return <IniciarConModo />;
+    return <IniciarConModo slug={slug} />;
   }
 
   if (fase === "durante") {
@@ -49,19 +48,15 @@ export default function ActividadAcciones({
         fotoLlegadaUrlActual={fotoLlegadaUrlActual}
         llegadaKicker={llegadaKicker}
         llegadaTitulo={llegadaTitulo}
+        slug={slug}
       />
     );
   }
 
-  return <RetomarYReiniciar />;
+  return <RetomarYReiniciar slug={slug} />;
 }
 
-/**
- * Selector de modo (guiado/libre, DT-016) + destino (solo modo libre) antes
- * de Iniciar. El modo queda fijo durante toda la vida del intento — para
- * cambiarlo hace falta Reiniciar y elegir de nuevo.
- */
-function IniciarConModo() {
+function IniciarConModo({ slug }: { slug: string }) {
   const [modo, setModo] = useState<ModoIntento>("guiado");
   const [destinoLat, setDestinoLat] = useState("");
   const [destinoLon, setDestinoLon] = useState("");
@@ -90,6 +85,7 @@ function IniciarConModo() {
     startTransition(async () => {
       try {
         await iniciarReto(
+          slug,
           modo === "libre" ? { modo, destinoLat: latNum, destinoLon: lonNum } : { modo }
         );
       } catch (e) {
@@ -192,11 +188,13 @@ function FinalizarYReiniciar({
   fotoLlegadaUrlActual,
   llegadaKicker,
   llegadaTitulo,
+  slug,
 }: {
   mensajeLlegadaDefault: string;
   fotoLlegadaUrlActual: string | null;
   llegadaKicker: string;
   llegadaTitulo: string;
+  slug: string;
 }) {
   const [modalAbierto, setModalAbierto] = useState(false);
 
@@ -214,7 +212,7 @@ function FinalizarYReiniciar({
           etiqueta="Reiniciar"
           etiquetaPendiente="Reiniciando…"
           mensajeConfirmacion="¿Reiniciar? Se cerrará este intento (queda guardado para siempre) y se abrirá uno nuevo desde cero."
-          accion={reiniciarReto}
+          accion={reiniciarReto.bind(null, slug)}
           variante="peligro"
         />
       </div>
@@ -226,22 +224,23 @@ function FinalizarYReiniciar({
           kicker={llegadaKicker}
           titulo={llegadaTitulo}
           onClose={() => setModalAbierto(false)}
+          slug={slug}
         />
       )}
     </div>
   );
 }
 
-function RetomarYReiniciar() {
+function RetomarYReiniciar({ slug }: { slug: string }) {
   return (
     <div className="flex flex-wrap gap-2">
       {/* Retomar: reversible con otro Finalizar, sin confirmación (ver CURRENT.md). */}
-      <BotonConfirmable etiqueta="Retomar" etiquetaPendiente="Retomando…" accion={retomarReto} />
+      <BotonConfirmable etiqueta="Retomar" etiquetaPendiente="Retomando…" accion={retomarReto.bind(null, slug)} />
       <BotonConfirmable
         etiqueta="Reiniciar"
         etiquetaPendiente="Reiniciando…"
         mensajeConfirmacion="¿Reiniciar? Se cerrará este intento (queda guardado para siempre) y se abrirá uno nuevo desde cero."
-        accion={reiniciarReto}
+        accion={reiniciarReto.bind(null, slug)}
         variante="peligro"
       />
     </div>

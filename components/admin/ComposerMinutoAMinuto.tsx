@@ -12,7 +12,7 @@
 "use client";
 
 import { useRef, useState, useTransition, type FormEvent } from "react";
-import { crearMinutoAMinuto } from "@/app/admin/actions";
+import { crearMinutoAMinuto } from "@/app/[slug]/admin/actions";
 import { prepararFotoParaSubida } from "@/lib/imagen/preparar-foto";
 import { ejecutarConReintentos } from "@/lib/envio/reintentar";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
@@ -38,7 +38,11 @@ function etiquetaDelBoton(estado: EstadoEnvio, pendiente: boolean): string {
   return "Publicando…";
 }
 
-export default function ComposerMinutoAMinuto() {
+interface ComposerMinutoAMinutoProps {
+  slug: string;
+}
+
+export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const inputFotoRef = useRef<HTMLInputElement>(null);
   const urlPreviewRef = useRef<string | null>(null);
@@ -102,7 +106,7 @@ export default function ComposerMinutoAMinuto() {
         }
 
         setEstado({ fase: "publicando" });
-        const resultado = await ejecutarConReintentos(() => crearMinutoAMinuto(formData), {
+        const resultado = await ejecutarConReintentos(() => crearMinutoAMinuto(slug, formData), {
           alReintentar: (intento) => setEstado({ fase: "reintentando", intento }),
         });
 

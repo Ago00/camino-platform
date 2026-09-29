@@ -2,16 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { cerrarSesion } from "@/app/admin/actions";
+import { cerrarSesion } from "@/app/[slug]/admin/actions";
 
-export default function BotonCerrarSesion() {
+interface BotonCerrarSesionProps {
+  slug: string;
+}
+
+export default function BotonCerrarSesion({ slug }: BotonCerrarSesionProps) {
   const router = useRouter();
   const [pendiente, startTransition] = useTransition();
 
   function onClick() {
     startTransition(async () => {
       await cerrarSesion();
-      router.push("/admin/login");
+      router.push(`/admin/login?returnTo=/${slug}/admin`);
       router.refresh();
     });
   }

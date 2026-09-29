@@ -50,6 +50,8 @@ interface ModoLlegadaProps {
   /** Foto opcional de llegada (DT-024), subida desde el modal "Finalizar"
    * del panel admin. null = sin foto, no se renderiza ningún hueco. */
   fotoLlegadaUrl: string | null;
+  /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
+  slug: string;
 }
 
 export default function ModoLlegada({
@@ -62,6 +64,7 @@ export default function ModoLlegada({
   puntosGps,
   textos,
   fotoLlegadaUrl,
+  slug,
 }: ModoLlegadaProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{
     lat: number;
@@ -94,12 +97,13 @@ export default function ModoLlegada({
           entradasIniciales={entradasMinutoAMinuto}
           onSeleccionarPunto={setPuntoResaltado}
           textos={textos}
+          slug={slug}
         />
       </div>
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
-      <ComentarioForm textos={textos} />
-      <MuroComentarios textos={textos} />
+      <ComentarioForm textos={textos} slug={slug} />
+      <MuroComentarios textos={textos} slug={slug} />
     </section>
   );
 }

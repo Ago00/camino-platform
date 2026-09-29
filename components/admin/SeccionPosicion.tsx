@@ -11,7 +11,7 @@ import EnlacePaginacion from "@/components/admin/EnlacePaginacion";
 const TAMANO_PAGINA = 20;
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
-export default async function SeccionPosicion({ offset }: { offset: number }) {
+export default async function SeccionPosicion({ offset, slug }: { offset: number; slug: string }) {
   const supabase = getSupabaseAdmin();
 
   const { data: intentoActivo } = await supabase
@@ -70,7 +70,7 @@ export default async function SeccionPosicion({ offset }: { offset: number }) {
 
       <div className="space-y-2">
         {historico.map((posicion) => (
-          <FilaPosicion key={posicion.id} posicion={posicion} />
+          <FilaPosicion key={posicion.id} posicion={posicion} slug={slug} />
         ))}
         {historico.length === 0 && (
           <p className="text-[13.5px]" style={{ color: C.muted }}>
@@ -84,7 +84,7 @@ export default async function SeccionPosicion({ offset }: { offset: number }) {
   );
 }
 
-function FilaPosicion({ posicion }: { posicion: Posicion }) {
+function FilaPosicion({ posicion, slug }: { posicion: Posicion; slug: string }) {
   return (
     <div
       className="flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5"
@@ -96,7 +96,7 @@ function FilaPosicion({ posicion }: { posicion: Posicion }) {
         {posicion.lat.toFixed(5)}, {posicion.lon.toFixed(5)}
         {posicion.descartado && " (descartada)"}
       </div>
-      {!posicion.descartado && <DescartarPosicionBoton id={posicion.id} />}
+      {!posicion.descartado && <DescartarPosicionBoton id={posicion.id} slug={slug} />}
     </div>
   );
 }

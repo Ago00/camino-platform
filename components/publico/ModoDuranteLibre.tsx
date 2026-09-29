@@ -49,6 +49,8 @@ interface ModoDuranteLibreProps {
    * entre DistanciaRestante/Stats/formularios/MinutoAMinuto).
    */
   textos: Textos;
+  /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
+  slug: string;
 }
 
 export default function ModoDuranteLibre({
@@ -56,6 +58,7 @@ export default function ModoDuranteLibre({
   puntosGpsIniciales,
   startedAt,
   textos,
+  slug,
 }: ModoDuranteLibreProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
@@ -66,7 +69,7 @@ export default function ModoDuranteLibre({
   useEffect(() => {
     const id = setInterval(async () => {
       try {
-        const response = await fetch("/api/progreso");
+        const response = await fetch(`/${slug}/api/progreso`);
         if (!response.ok) return;
         const data: ProgresoPublicoLibre = await response.json();
         setProgreso(data);
@@ -81,7 +84,7 @@ export default function ModoDuranteLibre({
       }
     }, POLLING_MS);
     return () => clearInterval(id);
-  }, [ultimoTs]);
+  }, [ultimoTs, slug]);
 
   useEffect(() => {
     const id = setInterval(() => setHora(bandaHoraria(new Date())), 60_000);
@@ -124,12 +127,12 @@ export default function ModoDuranteLibre({
           ritmoMedio={ritmoMedio}
           textos={textos}
         />
-        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} />
+        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
       </div>
 
-      <IntencionForm textos={textos} />
-      <ComentarioForm textos={textos} />
-      <MuroComentarios textos={textos} />
+      <IntencionForm textos={textos} slug={slug} />
+      <ComentarioForm textos={textos} slug={slug} />
+      <MuroComentarios textos={textos} slug={slug} />
     </section>
   );
 }

@@ -8,7 +8,7 @@ import AccionesComentario from "@/components/admin/AccionesComentario";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
-export default async function SeccionComentarios({ filtro }: { filtro: FiltroComentario }) {
+export default async function SeccionComentarios({ filtro, slug }: { filtro: FiltroComentario; slug: string }) {
   const supabase = getSupabaseAdmin();
   let query = supabase.from("comentarios").select("*").order("created_at", { ascending: false });
 
@@ -44,7 +44,7 @@ export default async function SeccionComentarios({ filtro }: { filtro: FiltroCom
                   {comentario.texto}
                 </div>
               </div>
-              <AccionesComentario id={comentario.id} oculto={comentario.oculto} />
+              <AccionesComentario id={comentario.id} oculto={comentario.oculto} slug={slug} />
             </div>
           ))}
         </div>

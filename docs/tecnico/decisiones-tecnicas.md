@@ -1704,3 +1704,48 @@ lib/rutas/portuguesa-110/traza-mapa.geojson  (antes: lib/traza/traza-mapa.geojso
 | **FP1** | Routing multi-tenant (`/[slug]/`), todos los endpoints parametrizados por `reto_id`, web pública y admin funcionando. |
 | **FP2** | Panel superadmin (`/superadmin`): CRUD de retos. |
 | **FP3** | Features nuevas: hilos de respuesta en comentarios, MAM colapsable, admin más configurable. |
+
+---
+
+## DT-026 — FP1: Routing multi-reto con slug nesting completo
+
+**Fecha:** 2026-09-29 · **Tarea:** FP1 — Routing multi-tenant
+
+### Decisión
+
+Web pública y panel admin se mueven bajo `app/[slug]/`. Los cinco endpoints de API que consumen `reto_id` (comentarios, intenciones, progreso, fase, minuto-a-minuto) se mueven a `app/[slug]/api/`. Solo quedan fuera del slug:
+- `app/api/track/route.ts` — URL configurada externamente en OwnTracks; no puede cambiar sin reconfigurar el tracker.
+- `app/api/admin/login/route.ts` — autenticación global sin contexto de reto.
+
+El `reto_id` se resuelve con un helper `obtenerRetoPorSlug(slug: string): Promise<Reto>` en `lib/supabase/retos.ts`, envuelto en `React.cache()` para deduplicar dentro del mismo render tree (una sola query a `retos WHERE slug = $slug` por request). `/api/track` resuelve el `reto_id` directamente desde el intento activo (`intentos.reto_id WHERE cerrado = false`), sin necesitar el slug en la URL.
+
+La raíz `/` en `app/page.tsx` hace `redirect('/portuguesa-110')` estático para FP1 (único reto en producción). Se sustituirá en FP2 por lógica dinámica cuando existan múltiples retos.
+
+### Alternativas valoradas
+
+**Opción B — slug como query param (descartada).** APIs se quedan en `app/api/`, reciben `?slug=portuguesa-110` o el slug en el body. Evita mover archivos de API pero es semánticamente pobre: el slug en query param mezcla contexto de enrutamiento con parámetros de la petición, no describe un recurso REST. Los client components necesitan el mismo cambio que en Opción A (pasar el slug), sin ganancia.
+
+**Opción C — resolver desde reto activo (descartada).** APIs resuelven `reto_id` con `SELECT id FROM retos WHERE activo = true LIMIT 1`, sin slug en la URL. Mínimo cambio pero no cumple el requisito explícito del task: "obtenerlo dinámicamente del slug de la URL". Deuda inmediata en FP2.
+
+### Estructura de archivos resultante
+
+**Creados:**
+- `lib/supabase/retos.ts` — `obtenerRetoPorSlug` + `React.cache`, con fallback ante migración sin aplicar
+- `app/[slug]/layout.tsx` — llama `obtenerRetoPorSlug`, invoca `notFound()` si slug desconocido
+- `app/[slug]/page.tsx` — movido de `app/page.tsx`
+- `app/[slug]/admin/page.tsx` — movido de `app/admin/page.tsx`
+- `app/[slug]/admin/actions.ts` — movido; cada action recibe `slug: string` como primer param; `revalidatePath` usa `/${slug}/admin`
+- `app/[slug]/api/{comentarios,intenciones,progreso,fase,minuto-a-minuto}/route.ts`
+
+**Modificados:**
+- `app/page.tsx` — solo `redirect('/portuguesa-110')`
+- `proxy.ts` — matcher estándar de exclusión, admin protegido en `/:slug/admin/:path*`, visitas capturadas en `/:slug`, login redirect con `?returnTo=/:slug/admin/`
+- `app/admin/login/page.tsx` — lee `returnTo` query param y redirige a él tras login exitoso
+- `app/api/track/route.ts` — `reto_id` resuelto desde `intentos.reto_id WHERE cerrado = false`
+- Los 7 client components en `components/publico/` que hacen fetch a `/api/*`
+
+**Eliminados:** versiones viejas de las APIs en `app/api/` y `app/admin/page.tsx` + `actions.ts`
+
+### Deuda generada
+
+Las caches en memoria (`lib/progreso-cache.ts`, `lib/historico-cache.ts`) no tienen clave por reto. Funciona para FP1 (un reto activo a la vez). En FP2, cuando haya múltiples retos activos simultáneos, necesitan keying por `reto_id`. Registrar en DEBT.md al cerrar FP1.

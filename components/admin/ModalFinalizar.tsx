@@ -17,7 +17,7 @@
 "use client";
 
 import { useRef, useState, useTransition, type FormEvent } from "react";
-import { finalizarReto } from "@/app/admin/actions";
+import { finalizarReto } from "@/app/[slug]/admin/actions";
 import { prepararFotoParaSubida } from "@/lib/imagen/preparar-foto";
 import { ejecutarConReintentos } from "@/lib/envio/reintentar";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
@@ -53,6 +53,7 @@ interface ModalFinalizarProps {
   kicker: string;
   titulo: string;
   onClose: () => void;
+  slug: string;
 }
 
 export default function ModalFinalizar({
@@ -61,6 +62,7 @@ export default function ModalFinalizar({
   kicker,
   titulo,
   onClose,
+  slug,
 }: ModalFinalizarProps) {
   const inputFotoRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | null>(null);
@@ -113,7 +115,7 @@ export default function ModalFinalizar({
         }
 
         setEstado({ fase: "publicando" });
-        const resultado = await ejecutarConReintentos(() => finalizarReto(formData), {
+        const resultado = await ejecutarConReintentos(() => finalizarReto(slug, formData), {
           alReintentar: (intento) => setEstado({ fase: "reintentando", intento }),
         });
 

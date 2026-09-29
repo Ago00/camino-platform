@@ -2,6 +2,50 @@
 
 ---
 
+## `GET /[slug]/api/comentarios` no filtra por `reto_id` (FP1 → FP2)
+
+**Fecha:** 2026-09-29
+**Contexto:** Revisión de FP1 (DT-026). El handler GET de `app/[slug]/api/comentarios/route.ts` no acepta `params` ni llama a `obtenerRetoPorSlug`. El original tampoco filtraba por `reto_id` (leía todos los comentarios públicos), así que no había hardcoding que sustituir. La spec de FP1 decía que todos los handlers debían recibir `params` y resolver el reto_id, pero dado que GET era una lectura sin inserción el impacto en FP1 (reto único) es nulo.
+**Problema:** En un escenario multi-reto, `GET /:slug-b/api/comentarios` devolvería comentarios de todos los retos, no solo del reto-b.
+**Impacto:** Inocuo en FP1. Aislamiento de datos roto en FP2 si dos retos tienen comentarios.
+**Solución propuesta:** Añadir `{ params }: { params: Promise<{ slug: string }> }` al handler GET, llamar `obtenerRetoPorSlug(slug)` y añadir `.eq("reto_id", reto.id)` al select. Aplicar el mismo patrón al GET de `minuto-a-minuto/route.ts` si en ese momento se decide abandonar la dependencia de RLS.
+**Prioridad:** Baja hasta FP2.
+
+---
+
+## `calcularProgresoActual()` y `datos-mapa-admin.ts` hardcodean `"portuguesa-110"` (FP1 → FP2)
+
+**Fecha:** 2026-09-29
+**Contexto:** Revisión de FP1 (DT-026). `lib/traza/progreso-actual.ts` (línea 110) y `lib/traza/datos-mapa-admin.ts` (línea 93) tienen un comentario `// FP1: obtener rutaId del reto activo en vez de hardcodear` y usan `cargarTrazaDeCalculo("portuguesa-110")`. Estos ficheros no estaban en el scope de modificación de FP1 (no aparecen en CURRENT.md). El `reto_id` ya fluye hasta `app/api/track/route.ts`, que hace su propia resolución, pero `calcularProgresoActual()` (usada también desde `crearMinutoAMinuto` en actions.ts y desde `api/progreso/route.ts`) no recibe el contexto del reto.
+**Problema:** Si en FP2 hubiera dos retos con `ruta_id` distintos, `calcularProgresoActual()` siempre usaría la traza de `portuguesa-110`, calculando progreso incorrecto para cualquier otro reto.
+**Impacto:** Inocuo en FP1 (único reto activo es `portuguesa-110`). Funcional incorrecto en FP2 con rutos distintos.
+**Solución propuesta:** Refactorizar `calcularProgresoActual()` para que reciba `rutaId: string` como parámetro en vez de hardcodearlo. Los callers (`crearMinutoAMinuto`, `api/progreso/route.ts`) ya tienen acceso al slug o al intento activo con su `reto_id` para resolverlo.
+**Prioridad:** Baja hasta FP2.
+
+---
+
+## Caché de progreso e histórico sin keying por reto (FP1 → FP2)
+
+**Fecha:** 2026-09-29
+**Contexto:** FP1 (DT-026). Las cachés en memoria `lib/progreso-cache.ts` y `lib/historico-cache.ts` guardan un único valor global sin discriminar por `reto_id`. En FP1 solo existe un reto activo a la vez, así que no hay mezcla. En FP2, si dos retos tuvieran intento activo simultáneo, la caché devolvería el progreso del reto equivocado.
+**Problema:** `guardarCacheProgreso` y `guardarCacheHistorico` no llevan clave por `reto_id`.
+**Impacto:** Inocuo en FP1. Bloqueante (datos erróneos en producción) en cuanto haya dos retos activos simultáneos.
+**Solución propuesta:** Cambiar las cachés a `Map<number, { valor, timestamp }>` con clave `reto_id` en FP2 (junto con el routing multi-reto completo).
+**Prioridad:** Baja hasta FP2.
+
+---
+
+## `resetearContadorTrafico` usa `.eq("id", 1)` hardcodeado
+
+**Fecha:** 2026-09-29
+**Contexto:** FP1 (DT-026). La action `resetearContadorTrafico` en `app/[slug]/admin/actions.ts` aplica el reset a la fila de `config_trafico` con `id = 1` (la única existente). No filtra por `reto_id` del slug activo.
+**Problema:** Si en FP2 existieran múltiples filas en `config_trafico` (una por reto), resetear desde `/otro-reto/admin` podría afectar al registro equivocado.
+**Impacto:** Inocuo en FP1. Riesgo en FP2 si se añaden más retos con sus propias configuraciones de tráfico.
+**Solución propuesta:** En FP2, cambiar la query para filtrar por `reto_id` obtenido del slug en lugar de por `id`.
+**Prioridad:** Baja hasta FP2.
+
+---
+
 ## `scripts/generar-perfil-elevacion.ts` lee de la ruta antigua del GeoJSON de pintado
 
 **Fecha:** 2026-09-28
@@ -46,14 +90,10 @@
 
 ---
 
-## Endpoints de API todavía no filtran por `reto_id`
+## ~~Endpoints de API todavía no filtran por `reto_id`~~ — RESUELTO en FP1
 
-**Fecha:** 2026-09-28
-**Contexto:** FP0 — Schema plataforma multi-tenant (DT-025). En FP0, todos los endpoints que insertan en tablas con `reto_id` usan `reto_id: 1` hardcodeado (el reto `portuguesa-110`). Los endpoints que leen (comentarios, textos, intenciones, visitas, etc.) no filtran por `reto_id` todavía.
-**Problema:** Con más de un reto en la BD, los endpoints devuelven o escriben datos sin discriminar por reto — mezclarían datos de distintos retos.
-**Impacto:** Bloqueante para FP1 (routing multi-tenant). En v1 solo existe un reto, así que en la práctica no hay mezcla. El riesgo es real en cuanto se añada un segundo reto.
-**Solución propuesta:** FP1 parametriza todos los endpoints y server actions por `reto_id`, obtenido del contexto de la URL (`/[slug]/`).
-**Prioridad:** Alta — resolver en FP1 antes de que haya más de un reto activo.
+**Fecha:** 2026-09-28 → Resuelto 2026-09-29 (FP1, DT-026)
+Todos los endpoints y server actions bajo `app/[slug]/` resuelven `reto_id` dinámicamente a partir del slug de la URL. Hardcoding de `reto_id: 1` eliminado.
 
 ---
 

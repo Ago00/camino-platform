@@ -51,6 +51,7 @@ import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { separacionDeTrazaM } from "@/lib/traza/proyeccion";
 import { SEPARACION_TRAZA_MAX_KM } from "@/lib/traza/umbrales";
 
+
 export const runtime = "nodejs";
 
 const LIMITE_PETICIONES_POR_MINUTO = 40;
@@ -147,12 +148,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = getSupabaseAdmin();
   const { data: intentoActivo, error: errorIntento } = await supabase
     .from("intentos")
-    .select("id, modo")
+    .select("id, modo, reto_id")
     .eq("cerrado", false)
     .maybeSingle();
 
   let intentoId: number;
   let modoIntento: "guiado" | "libre";
+  let retoId: number | null;
 
   if (errorIntento) {
     // Compatibilidad temporal: la columna `modo` puede no existir todavía
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // select mínimo y trata el intento como modo guiado.
     const { data: intentoActivoMinimo, error: errorIntentoMinimo } = await supabase
       .from("intentos")
-      .select("id")
+      .select("id, reto_id")
       .eq("cerrado", false)
       .maybeSingle();
 
@@ -170,19 +172,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     intentoId = intentoActivoMinimo.id;
     modoIntento = "guiado";
+    retoId = intentoActivoMinimo.reto_id ?? null;
   } else {
     if (!intentoActivo) {
       return respuestaVacia();
     }
     intentoId = intentoActivo.id;
     modoIntento = intentoActivo.modo;
+    retoId = intentoActivo.reto_id ?? null;
   }
 
   // 5. Filtro de plausibilidad geográfica (DT-006, capa 1) — solo modo
-  // 'guiado' (DT-016).
+  // 'guiado' (DT-016). La ruta se obtiene desde el reto asociado al intento.
   if (modoIntento === "guiado") {
-    // FP1: obtener rutaId del reto activo en vez de hardcodear.
-    const traza = cargarTrazaDeCalculo("portuguesa-110");
+    let rutaId = "portuguesa-110";
+    if (retoId !== null) {
+      // Obtenemos el reto por id para conseguir su ruta_id. Buscamos por slug
+      // del único reto activo sería más directo, pero el intento ya expone
+      // reto_id directamente, así que consultamos por ese id.
+      const { data: retoData } = await supabase
+        .from("retos")
+        .select("ruta_id")
+        .eq("id", retoId)
+        .maybeSingle();
+      if (retoData?.ruta_id) {
+        rutaId = retoData.ruta_id;
+      }
+    }
+    const traza = cargarTrazaDeCalculo(rutaId);
     const separacionM = separacionDeTrazaM(lat, lon, traza);
     const separacionMaximaM = SEPARACION_TRAZA_MAX_KM * 1000;
     if (separacionM > separacionMaximaM) {

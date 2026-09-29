@@ -1,20 +1,19 @@
 /**
- * POST /api/intenciones — nueva intención dejada por familia o amigos.
+ * POST /[slug]/api/intenciones — nueva intención dejada por familia o amigos.
+ *
+ * El slug se resuelve a un reto_id mediante obtenerRetoPorSlug (DT-026, FP1).
+ * El comportamiento es idéntico al anterior app/api/intenciones/route.ts,
+ * salvo que `reto_id` ya no está hardcodeado.
  *
  * Cliente ADMIN (service role): `intenciones` no tiene ninguna política RLS
- * para `anon` (ver docs/tecnico/modelo-datos.md — invariante de privacidad,
- * las intenciones son siempre privadas). El route handler es el único camino
- * de escritura posible desde el cliente público, con validación Zod en la
- * frontera.
- *
- * Rate limiting por IP (DT-011): 10 req/min. Responde 429 sin cuerpo al
- * exceder el límite.
+ * para `anon`. Rate limiting por IP (DT-011): 10 req/min.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 
 export const runtime = "nodejs";
 
@@ -26,7 +25,10 @@ const nuevaIntencion = z.object({
   nombre: z.string().trim().min(1).max(80).optional(),
 });
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+): Promise<NextResponse> {
   if (!consumir(obtenerIpCliente(request), LIMITE_POR_MINUTO, VENTANA_MS)) {
     return new NextResponse(null, { status: 429 });
   }
@@ -44,11 +46,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const { texto, nombre } = parsed.data;
+  const { slug } = await params;
+
+  const reto = await obtenerRetoPorSlug(slug);
+  if (!reto) {
+    return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
+  }
+
   const supabase = getSupabaseAdmin();
 
-  // FP1: obtener reto_id del contexto del reto activo en vez de hardcodear.
   const { error } = await supabase.from("intenciones").insert({
-    reto_id: 1,
+    reto_id: reto.id,
     texto,
     nombre: nombre ?? null,
   });

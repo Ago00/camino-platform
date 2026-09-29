@@ -2,6 +2,36 @@
 
 ---
 
+## 2026-09-29 — Fix de seguridad: Next.js 16.3.6, maplibre-gl 6.11.2, hardening de open redirect
+
+**Tipo:** Fix (seguridad)
+
+Actualización de dependencias críticas para cerrar 5 vulnerabilidades detectadas
+por el agente de seguridad: Next.js 16.2.12 → 16.3.6 (dos RCEs sin autenticar,
+A06 CRÍTICO), maplibre-gl 6.0.0 → 6.11.2 (XSS, A06 CRÍTICO), override de
+js-yaml ≥ 4.3.2 en dependencias transitivas de dev (CPU exhaustion, A06 ALTO).
+Además: la validación de `returnTo` en el login de admin pasó de una lista
+negra débil de strings a una regex estricta que solo permite rutas del patrón
+`/:slug/admin[/*]` — elimina el vector de bypass con barra invertida (A04).
+El endpoint GET `/:slug/api/comentarios` ahora filtra por `reto_id` y
+`oculto = false` en lugar de devolver todos los comentarios de la BD (A01
+Broken Access Control).
+
+---
+
+## 2026-09-29 — FP1: Routing multi-tenant (slug-namespaced URLs)
+
+**Tipo:** Feature (plataforma)
+
+La web pública y el panel admin pasan a vivir bajo URLs con slug del reto
+(`/portuguesa-110/` y `/portuguesa-110/admin`). La raíz `/` redirige a
+`/portuguesa-110` de forma estática mientras solo existe un reto. Las APIs
+públicas siguen el mismo patrón (`/:slug/api/*`). Esto sienta las bases para
+que en FP2 coexistan múltiples retos en la misma plataforma sin conflictos de
+URL ni de datos.
+
+---
+
 ## 2026-09-28 — FP0: Schema multi-tenant y reorganización de assets de rutas
 
 **Tipo:** Feature (plataforma)

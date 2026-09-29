@@ -28,9 +28,10 @@ const rise = {
 interface ModoAntesProps {
   textos: Textos;
   trazaCoords: [number, number][];
+  slug: string;
 }
 
-export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
+export default function ModoAntes({ textos, trazaCoords, slug }: ModoAntesProps) {
   const spineRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: spineRef, offset: ["start center", "end center"] });
   const fill = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
@@ -108,7 +109,7 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
         </Hito>
 
         <Hito>
-          <IntencionForm textos={textos} />
+          <IntencionForm textos={textos} slug={slug} />
         </Hito>
 
         <Hito>
@@ -118,7 +119,7 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
         </Hito>
 
         <Hito>
-          <ComentarioForm textos={textos} />
+          <ComentarioForm textos={textos} slug={slug} />
         </Hito>
 
         <Hito ultimo>

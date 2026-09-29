@@ -45,6 +45,8 @@ interface ModoLlegadaLibreProps {
   endedAt: string | null;
   /** Solo se leen `llegada_libre_kicker`/`llegada_libre_titulo` — editables desde /admin. */
   textos: Textos;
+  /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
+  slug: string;
 }
 
 export default function ModoLlegadaLibre({
@@ -55,6 +57,7 @@ export default function ModoLlegadaLibre({
   startedAt,
   endedAt,
   textos,
+  slug,
 }: ModoLlegadaLibreProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{ lat: number; lon: number; hora: string } | null>(null);
 
@@ -104,12 +107,13 @@ export default function ModoLlegadaLibre({
           entradasIniciales={entradasMinutoAMinuto}
           onSeleccionarPunto={setPuntoResaltado}
           textos={textos}
+          slug={slug}
         />
       </div>
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
-      <ComentarioForm textos={textos} />
-      <MuroComentarios textos={textos} />
+      <ComentarioForm textos={textos} slug={slug} />
+      <MuroComentarios textos={textos} slug={slug} />
     </section>
   );
 }

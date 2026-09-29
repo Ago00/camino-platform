@@ -51,6 +51,8 @@ interface ModoDuranteProps {
    * disponible para pasarlo hacia abajo).
    */
   textos: Textos;
+  /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
+  slug: string;
 }
 
 export default function ModoDurante({
@@ -59,6 +61,7 @@ export default function ModoDurante({
   trazaCoords,
   puntosGpsIniciales,
   textos,
+  slug,
 }: ModoDuranteProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
@@ -74,7 +77,7 @@ export default function ModoDurante({
   useEffect(() => {
     const id = setInterval(async () => {
       try {
-        const response = await fetch("/api/progreso");
+        const response = await fetch(`/${slug}/api/progreso`);
         if (response.ok) {
           const data: ProgresoPublicoGuiado = await response.json();
           setProgreso(data);
@@ -90,7 +93,7 @@ export default function ModoDurante({
       }
     }, POLLING_MS);
     return () => clearInterval(id);
-  }, [ultimoTs]);
+  }, [ultimoTs, slug]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -134,12 +137,12 @@ export default function ModoDurante({
           ritmoMedio={ritmoMedio}
           textos={textos}
         />
-        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} />
+        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
       </div>
 
-      <IntencionForm textos={textos} />
-      <ComentarioForm textos={textos} />
-      <MuroComentarios textos={textos} />
+      <IntencionForm textos={textos} slug={slug} />
+      <ComentarioForm textos={textos} slug={slug} />
+      <MuroComentarios textos={textos} slug={slug} />
     </section>
   );
 }

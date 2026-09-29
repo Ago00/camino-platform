@@ -8,7 +8,7 @@ import EntradaMinutoAMinuto from "@/components/admin/EntradaMinutoAMinuto";
 
 const C = { muted: "#4A5450" };
 
-export default async function SeccionMinutoAMinuto() {
+export default async function SeccionMinutoAMinuto({ slug }: { slug: string }) {
   const supabase = getSupabaseAdmin();
 
   const { data: intentoActivo } = await supabase
@@ -36,7 +36,7 @@ export default async function SeccionMinutoAMinuto() {
         </p>
       )}
 
-      <ComposerMinutoAMinuto />
+      <ComposerMinutoAMinuto slug={slug} />
 
       {entradas.length === 0 ? (
         <p className="text-[14px]" style={{ color: C.muted }}>
@@ -51,6 +51,7 @@ export default async function SeccionMinutoAMinuto() {
               texto={entrada.texto}
               fotoUrl={entrada.foto_url}
               createdAt={entrada.created_at}
+              slug={slug}
             />
           ))}
         </div>

@@ -1,19 +1,30 @@
 // Login del panel admin: un solo campo de contraseña (admin único, sin
-// usuario). Sin mockup (F4 saltó la fase de diseño, ver docs/tareas/CURRENT.md):
-// estilo funcional coherente con la paleta de la web pública.
+// usuario). Tras un login exitoso, redirige a `returnTo` (query param) si
+// está presente y apunta a una ruta interna — por defecto /portuguesa-110/admin.
+// La validación de `returnTo` evita open redirects: debe comenzar por "/" y
+// no contener "//", "http" ni cualquier otro esquema externo.
 
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, Suspense } from "react";
 
 const C = { paper: "#F4F3EF", ink: "#1B211D", eucalipto: "#2F5D50", error: "#B03A2E" };
 
-export default function AdminLoginPage() {
+function AdminLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function resolverReturnTo(): string {
+    const returnTo = searchParams.get("returnTo");
+    if (returnTo && /^\/[a-z0-9-]+\/admin(\/.*)?$/.test(returnTo)) {
+      return returnTo;
+    }
+    return "/portuguesa-110/admin";
+  }
 
   async function enviar(evento: React.FormEvent) {
     evento.preventDefault();
@@ -30,7 +41,7 @@ export default function AdminLoginPage() {
         setError("Contraseña incorrecta.");
         return;
       }
-      router.push("/admin");
+      router.push(resolverReturnTo());
       router.refresh();
     } catch {
       setError("No se pudo conectar. Inténtalo de nuevo.");
@@ -71,5 +82,13 @@ export default function AdminLoginPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense>
+      <AdminLoginForm />
+    </Suspense>
   );
 }

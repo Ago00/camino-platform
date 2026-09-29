@@ -1,27 +1,10 @@
 /**
- * GET /api/minuto-a-minuto — feed público del "minuto a minuto", en dos modos:
+ * GET /[slug]/api/minuto-a-minuto — feed público del "minuto a minuto".
  *
- * - Carga paginada (offset/limit, como GET /api/comentarios): para la carga
- *   inicial y "cargar más".
- * - Poll incremental (despuesDeId): para detectar entradas nuevas desde el
- *   cliente sin repetir el histórico completo. Si se pasa `despuesDeId`,
- *   ignora offset/limit y devuelve solo las entradas con id mayor, con un
- *   límite propio (LIMITE_POLL) para no devolver el histórico entero si
- *   alguien manipula el parámetro.
- *
- * Contrato de respuesta consistente entre ambos modos: `{ entradas,
- * siguienteOffset }`. En modo poll `siguienteOffset` es siempre null (no
- * aplica paginación) — así el cliente parsea la respuesta con una sola
- * función sin importar el modo.
- *
- * Cliente anon (lib/supabase/public.ts, sujeto a RLS): la política de
- * `minuto_a_minuto` ya limita el SELECT a las entradas del intento activo
- * (ver supabase/migrations/0002_minuto_a_minuto.sql) — no hace falta filtrar
- * por intento_id explícitamente en el código.
- *
- * Rate limiting por IP (DT-011, mismo patrón que /api/comentarios): 60
- * req/min. Solo GET — no hay POST público, todas las escrituras son Server
- * Actions autenticadas (app/admin/actions.ts).
+ * Carga paginada (offset/limit) + poll incremental (despuesDeId).
+ * Comportamiento idéntico al anterior app/api/minuto-a-minuto/route.ts:
+ * la RLS de `minuto_a_minuto` ya filtra por el intento activo, no hace
+ * falta filtrar por slug en el código (DT-026, FP1).
  */
 
 import { type NextRequest, NextResponse } from "next/server";
@@ -44,7 +27,9 @@ const queryFeed = z.object({
   despuesDeId: z.coerce.number().int().min(0).optional(),
 });
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(
+  request: NextRequest
+): Promise<NextResponse> {
   if (!consumir(obtenerIpCliente(request), LIMITE_GET_POR_MINUTO, VENTANA_MS)) {
     return new NextResponse(null, { status: 429 });
   }

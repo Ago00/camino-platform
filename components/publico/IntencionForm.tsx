@@ -13,9 +13,10 @@ type Estado = "idle" | "enviando" | "enviado" | "error";
 
 interface IntencionFormProps {
   textos: Textos;
+  slug: string;
 }
 
-export default function IntencionForm({ textos }: IntencionFormProps) {
+export default function IntencionForm({ textos, slug }: IntencionFormProps) {
   const [anon, setAnon] = useState(false);
   const [texto, setTexto] = useState("");
   const [nombre, setNombre] = useState("");
@@ -25,7 +26,7 @@ export default function IntencionForm({ textos }: IntencionFormProps) {
     if (texto.trim().length === 0 || estado === "enviando") return;
     setEstado("enviando");
     try {
-      const response = await fetch("/api/intenciones", {
+      const response = await fetch(`/${slug}/api/intenciones`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { editarMinutoAMinuto, eliminarMinutoAMinuto } from "@/app/admin/actions";
+import { editarMinutoAMinuto, eliminarMinutoAMinuto } from "@/app/[slug]/admin/actions";
 import BotonConfirmable from "@/components/admin/BotonConfirmable";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
@@ -16,16 +16,17 @@ interface EntradaMinutoAMinutoProps {
   texto: string;
   fotoUrl: string | null;
   createdAt: string;
+  slug: string;
 }
 
-export default function EntradaMinutoAMinuto({ id, texto, fotoUrl, createdAt }: EntradaMinutoAMinutoProps) {
+export default function EntradaMinutoAMinuto({ id, texto, fotoUrl, createdAt, slug }: EntradaMinutoAMinutoProps) {
   const [editando, setEditando] = useState(false);
   const [textoEditado, setTextoEditado] = useState(texto);
   const [pendiente, startTransition] = useTransition();
 
   function guardar() {
     startTransition(async () => {
-      await editarMinutoAMinuto(id, textoEditado);
+      await editarMinutoAMinuto(slug, id, textoEditado);
       setEditando(false);
     });
   }
@@ -98,7 +99,7 @@ export default function EntradaMinutoAMinuto({ id, texto, fotoUrl, createdAt }: 
             etiqueta="Eliminar"
             etiquetaPendiente="Eliminando…"
             mensajeConfirmacion="¿Eliminar esta entrada? Se borra de forma permanente, no se puede deshacer."
-            accion={() => eliminarMinutoAMinuto(id)}
+            accion={() => eliminarMinutoAMinuto(slug, id)}
             variante="peligro"
             className="shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium disabled:opacity-50"
           />

@@ -41,6 +41,8 @@ interface MinutoAMinutoProps {
   entradasIniciales?: EntradaMinutoAMinutoPublica[];
   onSeleccionarPunto: (punto: PuntoResaltado | null) => void;
   textos: Textos;
+  /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
+  slug: string;
 }
 
 export default function MinutoAMinuto({
@@ -48,6 +50,7 @@ export default function MinutoAMinuto({
   entradasIniciales,
   onSeleccionarPunto,
   textos,
+  slug,
 }: MinutoAMinutoProps) {
   const [entradas, setEntradas] = useState<EntradaMinutoAMinutoPublica[]>(entradasIniciales ?? []);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(
@@ -60,7 +63,7 @@ export default function MinutoAMinuto({
   const cargarPagina = useCallback(async (offset: number) => {
     setCargando(true);
     try {
-      const response = await fetch(`/api/minuto-a-minuto?offset=${offset}&limit=${PAGINA}`);
+      const response = await fetch(`/${slug}/api/minuto-a-minuto?offset=${offset}&limit=${PAGINA}`);
       if (!response.ok) return;
       const data: RespuestaFeed = await response.json();
       setEntradas((previas) => (offset === 0 ? data.entradas : [...previas, ...data.entradas]));
@@ -68,7 +71,7 @@ export default function MinutoAMinuto({
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     if (cargadoInicial.current) return;
@@ -90,7 +93,7 @@ export default function MinutoAMinuto({
       const despuesDeId = masRecienteIdRef.current;
       if (despuesDeId === null) return;
       try {
-        const response = await fetch(`/api/minuto-a-minuto?despuesDeId=${despuesDeId}`);
+        const response = await fetch(`/${slug}/api/minuto-a-minuto?despuesDeId=${despuesDeId}`);
         if (!response.ok) return;
         const data: RespuestaFeed = await response.json();
         if (data.entradas.length > 0) {
@@ -103,7 +106,7 @@ export default function MinutoAMinuto({
     }, POLLING_MS);
 
     return () => clearInterval(id);
-  }, [polling]);
+  }, [polling, slug]);
 
   function alPulsar(entrada: EntradaMinutoAMinutoPublica) {
     const esLaMisma = entrada.id === seleccionada;

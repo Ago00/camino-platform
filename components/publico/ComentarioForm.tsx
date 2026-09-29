@@ -15,9 +15,10 @@ interface ComentarioFormProps {
   textos: Textos;
   /** Se llama al enviar con éxito, para que el muro pueda refrescarse. */
   onEnviado?: () => void;
+  slug: string;
 }
 
-export default function ComentarioForm({ textos, onEnviado }: ComentarioFormProps) {
+export default function ComentarioForm({ textos, onEnviado, slug }: ComentarioFormProps) {
   const [tipo, setTipo] = useState<Visibilidad>("publico");
   const [nombre, setNombre] = useState("");
   const [texto, setTexto] = useState("");
@@ -27,7 +28,7 @@ export default function ComentarioForm({ textos, onEnviado }: ComentarioFormProp
     if (nombre.trim().length === 0 || texto.trim().length === 0 || estado === "enviando") return;
     setEstado("enviando");
     try {
-      const response = await fetch("/api/comentarios", {
+      const response = await fetch(`/${slug}/api/comentarios`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
