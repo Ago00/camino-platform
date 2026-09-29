@@ -31,6 +31,24 @@ export interface Reto {
   ruta_tipo: "predefinida" | "libre";
   ruta_id: string | null;
   activo: boolean;
+  /**
+   * Configuración de la web pública que el admin del reto edita en la pestaña
+   * "Configuración" (FP3c, DT-032, migración 0012). Default true en BD. Una
+   * sección apagada no se pinta en ninguna fase y su API responde 403.
+   * Leer siempre a través de `configDelReto` (lib/retos/config.ts).
+   */
+  seccion_intenciones: boolean;
+  seccion_comentarios: boolean;
+  seccion_minuto_a_minuto: boolean;
+  seccion_instagram: boolean;
+  /** Respuestas de visitantes en los comentarios (FP3a). false = solo responde el caminante desde el admin. */
+  respuestas_visitantes: boolean;
+  /**
+   * Foto de "quién camina": URL pública del bucket `minuto-a-minuto` (objeto
+   * `<reto_id>/quien-camina-…`) o ruta de `/public` heredada (`/santi.jpg`).
+   * null = silueta genérica.
+   */
+  quien_camina_foto_url: string | null;
   created_at: string; // ISO 8601
 }
 

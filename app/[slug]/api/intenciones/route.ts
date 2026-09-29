@@ -7,11 +7,16 @@
  *
  * Cliente ADMIN (service role): `intenciones` no tiene ninguna política RLS
  * para `anon`. Rate limiting por IP (DT-011): 10 req/min.
+ *
+ * Con la sección de intenciones apagada en la configuración del reto (FP3c,
+ * DT-032) responde 403. Basta con comprobarlo aquí: sin política RLS para
+ * `anon`, esta API es la única vía de escritura.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
+import { configDelReto } from "@/lib/retos/config";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 
@@ -51,6 +56,9 @@ export async function POST(
   const reto = await obtenerRetoPorSlug(slug);
   if (!reto) {
     return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
+  }
+  if (!configDelReto(reto).seccion_intenciones) {
+    return NextResponse.json({ error: "no disponible" }, { status: 403 });
   }
 
   const supabase = getSupabaseAdmin();

@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-09-30 — FP3c: Configuración de cada reto desde su panel admin
+
+**Tipo:** Feature
+
+El panel admin de cada reto tiene una pestaña nueva, "Configuración", para
+encender o apagar las secciones de la web pública (intenciones, comentarios,
+minuto a minuto e Instagram), decidir si los visitantes pueden responder
+comentarios (el caminante puede responder siempre desde el panel) y subir,
+cambiar o quitar la foto de "quién camina". Una sección apagada desaparece de
+la web en todas las fases, sin borrar nada de lo recibido. La pestaña Textos
+se organiza ahora por bloques plegables con un índice arriba. Requiere aplicar
+la migración `0012_config_reto.sql`.
+
+---
+
 ## 2026-09-30 — FP3b: "Minuto a minuto" plegable en la web pública
 
 **Tipo:** Feature + Fix

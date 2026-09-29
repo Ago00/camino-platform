@@ -2,6 +2,8 @@
 // Sigue fielmente el mockup (design-sandbox/app/camino/page.tsx, ModoAntes).
 // Datos: textos con override de BD (Textos), en vez de hardcode del mockup.
 // "Minuto a minuto"/Directo (v2) queda explícitamente fuera de alcance de F3.
+// FP3c (DT-032): intenciones, comentarios e Instagram se pintan según la
+// configuración del reto; la foto de "quién camina" es la del reto.
 
 "use client";
 
@@ -13,12 +15,9 @@ import IntencionForm from "@/components/publico/IntencionForm";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import EnlaceInstagram from "@/components/publico/EnlaceInstagram";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import { urlInstagramVisible, type ConfigReto } from "@/lib/retos/config";
 
 const C = { ink: "#1B211D", gold: "#C9A24B", eucalipto: "#2F5D50", ember: "#D9773B" };
-
-// Foto real de Santi (public/santi.jpg). Con undefined usaría el
-// placeholder — mismo patrón que FOTO_PEREGRINO (components/publico/PeregrinoLibre.tsx).
-const FOTO_SANTI: string | undefined = "/santi.jpg";
 
 const rise = {
   hidden: { opacity: 0, y: 22 },
@@ -29,12 +28,16 @@ interface ModoAntesProps {
   textos: Textos;
   trazaCoords: [number, number][];
   slug: string;
+  config: ConfigReto;
+  /** Foto de "quién camina" del reto; null = silueta genérica. */
+  fotoQuienCamina: string | null;
 }
 
-export default function ModoAntes({ textos, trazaCoords, slug }: ModoAntesProps) {
+export default function ModoAntes({ textos, trazaCoords, slug, config, fotoQuienCamina }: ModoAntesProps) {
   const spineRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: spineRef, offset: ["start center", "end center"] });
   const fill = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
+  const instagramUrl = urlInstagramVisible(config, textos.cierre_antes_instagram_url);
 
   return (
     <section className="relative">
@@ -95,32 +98,40 @@ export default function ModoAntes({ textos, trazaCoords, slug }: ModoAntesProps)
         <Hito>
           <div>
             <Kicker>{textos.quien_camina_kicker}</Kicker>
-            <FotoQuienCamina textos={textos} />
+            <FotoQuienCamina textos={textos} foto={fotoQuienCamina} />
             <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: "#3C433E" }}>
               {textos.quien_camina}
             </p>
           </div>
         </Hito>
 
-        <Hito>
-          <SeccionTexto titulo={textos.por_intenciones_titulo} kicker={textos.por_intenciones_kicker}>
-            {textos.por_intenciones}
-          </SeccionTexto>
-        </Hito>
+        {config.seccion_intenciones && (
+          <>
+            <Hito>
+              <SeccionTexto titulo={textos.por_intenciones_titulo} kicker={textos.por_intenciones_kicker}>
+                {textos.por_intenciones}
+              </SeccionTexto>
+            </Hito>
 
-        <Hito>
-          <IntencionForm textos={textos} slug={slug} />
-        </Hito>
+            <Hito>
+              <IntencionForm textos={textos} slug={slug} />
+            </Hito>
+          </>
+        )}
 
-        <Hito>
-          <SeccionTexto titulo={textos.comentarios_seccion_titulo} kicker={textos.comentarios_seccion_kicker}>
-            {textos.comentarios_seccion_descripcion}
-          </SeccionTexto>
-        </Hito>
+        {config.seccion_comentarios && (
+          <>
+            <Hito>
+              <SeccionTexto titulo={textos.comentarios_seccion_titulo} kicker={textos.comentarios_seccion_kicker}>
+                {textos.comentarios_seccion_descripcion}
+              </SeccionTexto>
+            </Hito>
 
-        <Hito>
-          <ComentarioForm textos={textos} slug={slug} />
-        </Hito>
+            <Hito>
+              <ComentarioForm textos={textos} slug={slug} />
+            </Hito>
+          </>
+        )}
 
         <Hito ultimo>
           <div className="rounded-2xl border p-5 text-center" style={{ borderColor: `${C.gold}44`, background: "linear-gradient(180deg,#FBF7EC,#F4F3EF)" }}>
@@ -130,7 +141,7 @@ export default function ModoAntes({ textos, trazaCoords, slug }: ModoAntesProps)
             <p className="mx-auto mt-1 max-w-xs text-[13.5px]" style={{ color: "#6A726C" }}>
               {textos.cierre_antes}
             </p>
-            <EnlaceInstagram url={textos.cierre_antes_instagram_url} className="mt-4" />
+            {instagramUrl !== null && <EnlaceInstagram url={instagramUrl} className="mt-4" />}
           </div>
         </Hito>
       </div>
@@ -188,13 +199,11 @@ function Kicker({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Tarjeta de foto de Santi en "Quién camina". Recupera el tratamiento del
-// mockup original de F3 (design-sandbox/app/camino-perfil/page.tsx,
-// FotoQuienCamina), perdido al simplificar en la implementación inicial.
-// Con FOTO_SANTI sin definir muestra un placeholder de silueta genérica;
-// cuando se defina con una ruta de /public, muestra la foto real con
-// object-cover — mismo patrón que FOTO_PEREGRINO en PeregrinoLibre.tsx.
-function FotoQuienCamina({ textos }: { textos: Textos }) {
+// Tarjeta de foto de "Quién camina". Recupera el tratamiento del mockup
+// original de F3 (design-sandbox/app/camino-perfil/page.tsx, FotoQuienCamina).
+// La foto es la del reto (FP3c, DT-032: URL de Storage o ruta de /public);
+// sin foto muestra una silueta genérica.
+function FotoQuienCamina({ textos, foto }: { textos: Textos; foto: string | null }) {
   return (
     <div
       className="mt-2 overflow-hidden rounded-2xl shadow-lg"
@@ -202,9 +211,9 @@ function FotoQuienCamina({ textos }: { textos: Textos }) {
     >
       <div className="relative h-full w-full">
         <GranitoTextura opacity={0.16} />
-        {FOTO_SANTI ? (
+        {foto ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={FOTO_SANTI} alt={textos.quien_camina_nombre} className="absolute inset-0 h-full w-full object-cover" />
+          <img src={foto} alt={textos.quien_camina_nombre} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <PlaceholderSilueta />
         )}

@@ -1,7 +1,8 @@
 /**
  * Subida de fotos a Supabase Storage: las del feed "minuto a minuto"
- * (`subirFotoMinutoAMinuto`) y la foto opcional de la pantalla de llegada
- * (`subirFotoLlegada`, DT-024) — ambas al mismo bucket público
+ * (`subirFotoMinutoAMinuto`), la foto opcional de la pantalla de llegada
+ * (`subirFotoLlegada`, DT-024) y la foto de "quién camina" de cada reto
+ * (`subirFotoQuienCamina`, FP3c/DT-032) — todas al mismo bucket público
  * `minuto-a-minuto` (ver supabase/migrations/0002_minuto_a_minuto.sql), con
  * un prefijo distinto en el nombre del objeto para no colisionar.
  *
@@ -69,9 +70,68 @@ export async function subirFotoLlegada(foto: File): Promise<string> {
 }
 
 /**
- * Lógica compartida entre `subirFotoMinutoAMinuto` y `subirFotoLlegada`: solo
- * cambia el prefijo del nombre del objeto en Storage — ambas suben al mismo
- * bucket, con las mismas reglas de validación.
+ * Sube la foto de "quién camina" del reto (FP3c, DT-032) al mismo bucket, bajo
+ * `<retoId>/quien-camina-…`. La carpeta por reto es lo que permite a
+ * `rutaObjetoDelReto` reconocer, al sustituirla, que la foto anterior es de
+ * ESTE reto y se puede borrar. Mismas validaciones que el resto de fotos.
+ */
+export async function subirFotoQuienCamina(foto: File, retoId: number): Promise<string> {
+  return subirFotoAlBucket(foto, prefijoQuienCamina(retoId));
+}
+
+function prefijoQuienCamina(retoId: number): string {
+  return `${retoId}/quien-camina-`;
+}
+
+const MARCA_URL_PUBLICA_BUCKET = `/storage/v1/object/public/${BUCKET}/`;
+
+/** Forma exacta del nombre que genera `subirFotoAlBucket` tras el prefijo. */
+const NOMBRE_GENERADO = /^\d+-[0-9a-f-]+\.(jpg|png|webp)$/;
+
+/**
+ * Ruta del objeto en el bucket si `url` es una foto de "quién camina" subida
+ * para `retoId`; null en cualquier otro caso (ruta de `/public` como
+ * `/santi.jpg`, objeto de otro reto, foto del feed, URL mal formada).
+ *
+ * Es la guarda que impide que sustituir la foto de un reto borre un objeto que
+ * no le pertenece: solo se borra lo que devuelve esta función. El nombre debe
+ * tener exactamente la forma que genera `subirFotoAlBucket` (sin subcarpetas
+ * ni `..`), así una URL manipulada no puede apuntar fuera de la carpeta.
+ */
+export function rutaObjetoDelReto(url: string, retoId: number): string | null {
+  const inicio = url.indexOf(MARCA_URL_PUBLICA_BUCKET);
+  if (inicio === -1) return null;
+
+  const rutaCodificada = url.slice(inicio + MARCA_URL_PUBLICA_BUCKET.length).split(/[?#]/)[0];
+  let ruta: string;
+  try {
+    ruta = decodeURIComponent(rutaCodificada);
+  } catch {
+    return null;
+  }
+
+  const prefijo = prefijoQuienCamina(retoId);
+  if (!ruta.startsWith(prefijo)) return null;
+  return NOMBRE_GENERADO.test(ruta.slice(prefijo.length)) ? ruta : null;
+}
+
+/**
+ * Borra un objeto del bucket. No lanza: una foto huérfana en Storage es
+ * preferible a que falle una acción que ya guardó el cambio en BD.
+ */
+export async function borrarObjeto(ruta: string): Promise<void> {
+  try {
+    const { error } = await getSupabaseAdmin().storage.from(BUCKET).remove([ruta]);
+    if (error) console.error("No se pudo borrar el objeto de Storage", ruta, error.message);
+  } catch (error) {
+    console.error("Fallo inesperado al borrar el objeto de Storage", ruta, error);
+  }
+}
+
+/**
+ * Lógica compartida entre `subirFotoMinutoAMinuto`, `subirFotoLlegada` y
+ * `subirFotoQuienCamina`: solo cambia el prefijo del nombre del objeto en
+ * Storage — todas suben al mismo bucket, con las mismas reglas de validación.
  */
 async function subirFotoAlBucket(foto: File, prefijoNombre: string): Promise<string> {
   if (!esMimePermitido(foto.type)) {

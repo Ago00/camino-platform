@@ -24,6 +24,14 @@ import type {
   VisitaWeb,
 } from "@/lib/types";
 
+type CampoRetoOpcionalAlCrear =
+  | "seccion_intenciones"
+  | "seccion_comentarios"
+  | "seccion_minuto_a_minuto"
+  | "seccion_instagram"
+  | "respuestas_visitantes"
+  | "quien_camina_foto_url";
+
 /**
  * Esquema de BD tipado para el cliente Supabase (espejo de lib/types.ts).
  *
@@ -50,7 +58,10 @@ export interface BaseDeDatos {
     Tables: {
       retos: {
         Row: Pick<Reto, keyof Reto>;
-        Insert: Omit<Pick<Reto, keyof Reto>, "id" | "created_at">;
+        // La configuración de FP3c (DT-032) tiene defaults en BD: el
+        // superadmin crea retos sin fijarla.
+        Insert: Omit<Pick<Reto, keyof Reto>, "id" | "created_at" | CampoRetoOpcionalAlCrear> &
+          Partial<Pick<Pick<Reto, keyof Reto>, CampoRetoOpcionalAlCrear>>;
         Update: Partial<Pick<Reto, keyof Reto>>;
         Relationships: [];
       };

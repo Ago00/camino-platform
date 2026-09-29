@@ -25,6 +25,7 @@ import SeccionComentarios from "@/components/admin/SeccionComentarios";
 import SeccionMinutoAMinuto from "@/components/admin/SeccionMinutoAMinuto";
 import SeccionTrafico from "@/components/admin/SeccionTrafico";
 import SeccionTextos from "@/components/admin/SeccionTextos";
+import SeccionConfiguracion from "@/components/admin/SeccionConfiguracion";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,7 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
           {tab === "minutoaminuto" && <SeccionMinutoAMinuto reto={reto} slug={slug} />}
           {tab === "trafico" && <SeccionTrafico reto={reto} granularidad={granularidad} faseQuery={faseTraficoQuery} slug={slug} />}
           {tab === "textos" && <SeccionTextos reto={reto} slug={slug} />}
+          {tab === "configuracion" && <SeccionConfiguracion reto={reto} slug={slug} />}
         </main>
       </div>
     </div>

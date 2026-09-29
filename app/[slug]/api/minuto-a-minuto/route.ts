@@ -8,11 +8,15 @@
  * en que la RLS de `minuto_a_minuto` filtrara por "el" intento activo, lo que
  * con varios retos con intento abierto mezclaba los feeds de todos. Sin
  * intento activo en el reto, el feed está vacío.
+ *
+ * Con la sección apagada en la configuración del reto (FP3c, DT-032) responde
+ * 403; la web tampoco monta el componente, así que no hay polling que cortar.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
+import { configDelReto } from "@/lib/retos/config";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import { getSupabasePublic } from "@/lib/supabase/public";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
@@ -54,6 +58,9 @@ export async function GET(
   const reto = await obtenerRetoPorSlug(slug);
   if (!reto) {
     return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
+  }
+  if (!configDelReto(reto).seccion_minuto_a_minuto) {
+    return NextResponse.json({ error: "no disponible" }, { status: 403 });
   }
 
   const { offset, limit, despuesDeId } = parsed.data;

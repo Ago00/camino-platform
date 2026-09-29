@@ -25,6 +25,7 @@ import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/pu
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import type { ConfigReto } from "@/lib/retos/config";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
 
@@ -47,6 +48,8 @@ interface ModoLlegadaLibreProps {
   textos: Textos;
   /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
   slug: string;
+  /** Configuración del reto (FP3c, DT-032): minuto a minuto y comentarios apagados no se pintan. */
+  config: ConfigReto;
 }
 
 export default function ModoLlegadaLibre({
@@ -58,6 +61,7 @@ export default function ModoLlegadaLibre({
   endedAt,
   textos,
   slug,
+  config,
 }: ModoLlegadaLibreProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{ lat: number; lon: number; hora: string } | null>(null);
 
@@ -102,19 +106,25 @@ export default function ModoLlegadaLibre({
           ritmoMedio={ritmoMedio}
           textos={textos}
         />
-        <MinutoAMinuto
-          polling={false}
-          plegadoInicial
-          entradasIniciales={entradasMinutoAMinuto}
-          onSeleccionarPunto={setPuntoResaltado}
-          textos={textos}
-          slug={slug}
-        />
+        {config.seccion_minuto_a_minuto && (
+          <MinutoAMinuto
+            polling={false}
+            plegadoInicial
+            entradasIniciales={entradasMinutoAMinuto}
+            onSeleccionarPunto={setPuntoResaltado}
+            textos={textos}
+            slug={slug}
+          />
+        )}
       </div>
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
-      <ComentarioForm textos={textos} slug={slug} />
-      <MuroComentarios textos={textos} slug={slug} />
+      {config.seccion_comentarios && (
+        <>
+          <ComentarioForm textos={textos} slug={slug} />
+          <MuroComentarios textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
+        </>
+      )}
     </section>
   );
 }

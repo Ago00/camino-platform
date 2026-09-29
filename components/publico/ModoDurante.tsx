@@ -9,6 +9,10 @@
 // recorrido GPS real (histórico completo, prop `puntosGpsIniciales`), mismo
 // patrón que ModoDuranteLibre.tsx: se carga una vez server-side y crece en
 // el cliente en cada poll cuando `ultimaPosicion.ts` cambia.
+//
+// FP3c (DT-032): intenciones, comentarios, minuto a minuto e Instagram se
+// pintan según la configuración del reto; una sección apagada no se monta
+// (el minuto a minuto apagado no arranca su polling).
 
 "use client";
 
@@ -26,6 +30,7 @@ import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoGuiado } from "@/lib/types";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import { urlInstagramVisible, type ConfigReto } from "@/lib/retos/config";
 
 const C = { ink: "#1B211D", ember: "#D9773B" };
 const POLLING_MS = 30_000;
@@ -53,6 +58,7 @@ interface ModoDuranteProps {
   textos: Textos;
   /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
   slug: string;
+  config: ConfigReto;
 }
 
 export default function ModoDurante({
@@ -62,6 +68,7 @@ export default function ModoDurante({
   puntosGpsIniciales,
   textos,
   slug,
+  config,
 }: ModoDuranteProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
@@ -115,7 +122,7 @@ export default function ModoDurante({
 
   return (
     <section className="space-y-5 pt-5">
-      <CintaEnDirecto textos={textos} />
+      <CintaEnDirecto textos={textos} instagramUrl={urlInstagramVisible(config, textos.cierre_antes_instagram_url)} />
 
       <div className="space-y-3">
         <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
@@ -137,17 +144,23 @@ export default function ModoDurante({
           ritmoMedio={ritmoMedio}
           textos={textos}
         />
-        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
+        {config.seccion_minuto_a_minuto && (
+          <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
+        )}
       </div>
 
-      <IntencionForm textos={textos} slug={slug} />
-      <ComentarioForm textos={textos} slug={slug} />
-      <MuroComentarios textos={textos} slug={slug} />
+      {config.seccion_intenciones && <IntencionForm textos={textos} slug={slug} />}
+      {config.seccion_comentarios && (
+        <>
+          <ComentarioForm textos={textos} slug={slug} />
+          <MuroComentarios textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
+        </>
+      )}
     </section>
   );
 }
 
-function CintaEnDirecto({ textos }: { textos: Textos }) {
+function CintaEnDirecto({ textos, instagramUrl }: { textos: Textos; instagramUrl: string | null }) {
   return (
     <div className="relative w-full overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: "linear-gradient(120deg,#1B211D 0%,#2B2018 100%)" }}>
       <motion.div
@@ -166,7 +179,7 @@ function CintaEnDirecto({ textos }: { textos: Textos }) {
           <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/70">{textos.durante_en_directo_kicker}</div>
           <div className="[font-family:var(--font-fraunces)] text-[19px] font-semibold text-white">{textos.durante_en_directo_titulo}</div>
         </div>
-        <EnlaceInstagram url={textos.cierre_antes_instagram_url} tono="oscuro" />
+        {instagramUrl !== null && <EnlaceInstagram url={instagramUrl} tono="oscuro" />}
       </div>
     </div>
   );

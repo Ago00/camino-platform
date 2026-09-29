@@ -23,6 +23,12 @@ const RETO: Reto = {
   ruta_tipo: "predefinida",
   ruta_id: "portuguesa-110",
   activo: true,
+  seccion_intenciones: true,
+  seccion_comentarios: true,
+  seccion_minuto_a_minuto: true,
+  seccion_instagram: true,
+  respuestas_visitantes: true,
+  quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };
 
@@ -37,6 +43,8 @@ let intentoActivoMock: { id: number } | null = null;
 let padreMock: { reto_id: number; parent_id: number | null; visibilidad: "publico" | "privado"; oculto: boolean } | null =
   null;
 let nombreCaminanteMock = "Santi";
+/** Error con el que resuelve cualquier consulta awaited (no `maybeSingle`). */
+let errorAlResolverMock: { message: string } | null = null;
 const RETO_B: Reto = { ...RETO, id: 4, slug: "otro-reto" };
 const RETOS_POR_SLUG = new Map([RETO, RETO_B].map((reto) => [reto.slug, reto]));
 // Solo se usa su huella: no hace falta un hash scrypt real.
@@ -64,7 +72,8 @@ function crearConsulta(tabla: string) {
       const datos = tabla === "intentos" ? intentoActivoMock : tabla === "comentarios" ? padreMock : null;
       return Promise.resolve({ data: datos, error: null });
     },
-    then: (resolver: (valor: { data: null; error: null }) => void) => resolver({ data: null, error: null }),
+    then: (resolver: (valor: { data: null; error: { message: string } | null }) => void) =>
+      resolver({ data: null, error: errorAlResolverMock }),
   };
   function registrar(metodo: string, args: unknown[]) {
     llamadas.push({ tabla, metodo, args });
@@ -96,9 +105,23 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
+const revalidatePathSpy = vi.fn();
 vi.mock("next/cache", () => ({
-  revalidatePath: () => undefined,
+  revalidatePath: (ruta: string) => revalidatePathSpy(ruta),
 }));
+
+// Subida y borrado simulados; `rutaObjetoDelReto` es la real (es la guarda
+// que decide qué se borra, y es justo lo que hay que comprobar).
+const subirFotoQuienCaminaSpy = vi.fn();
+const borrarObjetoSpy = vi.fn();
+vi.mock("@/lib/supabase/storage", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/supabase/storage")>();
+  return {
+    ...real,
+    subirFotoQuienCamina: (foto: File, retoId: number) => subirFotoQuienCaminaSpy(foto, retoId),
+    borrarObjeto: (ruta: string) => borrarObjetoSpy(ruta),
+  };
+});
 
 // La sesión se firma y verifica con el código real (admin-session +
 // huellaCredencial): así los tests cubren el cruce de retos y el cambio de
@@ -112,6 +135,8 @@ const {
   eliminarComentario,
   eliminarIntencion,
   eliminarMinutoAMinuto,
+  guardarConfiguracion,
+  guardarFotoQuienCamina,
   guardarTexto,
   ocultarComentario,
   resetearContadorTrafico,
@@ -132,11 +157,15 @@ beforeEach(() => {
   intentoActivoMock = null;
   padreMock = { reto_id: RETO.id, parent_id: null, visibilidad: "publico", oculto: false };
   nombreCaminanteMock = "Santi";
+  errorAlResolverMock = null;
   hashesMock = new Map([
     [RETO.id, HASH_RETO],
     [RETO_B.id, HASH_RETO_B],
   ]);
   cookieMock = crearSesion(RETO, huellaCredencial(HASH_RETO));
+  revalidatePathSpy.mockClear();
+  subirFotoQuienCaminaSpy.mockReset();
+  borrarObjetoSpy.mockReset();
 });
 
 describe("requerirSesion — la sesión debe ser del reto del slug y de su contraseña vigente", () => {
@@ -336,5 +365,170 @@ describe("responderComentario — respuesta del caminante (FP3a, DT-030)", () =>
     await expect(responderComentario(RETO.slug, 55, "   ")).resolves.toMatchObject({ ok: false });
     await expect(responderComentario(RETO.slug, 55, "a".repeat(1001))).resolves.toMatchObject({ ok: false });
     expect(llamadas.filter((l) => l.tabla === "comentarios")).toEqual([]);
+  });
+});
+
+describe("guardarConfiguracion — interruptores de la web pública (FP3c, DT-032)", () => {
+  const CONFIG = {
+    seccion_intenciones: false,
+    seccion_comentarios: true,
+    seccion_minuto_a_minuto: false,
+    seccion_instagram: true,
+    respuestas_visitantes: false,
+  };
+
+  it("actualiza solo el reto del slug con los cinco booleanos y revalida la web y el panel", async () => {
+    await expect(guardarConfiguracion(RETO.slug, CONFIG)).resolves.toEqual({ ok: true });
+
+    expect(llamadasA("retos", "update")).toEqual([[CONFIG]]);
+    expect(llamadasA("retos", "eq")).toEqual([["id", RETO.id]]);
+    expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}`);
+    expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}/admin`);
+  });
+
+  it("con la sesión de otro reto devuelve sesión caducada sin escribir", async () => {
+    await expect(guardarConfiguracion(RETO_B.slug, CONFIG)).resolves.toEqual({
+      ok: false,
+      mensaje: expect.stringMatching(/sesión/),
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("sin cookie devuelve sesión caducada sin escribir", async () => {
+    cookieMock = undefined;
+
+    await expect(guardarConfiguracion(RETO.slug, CONFIG)).resolves.toMatchObject({ ok: false });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("rechaza campos que no son interruptores (p. ej. activo o la foto) sin escribir", async () => {
+    const conActivo = { ...CONFIG, activo: false };
+    const conFoto = { ...CONFIG, quien_camina_foto_url: "https://evil.example/x.jpg" };
+
+    await expect(guardarConfiguracion(RETO.slug, conActivo)).resolves.toMatchObject({ ok: false });
+    await expect(guardarConfiguracion(RETO.slug, conFoto)).resolves.toMatchObject({ ok: false });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("rechaza valores no booleanos o campos ausentes sin escribir", async () => {
+    const conTexto = { ...CONFIG, seccion_comentarios: "false" };
+    const incompleta = { ...CONFIG };
+    Reflect.deleteProperty(incompleta, "seccion_instagram");
+
+    await expect(guardarConfiguracion(RETO.slug, conTexto)).resolves.toMatchObject({
+      ok: false,
+    });
+    await expect(guardarConfiguracion(RETO.slug, incompleta)).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("si falla el update devuelve error y no revalida", async () => {
+    errorAlResolverMock = { message: "fallo" };
+
+    await expect(guardarConfiguracion(RETO.slug, CONFIG)).resolves.toMatchObject({ ok: false });
+    expect(revalidatePathSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("guardarFotoQuienCamina — subir, sustituir y quitar (FP3c, DT-032)", () => {
+  const BASE = "https://x.supabase.co/storage/v1/object/public/minuto-a-minuto/";
+  const NOMBRE = "1727700000000-3f2b8c1e-0a1b-4c2d-9e8f-123456789abc.jpg";
+  const URL_NUEVA = `${BASE}${RETO.id}/quien-camina-1727800000000-aaaaaaaa-0a1b-4c2d-9e8f-123456789abc.jpg`;
+
+  function conFoto(): FormData {
+    const formData = new FormData();
+    formData.set("foto", new File([new Uint8Array(10)], "f.jpg", { type: "image/jpeg" }));
+    return formData;
+  }
+
+  async function conFotoAnterior(url: string | null, accion: () => Promise<unknown>) {
+    RETOS_POR_SLUG.set(RETO.slug, { ...RETO, quien_camina_foto_url: url });
+    try {
+      await accion();
+    } finally {
+      RETOS_POR_SLUG.set(RETO.slug, RETO);
+    }
+  }
+
+  it("sube la foto con el id del reto y guarda su URL en el reto del slug", async () => {
+    subirFotoQuienCaminaSpy.mockResolvedValue(URL_NUEVA);
+
+    await expect(guardarFotoQuienCamina(RETO.slug, conFoto())).resolves.toEqual({ ok: true });
+
+    expect(subirFotoQuienCaminaSpy).toHaveBeenCalledWith(expect.any(File), RETO.id);
+    expect(llamadasA("retos", "update")).toEqual([[{ quien_camina_foto_url: URL_NUEVA }]]);
+    expect(llamadasA("retos", "eq")).toEqual([["id", RETO.id]]);
+    expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}`);
+  });
+
+  it("al sustituir borra la anterior si es un objeto de este reto", async () => {
+    subirFotoQuienCaminaSpy.mockResolvedValue(URL_NUEVA);
+    const anterior = `${BASE}${RETO.id}/quien-camina-${NOMBRE}`;
+
+    await conFotoAnterior(anterior, () => guardarFotoQuienCamina(RETO.slug, conFoto()));
+
+    expect(borrarObjetoSpy).toHaveBeenCalledWith(`${RETO.id}/quien-camina-${NOMBRE}`);
+  });
+
+  it("no borra la anterior si es /santi.jpg o un objeto de otro reto", async () => {
+    subirFotoQuienCaminaSpy.mockResolvedValue(URL_NUEVA);
+
+    await conFotoAnterior("/santi.jpg", () => guardarFotoQuienCamina(RETO.slug, conFoto()));
+    await conFotoAnterior(`${BASE}${RETO_B.id}/quien-camina-${NOMBRE}`, () =>
+      guardarFotoQuienCamina(RETO.slug, conFoto())
+    );
+
+    expect(borrarObjetoSpy).not.toHaveBeenCalled();
+  });
+
+  it("quitarFoto pone la URL a null sin subir nada y borra la anterior del reto", async () => {
+    const formData = new FormData();
+    formData.set("quitarFoto", "true");
+    const anterior = `${BASE}${RETO.id}/quien-camina-${NOMBRE}`;
+
+    await conFotoAnterior(anterior, async () => {
+      await expect(guardarFotoQuienCamina(RETO.slug, formData)).resolves.toEqual({ ok: true });
+    });
+
+    expect(subirFotoQuienCaminaSpy).not.toHaveBeenCalled();
+    expect(llamadasA("retos", "update")).toEqual([[{ quien_camina_foto_url: null }]]);
+    expect(borrarObjetoSpy).toHaveBeenCalledWith(`${RETO.id}/quien-camina-${NOMBRE}`);
+  });
+
+  it("sin foto ni quitarFoto no escribe nada", async () => {
+    await expect(guardarFotoQuienCamina(RETO.slug, new FormData())).resolves.toMatchObject({ ok: false });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("con la sesión de otro reto no sube ni escribe", async () => {
+    await expect(guardarFotoQuienCamina(RETO_B.slug, conFoto())).resolves.toMatchObject({ ok: false });
+    expect(subirFotoQuienCaminaSpy).not.toHaveBeenCalled();
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("muestra el motivo de un ErrorDeSubidaDeFoto y no escribe", async () => {
+    const { ErrorDeSubidaDeFoto } = await import("@/lib/supabase/storage");
+    subirFotoQuienCaminaSpy.mockRejectedValue(new ErrorDeSubidaDeFoto("Formato de imagen no permitido"));
+
+    await expect(guardarFotoQuienCamina(RETO.slug, conFoto())).resolves.toEqual({
+      ok: false,
+      mensaje: "Formato de imagen no permitido",
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("si falla el update borra la foto recién subida y conserva la anterior", async () => {
+    subirFotoQuienCaminaSpy.mockResolvedValue(URL_NUEVA);
+    errorAlResolverMock = { message: "fallo" };
+    const anterior = `${BASE}${RETO.id}/quien-camina-${NOMBRE}`;
+
+    await conFotoAnterior(anterior, async () => {
+      await expect(guardarFotoQuienCamina(RETO.slug, conFoto())).resolves.toMatchObject({ ok: false });
+    });
+
+    expect(borrarObjetoSpy).toHaveBeenCalledTimes(1);
+    expect(borrarObjetoSpy).toHaveBeenCalledWith(URL_NUEVA.slice(BASE.length));
   });
 });

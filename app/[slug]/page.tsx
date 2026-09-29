@@ -9,6 +9,10 @@
 // FP2.5 (DT-028): todo se lee del reto del slug — intento activo filtrado por
 // `reto_id`, textos del reto, cachés de progreso/histórico por reto. Un reto
 // sin `ruta_id` (ruta libre) no pinta traza y se muestra en modo libre.
+//
+// FP3c (DT-032): la configuración del reto (`configDelReto`) viaja a cada
+// modo, que no pinta las secciones apagadas; con el minuto a minuto apagado
+// tampoco se cargan sus entradas en "llegada".
 
 import { notFound } from "next/navigation";
 import { getSupabasePublic } from "@/lib/supabase/public";
@@ -25,6 +29,7 @@ import { obtenerTextos, type Textos } from "@/lib/textos/obtener-textos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { calcularRitmoMedioIntento } from "@/lib/ritmo";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
+import { configDelReto, fotoQuienCaminaDelReto, type ConfigReto } from "@/lib/retos/config";
 import type { Fase, ModoIntento, Posicion, ProgresoPublicoGuiado, ProgresoPublicoLibre } from "@/lib/types";
 import PeregrinoLibre from "@/components/publico/PeregrinoLibre";
 import ModoAntes from "@/components/publico/ModoAntes";
@@ -45,6 +50,7 @@ const C = { paper: "#F4F3EF", ink: "#1B211D" };
 // Constante de módulo (no literal inline): referencia estable como prop de
 // componentes cliente con efectos (ver docs/LESSONS.md).
 const SIN_TRAZA: [number, number][] = [];
+const SIN_ENTRADAS: EntradaMinutoAMinutoPublica[] = [];
 
 interface SlugPageProps {
   params: Promise<{ slug: string }>;
@@ -67,6 +73,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
   // Un reto de ruta libre no tiene traza oficial que pintar.
   const trazaCoords = rutaId !== null ? cargarTrazaDeMapa(rutaId) : SIN_TRAZA;
   const fase = intentoActivo?.fase ?? "antes";
+  const config = configDelReto(reto);
   // Durante/llegada: sin ruta no hay traza sobre la que proyectar un progreso
   // guiado, así que el intento se muestra como libre aunque su `modo` sea
   // "guiado" (el default de BD) — mismo criterio que `calcularProgresoActual`.
@@ -75,7 +82,15 @@ export default async function SlugPage({ params }: SlugPageProps) {
       <RefrescoAlCambiarFase faseActual={fase} slug={slug} />
       <PeregrinoLibre />
       <div className="mx-auto w-full max-w-[480px] px-5 pb-28">
-        {fase === "antes" && <ModoAntes textos={textos} trazaCoords={trazaCoords} slug={slug} />}
+        {fase === "antes" && (
+          <ModoAntes
+            textos={textos}
+            trazaCoords={trazaCoords}
+            slug={slug}
+            config={config}
+            fotoQuienCamina={fotoQuienCaminaDelReto(reto)}
+          />
+        )}
         {fase === "durante" && intentoActivo && (
           intentoActivo.modo === "libre" || rutaId === null ? (
             <ModoDuranteLibreConectado
@@ -85,6 +100,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
               startedAt={intentoActivo.started_at}
               textos={textos}
               slug={slug}
+              config={config}
             />
           ) : (
             <ModoDuranteConectado
@@ -95,6 +111,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
               textos={textos}
               rutaId={rutaId}
               slug={slug}
+              config={config}
             />
           )
         )}
@@ -109,6 +126,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
               endedAt={intentoActivo.ended_at}
               textos={textos}
               slug={slug}
+              config={config}
             />
           ) : (
             <ModoLlegadaConectado
@@ -121,6 +139,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
               textos={textos}
               rutaId={rutaId}
               slug={slug}
+              config={config}
             />
           )
         )}
@@ -137,6 +156,7 @@ async function ModoDuranteConectado({
   textos,
   rutaId,
   slug,
+  config,
 }: {
   retoId: number;
   intentoId: number;
@@ -145,6 +165,7 @@ async function ModoDuranteConectado({
   textos: Textos;
   rutaId: string;
   slug: string;
+  config: ConfigReto;
 }) {
   const [progresoInicial, historico] = await Promise.all([
     calcularProgresoDelIntento(retoId, intentoId, rutaId),
@@ -159,6 +180,7 @@ async function ModoDuranteConectado({
       puntosGpsIniciales={puntosGpsIniciales}
       textos={textos}
       slug={slug}
+      config={config}
     />
   );
 }
@@ -173,6 +195,7 @@ async function ModoLlegadaConectado({
   textos,
   rutaId,
   slug,
+  config,
 }: {
   retoId: number;
   intentoId: number;
@@ -183,10 +206,11 @@ async function ModoLlegadaConectado({
   textos: Textos;
   rutaId: string;
   slug: string;
+  config: ConfigReto;
 }) {
   const [progreso, entradasMinutoAMinuto, historico, fotoLlegadaUrl] = await Promise.all([
     calcularProgresoDelIntento(retoId, intentoId, rutaId),
-    cargarEntradasMinutoAMinuto(intentoId),
+    config.seccion_minuto_a_minuto ? cargarEntradasMinutoAMinuto(intentoId) : SIN_ENTRADAS,
     obtenerHistoricoPosicionesCacheado(retoId, intentoId),
     obtenerFotoLlegadaUrl(intentoId),
   ]);
@@ -206,6 +230,7 @@ async function ModoLlegadaConectado({
       textos={textos}
       fotoLlegadaUrl={fotoLlegadaUrl}
       slug={slug}
+      config={config}
     />
   );
 }
@@ -237,6 +262,7 @@ async function ModoDuranteLibreConectado({
   startedAt,
   textos,
   slug,
+  config,
 }: {
   retoId: number;
   intentoId: number;
@@ -244,6 +270,7 @@ async function ModoDuranteLibreConectado({
   startedAt: string | null;
   textos: Textos;
   slug: string;
+  config: ConfigReto;
 }) {
   const { progreso, puntosGps } = await calcularProgresoLibreDelIntento(retoId, intentoId, destino);
   return (
@@ -253,6 +280,7 @@ async function ModoDuranteLibreConectado({
       startedAt={startedAt}
       textos={textos}
       slug={slug}
+      config={config}
     />
   );
 }
@@ -266,6 +294,7 @@ async function ModoLlegadaLibreConectado({
   endedAt,
   textos,
   slug,
+  config,
 }: {
   retoId: number;
   intentoId: number;
@@ -275,10 +304,11 @@ async function ModoLlegadaLibreConectado({
   endedAt: string | null;
   textos: Textos;
   slug: string;
+  config: ConfigReto;
 }) {
   const [{ progreso, puntosGps }, entradasMinutoAMinuto] = await Promise.all([
     calcularProgresoLibreDelIntento(retoId, intentoId, destino),
-    cargarEntradasMinutoAMinuto(intentoId),
+    config.seccion_minuto_a_minuto ? cargarEntradasMinutoAMinuto(intentoId) : SIN_ENTRADAS,
   ]);
 
   return (
@@ -291,6 +321,7 @@ async function ModoLlegadaLibreConectado({
       endedAt={endedAt}
       textos={textos}
       slug={slug}
+      config={config}
     />
   );
 }

@@ -1928,3 +1928,39 @@ Producto decidió (cerrado): la sección "minuto a minuto" entera se puede plega
 - **Referencia 0 con el feed vacío:** al plegar con la lista vacía, `ultimoVistoId` es 0 (no null) para que la primera entrada que llegue sí genere el aviso. null solo antes de la primera carga.
 - **Fusión sin duplicados también en "Cargar más":** la paginación es por offset; si el poll ha añadido N entradas arriba, la página siguiente repite N filas ya pintadas (claves duplicadas en React). Se deduplica por id al añadir la página. También en el poll, por si se solapa con la carga inicial.
 - **Fila extraída a `FilaEntrada`** (mismo fichero) para que el anidamiento de la región plegable no hiciera ilegible el JSX.
+
+---
+
+## DT-032 — FP3c: Configuración por reto desde el panel admin
+
+**Fecha:** 2026-09-30 · **Tarea:** FP3c — Configuración por reto
+
+### Contexto
+
+Cada reto necesita decidir qué ve su público sin tocar código: encender/apagar las secciones de intenciones, comentarios (formulario + muro), minuto a minuto e Instagram (por defecto encendidas); permitir o no las respuestas de visitantes de FP3a (apagadas: sin botón "Responder", POST de respuesta rechazado, las existentes siguen visibles y el caminante sigue respondiendo desde el admin); y elegir la foto de "quién camina", hasta ahora la constante `FOTO_SANTI` de `ModoAntes.tsx`. La pestaña Textos, con ~70 claves en una lista plana, se agrupa por bloques.
+
+### Decisión
+
+1. **Columnas en `retos` (migración `0012_config_reto.sql`):** `seccion_intenciones`, `seccion_comentarios`, `seccion_minuto_a_minuto`, `seccion_instagram`, `respuestas_visitantes` (boolean not null default true) y `quien_camina_foto_url` (text, null = silueta). El reto `santi-ago` recibe `'/santi.jpg'` para conservar su foto.
+2. **RLS de INSERT en `comentarios`:** la política `comentarios_insert_publico` añade `comentarios_insert_permitido(reto_id, parent_id is not null)`, función security definer (no depende de la política SELECT de `retos`, que solo ve activos) con EXECUTE revocado a `public`/`anon`/`authenticated` y concedido solo a `anon`. El GRANT por columnas de 0011 y el trigger de respuestas no cambian. `intenciones` no necesita RLS: anon no tiene ninguna política sobre ella y la API es la única vía.
+3. **Dominio puro `lib/retos/config.ts`:** `configDelReto(reto)` (campo ausente ⇒ true, red por si el código se despliega antes que la migración), `fotoQuienCaminaDelReto` y `urlInstagramVisible(config, url)` (interruptor y URL no vacía).
+4. **APIs públicas:** comentarios GET/POST ⇒ 403 `{error: "no disponible"}` con la sección apagada; POST con `parent_id` y respuestas apagadas ⇒ 403 antes de leer el padre; un 42501 de RLS en el insert ⇒ 403. Intenciones POST y minuto a minuto GET ⇒ 403 con su sección apagada.
+5. **Web pública:** `app/[slug]/page.tsx` pasa `config` a todos los modos (y `fotoQuienCamina` a `ModoAntes`). Una sección apagada no se renderiza en ninguna fase ni modo; el minuto a minuto apagado no se monta (sin polling) y en "llegada" no se cargan sus entradas. `MuroComentarios`/`HiloComentario` reciben `permitirRespuestas`.
+6. **Admin:** pestaña "Configuración" (`SeccionConfiguracion` server; `FormConfiguracion` con `role="switch"` y guardado conjunto; `FotoQuienCaminaForm` con `prepararFotoParaSubida` + `ejecutarConReintentos`). Server Actions `guardarConfiguracion` (zod `.strict()` de los cinco booleanos) y `guardarFotoQuienCamina` (`foto` o `quitarFoto=true`), ambas con `resolverRetoConSesion`, update por `id` del reto y revalidación de `/<slug>` y `/<slug>/admin`. Aviso en la pestaña Minuto a minuto si la sección está apagada.
+7. **Storage:** `subirFotoQuienCamina(foto, retoId)` sube a `<retoId>/quien-camina-<ts>-<uuid>.<ext>` en el bucket de DT-024. `rutaObjetoDelReto(url, retoId)` (pura) solo reconoce objetos con esa forma exacta bajo la carpeta del reto; es la guarda que decide qué foto anterior se borra (`borrarObjeto`, no lanza).
+8. **Textos por bloques (`lib/textos/bloques.ts`):** `BLOQUES_TEXTOS` `as const satisfies readonly BloqueTextos[]` con comprobación de exhaustividad en tipos (`DebeSerNever<Exclude<ClaveTexto, …>>`) y test de "exactamente un bloque". `SeccionTextos` pinta índice de anclas + un `<details>` por bloque (sin JS de cliente) y marca "sección apagada".
+
+### Alternativas valoradas
+
+**Tabla `config_reto` aparte.** Descartada: relación 1:1 con `retos`, que ya se lee en cada request (`obtenerRetoPorSlug`, `select *`); columnas evitan otra consulta.
+**Guardar la configuración en `textos`.** Descartada: son strings sin tipo ni default de BD, y la RLS no podría usarlos con limpieza.
+**Solo comprobar en la API (sin RLS).** Descartada para comentarios: la anon key permite insertar por PostgREST sin pasar por la API.
+**Bucket nuevo para la foto.** Descartada: exige configuración manual en Supabase; mismo bucket con carpeta por reto (patrón DT-024).
+
+### Notas de cierre (implementación)
+
+- **`guardarConfiguracion(slug, config: unknown)`:** el parámetro es `unknown` a propósito — una Server Action es un endpoint público y el esquema zod (`satisfies z.ZodType<ConfigReto>`) es quien da el tipo. Permite además testear valores inválidos sin `as`.
+- **Rollback de la foto:** si falla el update de `retos` tras subir, se borra la foto recién subida; la anterior no se toca.
+- **Bloque "Instagram" propio:** la URL de Instagram vive en un bloque de una sola clave para poder marcarlo como "sección apagada"; en total 11 bloques.
+- **Interruptor "Respuestas de visitantes"** se atenúa con un aviso cuando los comentarios están apagados (no tiene efecto), pero conserva su valor.
+- **Sin cambios en la RLS de SELECT:** con una sección apagada, comentarios públicos y entradas del minuto a minuto siguen siendo legibles por PostgREST directo (registrado en `DEBT.md`); la decisión aprobada es ocultarlos en la web y en la API.

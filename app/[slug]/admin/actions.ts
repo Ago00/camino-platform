@@ -28,7 +28,15 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
-import { subirFotoMinutoAMinuto, subirFotoLlegada, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
+import {
+  borrarObjeto,
+  ErrorDeSubidaDeFoto,
+  rutaObjetoDelReto,
+  subirFotoLlegada,
+  subirFotoMinutoAMinuto,
+  subirFotoQuienCamina,
+} from "@/lib/supabase/storage";
+import { fotoQuienCaminaDelReto, type ConfigReto } from "@/lib/retos/config";
 import { NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import { resolverRetoConSesion } from "@/lib/auth/sesion-admin-servidor";
 import { guardarCacheProgreso, limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
@@ -469,6 +477,96 @@ export async function guardarTexto(slug: string, clave: string, valor: string): 
 
   if (error) throw new Error("No se pudo guardar el texto.");
   revalidarAdmin(slug);
+}
+
+// ---------------------------------------------------------------------------
+// Configuración del reto (FP3c, DT-032)
+// ---------------------------------------------------------------------------
+
+/** La web pública lee la configuración en cada render: hay que revalidarla también. */
+function revalidarWebYAdmin(slug: string): void {
+  revalidatePath(`/${slug}`);
+  revalidarAdmin(slug);
+}
+
+// `.strict()`: un campo que no sea uno de los cinco interruptores (p. ej.
+// `activo`, `slug` o `quien_camina_foto_url`) se rechaza en vez de ignorarse.
+const esquemaConfiguracion = z
+  .object({
+    seccion_intenciones: z.boolean(),
+    seccion_comentarios: z.boolean(),
+    seccion_minuto_a_minuto: z.boolean(),
+    seccion_instagram: z.boolean(),
+    respuestas_visitantes: z.boolean(),
+  })
+  .strict() satisfies z.ZodType<ConfigReto>;
+
+/**
+ * Guarda los interruptores de la web pública del reto del slug. Devuelve el
+ * fallo en vez de lanzarlo (DT-017). `config` es `unknown` a propósito: una
+ * Server Action es un endpoint público y el argumento llega tal cual lo mande
+ * el cliente; el tipo real (`ConfigReto`) lo da el esquema.
+ */
+export async function guardarConfiguracion(slug: string, config: unknown): Promise<ResultadoPublicacion> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+
+  const datos = esquemaConfiguracion.safeParse(config);
+  if (!datos.success) return { ok: false, mensaje: "Configuración no válida." };
+
+  const { error } = await getSupabaseAdmin().from("retos").update(datos.data).eq("id", reto.id);
+  if (error) return { ok: false, mensaje: "No se pudo guardar la configuración. Vuelve a intentarlo." };
+
+  revalidarWebYAdmin(slug);
+  return { ok: true };
+}
+
+/**
+ * Sube, sustituye (`foto`) o quita (`quitarFoto=true`) la foto de "quién
+ * camina" del reto. La foto anterior solo se borra de Storage si es un objeto
+ * de ESTE reto (`rutaObjetoDelReto`): una ruta de `/public` como `/santi.jpg`
+ * o un objeto ajeno se dejan intactos. Si falla la escritura en BD, se borra
+ * la foto recién subida para no dejarla huérfana.
+ */
+export async function guardarFotoQuienCamina(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+
+  const foto = formData.get("foto");
+  const quitarFoto = formData.get("quitarFoto") === "true";
+  let nuevaUrl: string | null;
+
+  if (foto instanceof File && foto.size > 0) {
+    try {
+      nuevaUrl = await subirFotoQuienCamina(foto, reto.id);
+    } catch (error) {
+      if (error instanceof ErrorDeSubidaDeFoto) return { ok: false, mensaje: error.message };
+      console.error("Fallo inesperado al subir la foto de quién camina", error);
+      return { ok: false, mensaje: "No se pudo subir la foto. Vuelve a intentarlo." };
+    }
+  } else if (quitarFoto) {
+    nuevaUrl = null;
+  } else {
+    return { ok: false, mensaje: "Elige una foto o quita la actual." };
+  }
+
+  const anterior = fotoQuienCaminaDelReto(reto);
+  const { error } = await getSupabaseAdmin()
+    .from("retos")
+    .update({ quien_camina_foto_url: nuevaUrl })
+    .eq("id", reto.id);
+
+  if (error) {
+    const rutaNueva = nuevaUrl === null ? null : rutaObjetoDelReto(nuevaUrl, reto.id);
+    if (rutaNueva !== null) await borrarObjeto(rutaNueva);
+    return { ok: false, mensaje: "No se pudo guardar la foto. Vuelve a intentarlo." };
+  }
+
+  const rutaAnterior = anterior === null || anterior === nuevaUrl ? null : rutaObjetoDelReto(anterior, reto.id);
+  if (rutaAnterior !== null) await borrarObjeto(rutaAnterior);
+
+  revalidarWebYAdmin(slug);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

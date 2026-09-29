@@ -27,4 +27,8 @@ describe("esTabValida", () => {
   it("rechaza null", () => {
     expect(esTabValida(null)).toBe(false);
   });
+
+  it("acepta 'configuracion' (FP3c)", () => {
+    expect(esTabValida("configuracion")).toBe(true);
+  });
 });

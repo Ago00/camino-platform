@@ -25,6 +25,7 @@ import RecuadroLlegada from "@/components/publico/RecuadroLlegada";
 import FotoLlegada from "@/components/publico/FotoLlegada";
 import type { ProgresoPublicoGuiado } from "@/lib/types";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import type { ConfigReto } from "@/lib/retos/config";
 
 // Este componente es exclusivo del modo guiado (DT-016): el modo libre usa
 // ModoLlegadaLibre.tsx, un componente propio (sin condicionales aquí).
@@ -52,6 +53,8 @@ interface ModoLlegadaProps {
   fotoLlegadaUrl: string | null;
   /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
   slug: string;
+  /** Configuración del reto (FP3c, DT-032): minuto a minuto y comentarios apagados no se pintan. */
+  config: ConfigReto;
 }
 
 export default function ModoLlegada({
@@ -65,6 +68,7 @@ export default function ModoLlegada({
   textos,
   fotoLlegadaUrl,
   slug,
+  config,
 }: ModoLlegadaProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{
     lat: number;
@@ -92,19 +96,25 @@ export default function ModoLlegada({
           />
         </div>
         <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} textos={textos} />
-        <MinutoAMinuto
-          polling={false}
-          plegadoInicial
-          entradasIniciales={entradasMinutoAMinuto}
-          onSeleccionarPunto={setPuntoResaltado}
-          textos={textos}
-          slug={slug}
-        />
+        {config.seccion_minuto_a_minuto && (
+          <MinutoAMinuto
+            polling={false}
+            plegadoInicial
+            entradasIniciales={entradasMinutoAMinuto}
+            onSeleccionarPunto={setPuntoResaltado}
+            textos={textos}
+            slug={slug}
+          />
+        )}
       </div>
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
-      <ComentarioForm textos={textos} slug={slug} />
-      <MuroComentarios textos={textos} slug={slug} />
+      {config.seccion_comentarios && (
+        <>
+          <ComentarioForm textos={textos} slug={slug} />
+          <MuroComentarios textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
+        </>
+      )}
     </section>
   );
 }

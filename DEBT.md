@@ -2,6 +2,39 @@
 
 ---
 
+## Visitante con la web abierta sigue haciendo polling del minuto a minuto tras apagarlo (FP3c)
+
+**Fecha:** 2026-09-30
+**Contexto:** Recomendación del Reviewer en FP3c (DT-032). `components/publico/MinutoAMinuto.tsx` (líneas ~83 y ~113) ignora cualquier respuesta no `ok`; `RefrescoAlCambiarFase` solo refresca al cambiar de fase.
+**Problema:** Si el admin apaga el minuto a minuto (o los comentarios) durante el reto, quien ya tenía la página abierta sigue viendo la sección y el componente sigue pidiendo `/api/minuto-a-minuto` cada intervalo, recibiendo 403 en silencio hasta que recarga. Enviar un comentario/respuesta en ese estado muestra el error genérico.
+**Impacto:** Bajo: peticiones 403 baratas (sin consulta a BD más allá del reto) y una sección "fantasma" hasta recargar.
+**Solución propuesta:** En `MinutoAMinuto`, parar el intervalo al recibir 403; opcionalmente hacer `router.refresh()` para que la página deje de pintar la sección apagada.
+**Prioridad:** Baja.
+
+---
+
+## Secciones apagadas siguen siendo legibles por PostgREST directo (FP3c)
+
+**Fecha:** 2026-09-30
+**Contexto:** FP3c (DT-032) apaga secciones en la web y en la API, y en la RLS de INSERT de `comentarios`, pero no toca las políticas SELECT de `anon`.
+**Problema:** Con `seccion_comentarios` o `seccion_minuto_a_minuto` apagadas, los comentarios públicos y las entradas del intento activo siguen siendo legibles con la anon key llamando directamente a PostgREST.
+**Impacto:** Bajo: es contenido que ya era público; "apagar" se entendió como dejar de mostrarlo, no como hacerlo privado. Si en el futuro "apagar" debe significar "ocultar de verdad", no basta.
+**Solución propuesta:** Añadir a las políticas SELECT de `comentarios` y `minuto_a_minuto` una función security definer análoga a `comentarios_insert_permitido` que compruebe el interruptor del reto.
+**Prioridad:** Baja.
+
+---
+
+## `docs/producto/` no refleja la configuración por reto (FP3c)
+
+**Fecha:** 2026-09-30
+**Contexto:** FP3c (DT-032) se implementó con las decisiones de producto cerradas en el prompt; el Implementador no escribe en `docs/producto/`.
+**Problema:** `funcionalidades.md` y `decisiones-producto.md` no recogen la pestaña "Configuración" (interruptores de secciones, respuestas de visitantes, foto de quién camina) ni los textos agrupados por bloques.
+**Impacto:** Documentación de producto desfasada.
+**Solución propuesta:** Invocar al Agente de Producto al cerrar la tarea.
+**Prioridad:** Baja.
+
+---
+
 ## "Minuto a minuto" plegable: botón y aviso sin contexto para lector de pantalla (FP3b)
 
 **Fecha:** 2026-09-30

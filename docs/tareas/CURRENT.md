@@ -1,64 +1,111 @@
-# Tarea en curso — FP3b: "Minuto a minuto" plegable en la web pública
+# Tarea en curso — FP3c: Configuración por reto desde el panel admin
 
-> El contenido anterior (FP3a, respuestas en hilo) se archivó en
-> `docs/tareas/historico/2026-09-30-fp3a-respuestas-comentarios.md`.
+> El contenido anterior (FP3b, "minuto a minuto" plegable) se archivó en
+> `docs/tareas/historico/2026-09-30-fp3b-mam-plegable.md`.
 
 ## Prompt clarificado (producto cerrado)
 
-Se pliega la sección entera del "minuto a minuto" (pulsar una entrada sigue marcando su punto en el mapa). Abierta en fase "durante", plegada en "llegada". Sin persistir la elección. Plegada, si llegan entradas nuevas por polling, aviso en la cabecera ("1 nueva" / "{n} nuevas"); al desplegar vuelve a 0. El punto marcado en el mapa se mantiene al plegar.
+El admin de CADA reto lo configura en `/<slug>/admin`:
 
-Incluye fix aprobado: con el feed vacío el polling no preguntaba nunca, así que en "durante" la primera entrada no aparecía hasta recargar.
+1. Encender/apagar secciones públicas: intenciones, comentarios (muro + formulario), minuto a minuto, Instagram. Por defecto encendidas.
+2. Respuestas de visitantes en comentarios (FP3a) on/off. Apagadas: sin botón "Responder", POST de respuesta rechazado; las existentes siguen visibles; el caminante puede seguir respondiendo desde el admin.
+3. Foto de "quién camina": subir/cambiar/quitar (sustituye la constante `FOTO_SANTI` de `ModoAntes.tsx`).
+4. Pestaña Textos agrupada por bloques.
 
 ## Decisión técnica
 
-**DT-031** (`docs/tecnico/decisiones-tecnicas.md`). Estado `plegado` + `ultimoVistoId` en `MinutoAMinuto.tsx`, `contarNuevas` puro, región siempre montada con `aria-controls`, aviso `aria-live`, animación altura 0↔auto con `MotionConfig reducedMotion="user"`, polling sin cambios de cadencia. Fix: `despuesDeId=0` con el feed vacío.
+**DT-032** (`docs/tecnico/decisiones-tecnicas.md`). Columnas en `retos` + RLS de INSERT de `comentarios` (migración `0012_config_reto.sql`), dominio puro `lib/retos/config.ts`, 403 en las APIs, secciones apagadas sin renderizar, pestaña "Configuración", foto en Storage bajo `<retoId>/quien-camina-…`, textos por bloques.
 
 ## Archivos creados/modificados (Implementador)
 
 | Archivo | Estado |
 |---|---|
-| `lib/minuto-a-minuto/contar-nuevas.ts` (+ `.test.ts`) | Creado: `contarNuevas(entradas, ultimoVistoId)` |
-| `lib/minuto-a-minuto/polling.ts` (+ `.test.ts`) | Creado: `construirUrlPolling(slug, masRecienteId)`, `fusionarSinDuplicados(primero, despues)` |
-| `components/publico/MinutoAMinuto.tsx` | Prop `plegadoInicial`; cabecera con botón Mostrar/Ocultar y aviso; región plegable; poll con feed vacío; fila extraída a `FilaEntrada` |
-| `components/publico/ModoLlegada.tsx`, `ModoLlegadaLibre.tsx` | Pasan `plegadoInicial` |
-| `lib/textos/defaults.ts` | 4 claves: `minuto_a_minuto_boton_mostrar`, `_boton_ocultar`, `_aviso_nueva`, `_aviso_nuevas` |
-| `components/admin/SeccionTextos.tsx` | Comentario desfasado ("las 6 claves") corregido |
-| `docs/tecnico/decisiones-tecnicas.md` | DT-031 |
-| `docs/tecnico/arquitectura.md` | `lib/minuto-a-minuto/` y nota en `MinutoAMinuto.tsx` |
+| `supabase/migrations/0012_config_reto.sql` | Creado (NO aplicado: lo aplica el orquestador) |
+| `lib/types.ts` | `Reto` + 5 booleanos + `quien_camina_foto_url` |
+| `lib/supabase/admin.ts` | Esos campos opcionales en el `Insert` de `retos` (crearReto del superadmin intacto) |
+| `lib/retos/config.ts` (+ `.test.ts`) | Creado: `configDelReto`, `fotoQuienCaminaDelReto`, `urlInstagramVisible` |
+| `lib/supabase/storage.ts` (+ `.test.ts`) | `subirFotoQuienCamina`, `rutaObjetoDelReto`, `borrarObjeto` |
+| `app/[slug]/admin/actions.ts` (+ `.test.ts`) | `guardarConfiguracion`, `guardarFotoQuienCamina` |
+| `app/[slug]/api/comentarios/route.ts` (+ `.test.ts`) | 403 con sección/respuestas apagadas; 42501 ⇒ 403 |
+| `app/[slug]/api/intenciones/route.ts` + `route.test.ts` | 403 con sección apagada; test creado |
+| `app/[slug]/api/minuto-a-minuto/route.ts` + `route.test.ts` | 403 con sección apagada; test creado |
+| `lib/textos/bloques.ts` (+ `.test.ts`) | Creado: `BLOQUES_TEXTOS` (11 bloques) + exhaustividad en tipos |
+| `lib/admin/navegacion.ts` (+ `.test.ts`) | Pestaña `configuracion` |
+| `app/[slug]/admin/page.tsx` | Renderiza `SeccionConfiguracion` |
+| `components/admin/SeccionConfiguracion.tsx`, `FormConfiguracion.tsx`, `FotoQuienCaminaForm.tsx` | Creados |
+| `components/admin/SeccionTextos.tsx` | Índice de anclas + `<details>` por bloque, etiqueta "sección apagada" |
+| `components/admin/SeccionMinutoAMinuto.tsx` | Aviso si la sección está apagada |
+| `app/[slug]/page.tsx` | `config` a todos los modos, `fotoQuienCamina` a `ModoAntes`; sin carga de entradas del MAM apagado |
+| `components/publico/ModoAntes.tsx` | Secciones según config; foto del reto o silueta; `FOTO_SANTI` eliminada |
+| `components/publico/ModoDurante.tsx`, `ModoDuranteLibre.tsx`, `ModoLlegada.tsx`, `ModoLlegadaLibre.tsx` | Secciones según config (MAM apagado no se monta ni hace polling) |
+| `components/publico/MuroComentarios.tsx`, `HiloComentario.tsx` | Prop `permitirRespuestas` |
+| `app/api/track/route.test.ts`, `app/api/admin/login/route.test.ts` | Fixtures de `Reto` con los campos nuevos |
+| `docs/tecnico/decisiones-tecnicas.md` (DT-032), `modelo-datos.md`, `arquitectura.md` | Actualizados |
 | `CHANGELOG.md`, `DEBT.md` | Actualizados |
-
-`app/[slug]/api/minuto-a-minuto/route.ts` sin cambios: `despuesDeId` ya admite 0 (`min(0)`) y los ids empiezan en 1.
 
 ## Quality gates
 
 - `pnpm typecheck`: 0 errores
 - `pnpm lint`: 0 errores, 0 warnings
-- `pnpm test`: 453 tests en verde (41 ficheros)
+- `pnpm test`: 506 tests en verde (45 ficheros)
 - `pnpm build`: OK
-- **Verificación visual pendiente** (LESSONS: UI y componentes cliente): no la ha hecho el Implementador. Comprobar en navegador: "durante" abierto y "llegada" plegado; toggle animado (y sin animación con reduced motion); aviso "1 nueva"/"N nuevas" con la sección plegada tras publicar desde el admin, y a 0 al desplegar; punto del mapa conservado al plegar; primera entrada de un feed vacío apareciendo sin recargar (≤ 30 s).
+- **Verificación visual pendiente** (LESSONS: UI): no la ha hecho el Implementador. Comprobar en navegador: pestaña Configuración (interruptores con teclado, guardar, aviso "Sin efecto" de respuestas con comentarios apagados); subir/cambiar/quitar foto y verla en la fase "antes"; cada sección apagada desaparece en antes/durante/llegada (guiado y libre) y el MAM apagado no hace peticiones a `/api/minuto-a-minuto`; muro sin "Responder" con respuestas apagadas; pestaña Textos por bloques con anclas y etiqueta "sección apagada"; aviso en la pestaña Minuto a minuto.
+
+## Checklist SQL post-migración (lo ejecuta el orquestador tras aplicar 0012)
+
+1. Columnas y foto del reto original:
+   ```sql
+   select slug, seccion_intenciones, seccion_comentarios, seccion_minuto_a_minuto,
+          seccion_instagram, respuestas_visitantes, quien_camina_foto_url
+   from retos order by id;
+   -- esperado: todo true; santi-ago con quien_camina_foto_url = '/santi.jpg'
+   ```
+2. Insert anon con la sección de comentarios apagada ⇒ rechazado (42501):
+   ```sql
+   update retos set seccion_comentarios = false where slug = 'santi-ago';
+   begin; set local role anon;
+   insert into comentarios (reto_id, nombre, texto, visibilidad)
+     values ((select id from retos where slug = 'santi-ago'), 'test', 'test', 'publico');
+   rollback;  -- debe fallar con "new row violates row-level security policy"
+   update retos set seccion_comentarios = true where slug = 'santi-ago';
+   ```
+   (Como `anon` no ve `retos` inactivos, el subselect del id puede sustituirse por el id literal.)
+3. Respuesta anon con respuestas de visitantes apagadas ⇒ rechazada; raíz aceptada:
+   ```sql
+   update retos set respuestas_visitantes = false where slug = 'santi-ago';
+   begin; set local role anon;
+   insert into comentarios (reto_id, parent_id, nombre, texto, visibilidad)
+     values (<id reto>, <id raíz pública visible>, 'test', 'test', 'publico');  -- debe fallar (42501)
+   rollback;
+   begin; set local role anon;
+   insert into comentarios (reto_id, nombre, texto, visibilidad)
+     values (<id reto>, 'test', 'test', 'publico');  -- debe funcionar
+   rollback;
+   update retos set respuestas_visitantes = true where slug = 'santi-ago';
+   ```
+4. Permisos de la función: `select has_function_privilege('authenticated', 'comentarios_insert_permitido(bigint, boolean)', 'execute');` ⇒ `false`; para `anon` ⇒ `true`.
+5. El panel admin (service role) sigue pudiendo responder con respuestas de visitantes apagadas (probar "Responder" desde la pestaña Comentarios).
 
 ## Decisiones de implementación (bloqueos menores resueltos) — revisar
 
-1. **Fix del feed vacío con `despuesDeId=0`** en vez de otro parámetro u `offset=0`: reutiliza el camino del poll y no toca la API ni el estado de paginación.
-2. **`ultimoVistoId` = 0 (no null) al plegar con el feed vacío**, para que la primera entrada sí genere el aviso. `ultimoVistoId` también se fija al cargar la página 0, así la carga inicial nunca cuenta como nueva.
-3. **Fix relacionado: "Cargar más" deduplica por id** (`fusionarSinDuplicados`). La paginación es por offset: tras entradas añadidas por el poll, la página siguiente repetía filas (claves duplicadas). El poll también fusiona sin duplicar.
-4. **Fila extraída a `FilaEntrada`** (mismo fichero) para mantener legible el JSX anidado en la región.
+1. **`guardarConfiguracion(slug, config: unknown)`** en vez de `ConfigReto`: la Server Action es un endpoint público; el esquema zod (`satisfies z.ZodType<ConfigReto>`) da el tipo. Permite testear entradas inválidas sin `as`.
+2. **`urlInstagramVisible`** en `lib/retos/config.ts` (pura, con test) para no repetir en tres componentes la regla "interruptor + URL no vacía".
+3. **Bloque "Instagram" propio** (1 clave) para poder marcarlo como "sección apagada"; 11 bloques en total. El orden sigue el recorrido de `ModoAntes` (recorrido antes que quién camina).
+4. **Rollback de foto**: si falla el update de `retos` tras subir, se borra la foto recién subida (solo si `rutaObjetoDelReto` la reconoce).
+5. **`rutaObjetoDelReto`** exige la forma exacta del nombre generado (`<ts>-<uuid>.<jpg|png|webp>`) tras `<retoId>/quien-camina-`, además de decodificar la URL: una URL con `..` o `%2F` no pasa.
+6. **"Respuestas de visitantes"** se atenúa con aviso cuando los comentarios están apagados, conservando su valor.
+7. **Guardado conjunto** de los interruptores (un botón) en lugar de guardar al pulsar cada uno: apagar varias secciones es un único cambio en la web.
 
 ## Pendiente operativo tras el merge
 
+- Aplicar `0012_config_reto.sql` y ejecutar el checklist SQL.
 - Verificación visual en preview.
 - Invocar al Agente de Producto para `docs/producto/` (registrado en DEBT).
 
 ## Historial de revisión
 
-### Reviewer — 2026-09-30 — APROBADO (pasa a Seguridad)
+### Reviewer — ciclo 1 (2026-09-30): APROBADO, pasa a Seguridad
 
-Sin bloqueantes. Comprobado:
-- Estado `ultimoVistoId`/`nuevas`: correcto en plegar antes de la carga inicial (0 y luego la página 0 lo fija), en páginas antiguas de "Cargar más" (no cuentan) y en tandas acumuladas de poll.
-- Carreras: poll vs página 0 se autocorrige (el siguiente poll recupera lo que la sustitución de la página 0 pudiera tirar); poll solapado consigo mismo y "Cargar más" desplazado deduplican por id; el offset desplazado no salta filas (solo repite, y se deduplica). Intervalo limpiado en el cleanup (`[polling, slug]`).
-- Fix feed vacío: 1 petición cada 30 s por visitante mientras el feed está vacío (antes 0), igual cadencia que con feed lleno; no hay recargas duplicadas. Solo en "durante" (en "llegada" `polling=false`).
-- Reduced motion: en motion-dom 12.43 `height` está en `positionalKeys`, así que con `reducedMotion="user"` la altura cambia al instante; solo se mantiene el fundido de opacidad (aceptable).
-- Docs (CHANGELOG, DEBT, DT-031, arquitectura) coherentes.
-
-Recomendaciones registradas en `DEBT.md`: contexto a11y del botón y del aviso; `cargarPagina` sin `catch` y respuestas sin Zod (previo).
-Sigue pendiente la verificación visual en navegador antes del cierre.
+- Sin bloqueantes. Todas las fases/modos (antes, durante guiado/libre, llegada guiado/libre) condicionan intenciones, comentarios, MAM e Instagram; el MAM apagado no se monta (sin polling) y en llegada no se cargan sus entradas. APIs: 403 tras resolver el reto y antes de cualquier consulta (respuestas apagadas: antes de leer el padre); 42501 ⇒ 403. Foto: sube bajo `<retoId>/quien-camina-`, solo borra lo que reconoce `rutaObjetoDelReto`, rollback si falla el update. Exhaustividad de bloques en tipos + test. Interruptores `role="switch"` accesibles.
+- Recomendación registrada en `DEBT.md`: polling del MAM tras apagarlo en clientes con la página abierta.
+- Pendiente (no de código): verificación visual y checklist SQL tras aplicar 0012.

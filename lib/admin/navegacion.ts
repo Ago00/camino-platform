@@ -19,6 +19,7 @@ export const TABS_ADMIN = [
   { valor: "minutoaminuto", etiqueta: "Minuto a minuto" },
   { valor: "trafico", etiqueta: "Tráfico" },
   { valor: "textos", etiqueta: "Textos" },
+  { valor: "configuracion", etiqueta: "Configuración" },
 ] as const;
 
 export type TabAdmin = (typeof TABS_ADMIN)[number]["valor"];

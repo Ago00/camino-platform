@@ -45,6 +45,12 @@ const RETO_PRINCIPAL: Reto = {
   ruta_tipo: "predefinida",
   ruta_id: "portuguesa-110",
   activo: true,
+  seccion_intenciones: true,
+  seccion_comentarios: true,
+  seccion_minuto_a_minuto: true,
+  seccion_instagram: true,
+  respuestas_visitantes: true,
+  quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };
 const RETO_LIBRE: Reto = {
@@ -55,6 +61,12 @@ const RETO_LIBRE: Reto = {
   ruta_tipo: "libre",
   ruta_id: null,
   activo: true,
+  seccion_intenciones: true,
+  seccion_comentarios: true,
+  seccion_minuto_a_minuto: true,
+  seccion_instagram: true,
+  respuestas_visitantes: true,
+  quien_camina_foto_url: null,
   created_at: "2026-09-02T00:00:00.000Z",
 };
 

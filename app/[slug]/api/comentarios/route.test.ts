@@ -23,6 +23,12 @@ const RETO: Reto = {
   ruta_tipo: "predefinida",
   ruta_id: "portuguesa-110",
   activo: true,
+  seccion_intenciones: true,
+  seccion_comentarios: true,
+  seccion_minuto_a_minuto: true,
+  seccion_instagram: true,
+  respuestas_visitantes: true,
+  quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };
 
@@ -42,6 +48,8 @@ interface Resultado {
 }
 
 let consultas: ConsultaRegistrada[] = [];
+/** Reto que devuelve obtenerRetoPorSlug; cada test puede cambiar su configuración. */
+let retoActual: Reto = RETO;
 let resolverConsulta: (consulta: ConsultaRegistrada) => Resultado;
 
 function tiene(consulta: ConsultaRegistrada, metodo: string, ...args: unknown[]): boolean {
@@ -75,7 +83,7 @@ vi.mock("@/lib/supabase/public", () => ({
 }));
 
 vi.mock("@/lib/supabase/retos", () => ({
-  obtenerRetoPorSlug: async (slug: string) => (slug === RETO.slug ? RETO : null),
+  obtenerRetoPorSlug: async (slug: string) => (slug === RETO.slug ? retoActual : null),
 }));
 
 const { GET, POST } = await import("@/app/[slug]/api/comentarios/route");
@@ -103,6 +111,7 @@ function inserciones(): ConsultaRegistrada[] {
 beforeEach(() => {
   reiniciarRateLimit();
   consultas = [];
+  retoActual = RETO;
   resolverConsulta = () => ({ data: null, error: null });
 });
 
@@ -307,5 +316,89 @@ describe("POST — respuesta", () => {
     const respuesta = await POST(peticionPost({ nombre: "a", texto: "b", parent_id: 1 }), PARAMS);
 
     expect(respuesta.status).toBe(429);
+  });
+});
+
+describe("configuración del reto (FP3c, DT-032)", () => {
+  it("GET con la sección de comentarios apagada responde 403 sin consultar", async () => {
+    retoActual = { ...RETO, seccion_comentarios: false };
+
+    const respuesta = await GET(peticionGet(), PARAMS);
+
+    expect(respuesta.status).toBe(403);
+    expect(await respuesta.json()).toEqual({ error: "no disponible" });
+    expect(consultas).toHaveLength(0);
+  });
+
+  it("POST raíz con la sección apagada responde 403 sin insertar", async () => {
+    retoActual = { ...RETO, seccion_comentarios: false };
+
+    const respuesta = await POST(peticionPost({ nombre: "Ana", texto: "Hola", visibilidad: "publico" }), PARAMS);
+
+    expect(respuesta.status).toBe(403);
+    expect(consultas).toHaveLength(0);
+  });
+
+  it("POST respuesta con la sección apagada responde 403 sin leer el padre", async () => {
+    retoActual = { ...RETO, seccion_comentarios: false };
+
+    const respuesta = await POST(peticionPost({ nombre: "Ana", texto: "x", parent_id: 10 }), PARAMS);
+
+    expect(respuesta.status).toBe(403);
+    expect(consultas).toHaveLength(0);
+  });
+
+  it("POST respuesta con las respuestas de visitantes apagadas responde 403 sin leer el padre", async () => {
+    retoActual = { ...RETO, respuestas_visitantes: false };
+    resolverConsulta = () => ({ data: PADRE_VALIDO, error: null });
+
+    const respuesta = await POST(peticionPost({ nombre: "Ana", texto: "x", parent_id: 10 }), PARAMS);
+
+    expect(respuesta.status).toBe(403);
+    expect(await respuesta.json()).toEqual({ error: "no disponible" });
+    expect(consultas).toHaveLength(0);
+  });
+
+  it("con las respuestas apagadas, un comentario raíz se sigue aceptando y el muro se sigue sirviendo", async () => {
+    retoActual = { ...RETO, respuestas_visitantes: false };
+
+    const raiz = await POST(peticionPost({ nombre: "Ana", texto: "Hola", visibilidad: "publico" }), PARAMS);
+    resolverConsulta = () => ({ data: [], error: null });
+    const muro = await GET(peticionGet(), PARAMS);
+
+    expect(raiz.status).toBe(201);
+    expect(muro.status).toBe(200);
+  });
+
+  it("traduce a 403 el rechazo de RLS (42501) en el insert de una raíz", async () => {
+    resolverConsulta = () => ({ data: null, error: { code: "42501", message: "new row violates row-level security policy" } });
+
+    const respuesta = await POST(peticionPost({ nombre: "Ana", texto: "Hola", visibilidad: "publico" }), PARAMS);
+
+    expect(respuesta.status).toBe(403);
+    expect(await respuesta.json()).toEqual({ error: "no disponible" });
+  });
+
+  it("traduce a 403 el rechazo de RLS (42501) en el insert de una respuesta", async () => {
+    resolverConsulta = (consulta) =>
+      tiene(consulta, "insert")
+        ? { data: null, error: { code: "42501", message: "new row violates row-level security policy" } }
+        : { data: PADRE_VALIDO, error: null };
+
+    const respuesta = await POST(peticionPost({ nombre: "Ana", texto: "x", parent_id: 10 }), PARAMS);
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("sin columnas de configuración (migración sin aplicar) se comporta como encendido", async () => {
+    retoActual = { ...RETO };
+    Reflect.deleteProperty(retoActual, "seccion_comentarios");
+    Reflect.deleteProperty(retoActual, "respuestas_visitantes");
+    resolverConsulta = (consulta) =>
+      tiene(consulta, "insert") ? { data: { id: 1 }, error: null } : { data: PADRE_VALIDO, error: null };
+
+    const respuesta = await POST(peticionPost({ nombre: "Ana", texto: "x", parent_id: 10 }), PARAMS);
+
+    expect(respuesta.status).toBe(201);
   });
 });

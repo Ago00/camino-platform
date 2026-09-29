@@ -11,12 +11,20 @@
  * Las reglas del hilo (un solo nivel, padre raíz pública visible del mismo
  * reto, respuestas siempre públicas, `es_autor` solo desde el admin) están en
  * BD (migración 0011); aquí se validan antes para responder 400/422 claros.
+ *
+ * Configuración del reto (FP3c, DT-032): con la sección de comentarios apagada
+ * GET y POST responden 403; con las respuestas de visitantes apagadas, un POST
+ * con `parent_id` responde 403 sin leer el padre. La política RLS de INSERT
+ * (0012) aplica las mismas reglas a un POST directo a PostgREST; si el admin
+ * cambia la configuración entre esta comprobación y el insert, el rechazo de
+ * RLS (42501) también se traduce a 403.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { agruparHilos, motivoRechazoPadre, type RespuestaPublicaConPadre } from "@/lib/comentarios/hilos";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
+import { configDelReto } from "@/lib/retos/config";
 import { getSupabasePublic } from "@/lib/supabase/public";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 import type { RespuestaMuro } from "@/lib/types";
@@ -33,6 +41,13 @@ const COLUMNAS_PUBLICAS = "id, nombre, texto, created_at, es_autor";
 /** Postgres `check_violation`: lo lanza el trigger si el padre deja de ser
  * válido entre la comprobación y el insert. */
 const CODIGO_CHECK_VIOLATION = "23514";
+
+/** Postgres `insufficient_privilege`: la política RLS de INSERT rechazó la fila. */
+const CODIGO_RLS_RECHAZO = "42501";
+
+function respuestaNoDisponible(): NextResponse {
+  return NextResponse.json({ error: "no disponible" }, { status: 403 });
+}
 
 const MENSAJE_RESPUESTA_NO_PERMITIDA = "no se puede responder a este comentario";
 
@@ -72,6 +87,7 @@ export async function GET(
   if (!reto) {
     return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
   }
+  if (!configDelReto(reto).seccion_comentarios) return respuestaNoDisponible();
 
   const { offset, limit } = paginacion.data;
   const supabase = getSupabasePublic();
@@ -146,6 +162,8 @@ export async function POST(
   if (!reto) {
     return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
   }
+  const config = configDelReto(reto);
+  if (!config.seccion_comentarios) return respuestaNoDisponible();
 
   const supabase = getSupabasePublic();
 
@@ -153,10 +171,13 @@ export async function POST(
     const { nombre, texto, visibilidad } = parsed.data;
     const { error } = await supabase.from("comentarios").insert({ reto_id: reto.id, nombre, texto, visibilidad });
     if (error) {
+      if (error.code === CODIGO_RLS_RECHAZO) return respuestaNoDisponible();
       return NextResponse.json({ error: "no se pudo guardar el comentario" }, { status: 500 });
     }
     return NextResponse.json({ ok: true }, { status: 201 });
   }
+
+  if (!config.respuestas_visitantes) return respuestaNoDisponible();
 
   const { nombre, texto, parent_id } = parsed.data;
 
@@ -187,6 +208,7 @@ export async function POST(
     if (error.code === CODIGO_CHECK_VIOLATION) {
       return NextResponse.json({ error: MENSAJE_RESPUESTA_NO_PERMITIDA }, { status: 422 });
     }
+    if (error.code === CODIGO_RLS_RECHAZO) return respuestaNoDisponible();
     return NextResponse.json({ error: "no se pudo guardar el comentario" }, { status: 500 });
   }
 

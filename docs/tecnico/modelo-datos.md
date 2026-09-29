@@ -28,7 +28,15 @@ datos aislados en el resto de tablas top-level vía `reto_id` FK.
 | `ruta_tipo` | text | `'predefinida' \| 'libre'`. Predefinida = existe traza GeoJSON en `lib/rutas/<ruta_id>/` |
 | `ruta_id` | text | Mapea a `lib/rutas/<ruta_id>/` en el repo. `null` solo en modo libre (check en BD) |
 | `activo` | boolean | `false` = reto archivado, no visible |
+| `seccion_intenciones` | boolean | default `true` (FP3c, DT-032, 0012). `false` = sin intenciones en la web; POST ⇒ 403 |
+| `seccion_comentarios` | boolean | default `true`. `false` = sin formulario ni muro; API GET/POST ⇒ 403; RLS de INSERT de anon lo rechaza |
+| `seccion_minuto_a_minuto` | boolean | default `true`. `false` = el feed no se pinta ni hace polling; API GET ⇒ 403. El admin puede seguir publicando |
+| `seccion_instagram` | boolean | default `true`. El enlace se pinta solo si está a `true` y el texto `cierre_antes_instagram_url` no está vacío |
+| `respuestas_visitantes` | boolean | default `true`. `false` = sin "Responder" en el muro; POST de respuesta ⇒ 403 y RLS lo rechaza; las respuestas del caminante (service role) siguen permitidas |
+| `quien_camina_foto_url` | text | Foto de "quién camina". URL pública del bucket `minuto-a-minuto` (`<reto_id>/quien-camina-…`) o ruta de `/public` heredada (`/santi.jpg` en `santi-ago`). `null` = silueta |
 | `created_at` | timestamptz | Automático |
+
+**Configuración (FP3c):** el código lee siempre estas columnas con `configDelReto` (`lib/retos/config.ts`), que trata un campo ausente como `true` por si el código llega antes que la migración 0012. Solo el admin del reto las edita (pestaña "Configuración"); el superadmin crea retos sin fijarlas (defaults).
 
 **Fila inicial:** `portuguesa-110` — el reto del Camino Portugués, `id = 1`.
 
@@ -130,6 +138,8 @@ Comentario público o privado de un seguidor.
 - Un solo nivel: el padre de una respuesta es una raíz (`parent_id` null), pública, no oculta y del mismo reto. Lo impone el trigger `comentarios_validar_respuesta` (before insert / update of parent_id; `check_violation` si no se cumple) para cualquier rol.
 - Borrar una raíz borra sus respuestas (FK con cascade). Ocultar una raíz no toca las filas de sus respuestas, pero dejan de ser visibles para `anon`.
 - Índices: `comentarios_raices_idx (reto_id, created_at desc) where parent_id is null` (paginación del muro) y `comentarios_parent_idx (parent_id) where parent_id is not null`.
+
+**Configuración del reto en el INSERT público (FP3c, DT-032, migración 0012):** la política `comentarios_insert_publico` exige además `comentarios_insert_permitido(reto_id, parent_id is not null)` — función security definer que devuelve `true` solo si el reto tiene `seccion_comentarios` y, para una respuesta, `respuestas_visitantes`. EXECUTE solo para `anon`.
 
 ### `textos`
 
@@ -238,7 +248,7 @@ comentarios (1) ──< comentarios (N)      parent_id → comentarios.id (nulla
 | `intentos` | SELECT solo el activo (`NOT cerrado`) | ALL |
 | `posiciones` | SELECT solo `NOT descartado` del intento activo | ALL |
 | `intenciones` | Ninguna política (cero acceso) | ALL |
-| `comentarios` | SELECT `publico AND NOT oculto` (+ raíz visible si es respuesta, 0011); INSERT sin poder fijar `oculto` ni `es_autor` | ALL |
+| `comentarios` | SELECT `publico AND NOT oculto` (+ raíz visible si es respuesta, 0011); INSERT sin poder fijar `oculto` ni `es_autor`, y solo si el reto tiene la sección (y, para respuestas, las respuestas de visitantes) encendida (0012) | ALL |
 | `textos` | SELECT | ALL |
 | `minuto_a_minuto` | SELECT solo entradas del intento activo (`NOT cerrado`) | ALL |
 | `visitas_web` | Ninguna política (cero acceso) | ALL |
@@ -269,7 +279,9 @@ iniciales), `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
 `destino_lon` de `intentos`, DT-016),
 `supabase/migrations/0004_visitas_web.sql` (tabla `visitas_web`, DT-022) y
 `supabase/migrations/0006_foto_llegada.sql` (columna `foto_llegada_url` de
-`intentos`, DT-024).
+`intentos`, DT-024). Desde FP0 el esquema de plataforma está en `0007` y las
+posteriores; la última es `0012_config_reto.sql` (configuración por reto en
+`retos` y RLS de INSERT de `comentarios`, DT-032).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase

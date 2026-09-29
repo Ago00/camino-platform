@@ -16,9 +16,11 @@ const PAGINA = 20;
 interface MuroComentariosProps {
   textos: Textos;
   slug: string;
+  /** Respuestas de visitantes encendidas en la configuración del reto (FP3c, DT-032). */
+  permitirRespuestas: boolean;
 }
 
-export default function MuroComentarios({ textos, slug }: MuroComentariosProps) {
+export default function MuroComentarios({ textos, slug, permitirRespuestas }: MuroComentariosProps) {
   const [hilos, setHilos] = useState<HiloPublico[]>([]);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(0);
   const [cargando, setCargando] = useState(false);
@@ -58,7 +60,7 @@ export default function MuroComentarios({ textos, slug }: MuroComentariosProps) 
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
           >
-            <HiloComentario hilo={hilo} textos={textos} slug={slug} />
+            <HiloComentario hilo={hilo} textos={textos} slug={slug} permitirRespuestas={permitirRespuestas} />
           </motion.div>
         ))}
       </AnimatePresence>

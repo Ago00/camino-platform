@@ -13,20 +13,28 @@ const getPublicUrlSpy = vi.fn(() => ({
   data: { publicUrl: "https://supabase.example.com/storage/v1/object/public/minuto-a-minuto/foo.jpg" },
 }));
 
+const removeSpy = vi.fn().mockResolvedValue({ error: null });
+
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => ({
     storage: {
       from: vi.fn(() => ({
         upload: uploadSpy,
         getPublicUrl: getPublicUrlSpy,
+        remove: removeSpy,
       })),
     },
   })),
 }));
 
-const { subirFotoMinutoAMinuto, subirFotoLlegada, ErrorDeSubidaDeFoto } = await import(
-  "@/lib/supabase/storage"
-);
+const {
+  subirFotoMinutoAMinuto,
+  subirFotoLlegada,
+  subirFotoQuienCamina,
+  rutaObjetoDelReto,
+  borrarObjeto,
+  ErrorDeSubidaDeFoto,
+} = await import("@/lib/supabase/storage");
 const { TAMANO_MAXIMO_FOTO_BYTES, PRESUPUESTO_COMPRESION_BYTES } = await import(
   "@/lib/imagen/limites-subida"
 );
@@ -39,6 +47,7 @@ function crearArchivo(opciones: { type: string; size: number }): File {
 beforeEach(() => {
   uploadSpy.mockClear();
   getPublicUrlSpy.mockClear();
+  removeSpy.mockClear();
 });
 
 describe("subirFotoMinutoAMinuto — validación de tipo MIME", () => {
@@ -163,5 +172,86 @@ describe("subirFotoLlegada (DT-024) — mismo bucket, prefijo distinto en el nom
     await expect(
       subirFotoLlegada(crearArchivo({ type: "image/jpeg", size: 100 }))
     ).rejects.toBeInstanceOf(ErrorDeSubidaDeFoto);
+  });
+});
+
+describe("subirFotoQuienCamina (FP3c) — carpeta del reto", () => {
+  it("sube bajo <retoId>/quien-camina- con la extensión del MIME", async () => {
+    await subirFotoQuienCamina(crearArchivo({ type: "image/webp", size: 100 }), 7);
+
+    const [nombreSubido] = uploadSpy.mock.calls[0] as [string, File, unknown];
+    expect(nombreSubido).toMatch(/^7\/quien-camina-\d+-[0-9a-f-]+\.webp$/);
+  });
+
+  it("el nombre generado lo reconoce rutaObjetoDelReto para ese reto y no para otro", async () => {
+    await subirFotoQuienCamina(crearArchivo({ type: "image/jpeg", size: 100 }), 7);
+    const [nombreSubido] = uploadSpy.mock.calls[0] as [string, File, unknown];
+    const url = `https://x.supabase.co/storage/v1/object/public/minuto-a-minuto/${nombreSubido}`;
+
+    expect(rutaObjetoDelReto(url, 7)).toBe(nombreSubido);
+    expect(rutaObjetoDelReto(url, 8)).toBeNull();
+  });
+
+  it("aplica las mismas validaciones de tipo y tamaño sin tocar Storage", async () => {
+    await expect(subirFotoQuienCamina(crearArchivo({ type: "image/gif", size: 100 }), 7)).rejects.toBeInstanceOf(
+      ErrorDeSubidaDeFoto
+    );
+    await expect(
+      subirFotoQuienCamina(crearArchivo({ type: "image/jpeg", size: TAMANO_MAXIMO_FOTO_BYTES + 1 }), 7)
+    ).rejects.toThrow(/máximo/i);
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("rutaObjetoDelReto — solo reconoce fotos de quién camina del reto", () => {
+  const BASE = "https://x.supabase.co/storage/v1/object/public/minuto-a-minuto/";
+  const NOMBRE = "1727700000000-3f2b8c1e-0a1b-4c2d-9e8f-123456789abc.jpg";
+
+  it("devuelve la ruta del objeto para una foto del reto", () => {
+    expect(rutaObjetoDelReto(`${BASE}3/quien-camina-${NOMBRE}`, 3)).toBe(`3/quien-camina-${NOMBRE}`);
+  });
+
+  it("ignora la query string de la URL", () => {
+    expect(rutaObjetoDelReto(`${BASE}3/quien-camina-${NOMBRE}?v=2`, 3)).toBe(`3/quien-camina-${NOMBRE}`);
+  });
+
+  it("null para una ruta de /public heredada como /santi.jpg", () => {
+    expect(rutaObjetoDelReto("/santi.jpg", 3)).toBeNull();
+  });
+
+  it("null para la foto de otro reto (incluido un id que empieza igual)", () => {
+    expect(rutaObjetoDelReto(`${BASE}4/quien-camina-${NOMBRE}`, 3)).toBeNull();
+    expect(rutaObjetoDelReto(`${BASE}31/quien-camina-${NOMBRE}`, 3)).toBeNull();
+  });
+
+  it("null para fotos del feed o de llegada del mismo bucket", () => {
+    expect(rutaObjetoDelReto(`${BASE}${NOMBRE}`, 3)).toBeNull();
+    expect(rutaObjetoDelReto(`${BASE}llegada-${NOMBRE}`, 3)).toBeNull();
+  });
+
+  it("null si el nombre intenta salir de la carpeta o no tiene la forma generada", () => {
+    expect(rutaObjetoDelReto(`${BASE}3/quien-camina-../../4/quien-camina-${NOMBRE}`, 3)).toBeNull();
+    expect(rutaObjetoDelReto(`${BASE}3/quien-camina-%2F..%2F4%2F${NOMBRE}`, 3)).toBeNull();
+    expect(rutaObjetoDelReto(`${BASE}3/quien-camina-foto.gif`, 3)).toBeNull();
+  });
+
+  it("null para una URL con codificación inválida", () => {
+    expect(rutaObjetoDelReto(`${BASE}3/quien-camina-%E0%A4%A.jpg`, 3)).toBeNull();
+  });
+});
+
+describe("borrarObjeto — no lanza", () => {
+  it("pide a Storage borrar exactamente la ruta indicada", async () => {
+    await borrarObjeto("3/quien-camina-1-abc.jpg");
+    expect(removeSpy).toHaveBeenCalledWith(["3/quien-camina-1-abc.jpg"]);
+  });
+
+  it("si Storage devuelve error o lanza, resuelve sin lanzar", async () => {
+    const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    removeSpy.mockResolvedValueOnce({ error: { message: "no existe" } });
+    await expect(borrarObjeto("3/quien-camina-1-abc.jpg")).resolves.toBeUndefined();
+    removeSpy.mockRejectedValueOnce(new Error("red"));
+    await expect(borrarObjeto("3/quien-camina-1-abc.jpg")).resolves.toBeUndefined();
+    consola.mockRestore();
   });
 });

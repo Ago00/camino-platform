@@ -14,6 +14,8 @@
 // el poll trae una `ultimaPosicion` con `ts` distinto de la última conocida
 // — así el trazado crece según van llegando posiciones nuevas sin necesitar
 // un endpoint nuevo ni ampliar el contrato de ProgresoPublico.
+//
+// FP3c (DT-032): mismas reglas de configuración del reto que ModoDurante.tsx.
 
 "use client";
 
@@ -30,6 +32,7 @@ import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import { urlInstagramVisible, type ConfigReto } from "@/lib/retos/config";
 
 const POLLING_MS = 30_000;
 
@@ -51,6 +54,7 @@ interface ModoDuranteLibreProps {
   textos: Textos;
   /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
   slug: string;
+  config: ConfigReto;
 }
 
 export default function ModoDuranteLibre({
@@ -59,6 +63,7 @@ export default function ModoDuranteLibre({
   startedAt,
   textos,
   slug,
+  config,
 }: ModoDuranteLibreProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
@@ -100,12 +105,13 @@ export default function ModoDuranteLibre({
   const referenciaFinal = progreso.ultimaPosicion?.ts ?? null;
   const tiempoEnMarcha = calcularTiempoEnMarchaIntento(startedAt, referenciaFinal);
   const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, referenciaFinal);
+  const instagramUrl = urlInstagramVisible(config, textos.cierre_antes_instagram_url);
 
   return (
     <section className="space-y-5 pt-5">
-      {textos.cierre_antes_instagram_url.trim() !== "" && (
+      {instagramUrl !== null && (
         <div className="flex justify-center">
-          <EnlaceInstagram url={textos.cierre_antes_instagram_url} />
+          <EnlaceInstagram url={instagramUrl} />
         </div>
       )}
 
@@ -127,12 +133,18 @@ export default function ModoDuranteLibre({
           ritmoMedio={ritmoMedio}
           textos={textos}
         />
-        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
+        {config.seccion_minuto_a_minuto && (
+          <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
+        )}
       </div>
 
-      <IntencionForm textos={textos} slug={slug} />
-      <ComentarioForm textos={textos} slug={slug} />
-      <MuroComentarios textos={textos} slug={slug} />
+      {config.seccion_intenciones && <IntencionForm textos={textos} slug={slug} />}
+      {config.seccion_comentarios && (
+        <>
+          <ComentarioForm textos={textos} slug={slug} />
+          <MuroComentarios textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
+        </>
+      )}
     </section>
   );
 }

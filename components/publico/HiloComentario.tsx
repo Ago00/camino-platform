@@ -19,9 +19,11 @@ interface HiloComentarioProps {
   hilo: HiloPublico;
   textos: Textos;
   slug: string;
+  /** false si el reto tiene apagadas las respuestas de visitantes (FP3c): sin "Responder"; las existentes se ven igual. */
+  permitirRespuestas: boolean;
 }
 
-export default function HiloComentario({ hilo, textos, slug }: HiloComentarioProps) {
+export default function HiloComentario({ hilo, textos, slug, permitirRespuestas }: HiloComentarioProps) {
   const [respuestas, setRespuestas] = useState<ComentarioPublico[]>(hilo.respuestas);
   const [desplegado, setDesplegado] = useState(hilo.respuestas.length <= UMBRAL_PLEGADO);
   const [respondiendo, setRespondiendo] = useState(false);
@@ -40,14 +42,16 @@ export default function HiloComentario({ hilo, textos, slug }: HiloComentarioPro
       <CuerpoComentario comentario={hilo} textos={textos} />
 
       <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] font-medium">
-        <button
-          type="button"
-          onClick={() => setRespondiendo((abierto) => !abierto)}
-          aria-expanded={respondiendo}
-          style={{ color: C.eucalipto }}
-        >
-          {textos.muro_boton_responder}
-        </button>
+        {permitirRespuestas && (
+          <button
+            type="button"
+            onClick={() => setRespondiendo((abierto) => !abierto)}
+            aria-expanded={respondiendo}
+            style={{ color: C.eucalipto }}
+          >
+            {textos.muro_boton_responder}
+          </button>
+        )}
         {plegable && (
           <button
             type="button"
@@ -78,7 +82,7 @@ export default function HiloComentario({ hilo, textos, slug }: HiloComentarioPro
         </ul>
       )}
 
-      {respondiendo && (
+      {permitirRespuestas && respondiendo && (
         <RespuestaForm textos={textos} slug={slug} parentId={hilo.id} onRespondido={alResponder} />
       )}
     </div>
