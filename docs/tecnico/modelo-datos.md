@@ -116,14 +116,20 @@ Comentario público o privado de un seguidor.
 |---|---|---|
 | `id` | bigint PK | |
 | `reto_id` | bigint FK | Reto al que pertenece (DT-025) |
-| `parent_id` | bigint FK | Comentario padre para hilos de respuesta (DT-025). `null` = comentario raíz. Dormido hasta FP3 |
+| `parent_id` | bigint FK | Raíz a la que responde (FP3a, DT-030). `null` = comentario raíz. `on delete cascade` (0011) |
 | `nombre` | text | 1-80 chars, nunca anónimo |
 | `texto` | text | 1-1000 chars |
-| `visibilidad` | text | `'publico' \| 'privado'` |
+| `visibilidad` | text | `'publico' \| 'privado'`. Las respuestas, siempre `'publico'` (check `comentarios_respuesta_publica`) |
 | `oculto` | boolean | El admin puede ocultar sin borrar |
+| `es_autor` | boolean | default `false`. `true` = respuesta del caminante desde el panel (insignia "Caminante"). Solo service role (0011) |
 | `created_at` | timestamptz | |
 
-**Invariante de privacidad:** la política RLS de `anon` solo permite SELECT de `visibilidad = 'publico' AND NOT oculto`. El INSERT público no puede fijar `oculto = true`.
+**Invariante de privacidad:** la política RLS de `anon` solo permite SELECT de `visibilidad = 'publico' AND NOT oculto`, y para una respuesta exige además que su raíz siga visible (`comentario_raiz_visible`, security definer: una política no puede consultar su propia tabla sin recursión). El INSERT público no puede fijar `oculto = true` ni `es_autor = true`.
+
+**Invariantes del hilo (FP3a, DT-030, migración 0011):**
+- Un solo nivel: el padre de una respuesta es una raíz (`parent_id` null), pública, no oculta y del mismo reto. Lo impone el trigger `comentarios_validar_respuesta` (before insert / update of parent_id; `check_violation` si no se cumple) para cualquier rol.
+- Borrar una raíz borra sus respuestas (FK con cascade). Ocultar una raíz no toca las filas de sus respuestas, pero dejan de ser visibles para `anon`.
+- Índices: `comentarios_raices_idx (reto_id, created_at desc) where parent_id is null` (paginación del muro) y `comentarios_parent_idx (parent_id) where parent_id is not null`.
 
 ### `textos`
 
@@ -219,7 +225,7 @@ retos (1) ──  retos_admin       (0..1)  reto_id → retos.id (PK, on delete 
 intentos (1) ──< posiciones (N)          intento_id → intentos.id
 intentos (1) ──< minuto_a_minuto (N)     intento_id → intentos.id
 
-comentarios (1) ──< comentarios (N)      parent_id → comentarios.id (nullable, dormido hasta FP3)
+comentarios (1) ──< comentarios (N)      parent_id → comentarios.id (nullable, un nivel, on delete cascade — FP3a/DT-030)
 ```
 
 ---
@@ -232,7 +238,7 @@ comentarios (1) ──< comentarios (N)      parent_id → comentarios.id (nulla
 | `intentos` | SELECT solo el activo (`NOT cerrado`) | ALL |
 | `posiciones` | SELECT solo `NOT descartado` del intento activo | ALL |
 | `intenciones` | Ninguna política (cero acceso) | ALL |
-| `comentarios` | SELECT `publico AND NOT oculto`; INSERT sin poder fijar `oculto` | ALL |
+| `comentarios` | SELECT `publico AND NOT oculto` (+ raíz visible si es respuesta, 0011); INSERT sin poder fijar `oculto` ni `es_autor` | ALL |
 | `textos` | SELECT | ALL |
 | `minuto_a_minuto` | SELECT solo entradas del intento activo (`NOT cerrado`) | ALL |
 | `visitas_web` | Ninguna política (cero acceso) | ALL |

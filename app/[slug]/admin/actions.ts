@@ -37,6 +37,8 @@ import { calcularProgresoActual } from "@/lib/traza/progreso-actual";
 import type { ResultadoPublicacion, Reto } from "@/lib/types";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
+import { obtenerTextos } from "@/lib/textos/obtener-textos";
+import { motivoRechazoPadre, type MotivoRechazoPadre } from "@/lib/comentarios/hilos";
 
 class SesionInvalidaError extends Error {
   constructor() {
@@ -381,6 +383,69 @@ export async function eliminarComentario(slug: string, id: number): Promise<void
   const { error } = await supabase.from("comentarios").delete().eq("id", id).eq("reto_id", reto.id);
   if (error) throw new Error("No se pudo eliminar el comentario.");
   revalidarAdmin(slug);
+}
+
+const LONGITUD_MAXIMA_NOMBRE_COMENTARIO = 80;
+
+const textoRespuestaAdmin = z.string().trim().min(1).max(1000);
+
+const MENSAJES_RECHAZO_PADRE: Record<MotivoRechazoPadre, string> = {
+  no_existe: "El comentario ya no existe.",
+  otro_reto: "El comentario ya no existe.",
+  es_respuesta: "Solo se puede responder a comentarios, no a respuestas.",
+  privado: "No se puede responder a un comentario privado.",
+  oculto: "No se puede responder a un comentario oculto. Muéstralo antes.",
+};
+
+/**
+ * Respuesta del caminante a un comentario raíz (FP3a, DT-030): se guarda con
+ * `es_autor = true` (insignia "Caminante") y con el nombre editable
+ * `quien_camina_nombre` del reto. Devuelve el fallo en vez de lanzarlo
+ * (DT-017) para que el formulario muestre el motivo real.
+ */
+export async function responderComentario(
+  slug: string,
+  parentId: number,
+  texto: string
+): Promise<ResultadoPublicacion> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+
+  const textoValidado = textoRespuestaAdmin.safeParse(texto);
+  if (!textoValidado.success) {
+    return { ok: false, mensaje: "La respuesta debe tener entre 1 y 1000 caracteres." };
+  }
+  if (!Number.isInteger(parentId) || parentId <= 0) {
+    return { ok: false, mensaje: "El comentario ya no existe." };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: padre, error: errorPadre } = await supabase
+    .from("comentarios")
+    .select("reto_id, parent_id, visibilidad, oculto")
+    .eq("id", parentId)
+    .eq("reto_id", reto.id)
+    .maybeSingle();
+
+  if (errorPadre) return { ok: false, mensaje: "No se pudo publicar la respuesta. Vuelve a intentarlo." };
+  const motivo = motivoRechazoPadre(padre, reto.id);
+  if (motivo !== null) return { ok: false, mensaje: MENSAJES_RECHAZO_PADRE[motivo] };
+
+  const textos = await obtenerTextos(reto.id);
+  const nombre = (textos.quien_camina_nombre.trim() || reto.nombre).slice(0, LONGITUD_MAXIMA_NOMBRE_COMENTARIO);
+
+  const { error } = await supabase.from("comentarios").insert({
+    reto_id: reto.id,
+    parent_id: parentId,
+    nombre,
+    texto: textoValidado.data,
+    visibilidad: "publico",
+    es_autor: true,
+  });
+
+  if (error) return { ok: false, mensaje: "No se pudo publicar la respuesta. Vuelve a intentarlo." };
+  revalidarAdmin(slug);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

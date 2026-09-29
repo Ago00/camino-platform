@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-09-29 — FP3a: Respuestas en hilo en los comentarios
+
+**Tipo:** Feature
+
+Los visitantes pueden responder a cualquier comentario público del muro, y el
+caminante puede responder desde el panel admin: sus respuestas llevan la
+insignia "Caminante". Los hilos con más de dos respuestas aparecen plegados
+tras "Ver N respuestas". En el panel, los comentarios se agrupan por hilo;
+ocultar un comentario oculta también sus respuestas en la web, y borrarlo las
+borra (el aviso de confirmación indica cuántas). Arregla además la navegación
+del panel admin, que llevaba a una página inexistente: las pestañas, el filtro
+Todos/Públicos/Ocultos de Comentarios, el "Cargar más" de las listas y los
+selectores de la pestaña Tráfico. Requiere aplicar la migración `0011_hilos_comentarios.sql`.
+
+---
+
 ## 2026-09-29 — FP2.6: Cada reto tiene su propia contraseña de panel admin
 
 **Tipo:** Feature (plataforma)

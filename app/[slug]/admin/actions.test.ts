@@ -34,6 +34,9 @@ interface LlamadaBuilder {
 
 let llamadas: LlamadaBuilder[] = [];
 let intentoActivoMock: { id: number } | null = null;
+let padreMock: { reto_id: number; parent_id: number | null; visibilidad: "publico" | "privado"; oculto: boolean } | null =
+  null;
+let nombreCaminanteMock = "Santi";
 const RETO_B: Reto = { ...RETO, id: 4, slug: "otro-reto" };
 const RETOS_POR_SLUG = new Map([RETO, RETO_B].map((reto) => [reto.slug, reto]));
 // Solo se usa su huella: no hace falta un hash scrypt real.
@@ -58,7 +61,8 @@ function crearConsulta(tabla: string) {
     eq: (...args: unknown[]) => registrar("eq", args),
     maybeSingle: () => {
       llamadas.push({ tabla, metodo: "maybeSingle", args: [] });
-      return Promise.resolve({ data: tabla === "intentos" ? intentoActivoMock : null, error: null });
+      const datos = tabla === "intentos" ? intentoActivoMock : tabla === "comentarios" ? padreMock : null;
+      return Promise.resolve({ data: datos, error: null });
     },
     then: (resolver: (valor: { data: null; error: null }) => void) => resolver({ data: null, error: null }),
   };
@@ -79,6 +83,10 @@ vi.mock("@/lib/supabase/retos", () => ({
 
 vi.mock("@/lib/supabase/credenciales-admin", () => ({
   obtenerHashAdmin: async (retoId: number) => hashesMock.get(retoId) ?? null,
+}));
+
+vi.mock("@/lib/textos/obtener-textos", () => ({
+  obtenerTextos: async () => ({ quien_camina_nombre: nombreCaminanteMock }),
 }));
 
 vi.mock("next/headers", () => ({
@@ -107,6 +115,7 @@ const {
   guardarTexto,
   ocultarComentario,
   resetearContadorTrafico,
+  responderComentario,
 } = await import("@/app/[slug]/admin/actions");
 
 function llamadasA(tabla: string, metodo: string): unknown[][] {
@@ -121,6 +130,8 @@ beforeEach(() => {
   vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-sesion-de-test-largo");
   llamadas = [];
   intentoActivoMock = null;
+  padreMock = { reto_id: RETO.id, parent_id: null, visibilidad: "publico", oculto: false };
+  nombreCaminanteMock = "Santi";
   hashesMock = new Map([
     [RETO.id, HASH_RETO],
     [RETO_B.id, HASH_RETO_B],
@@ -247,5 +258,83 @@ describe("resetearContadorTrafico — upsert por reto_id", () => {
     expect(fila).toEqual({ reto_id: RETO.id, cuenta_desde: expect.any(String) });
     expect(opciones).toEqual({ onConflict: "reto_id" });
     expect(llamadasA("config_trafico", "eq")).toHaveLength(0);
+  });
+});
+
+describe("responderComentario — respuesta del caminante (FP3a, DT-030)", () => {
+  it("lee el padre filtrando por id y reto_id e inserta la respuesta con es_autor true y el nombre del caminante", async () => {
+    const resultado = await responderComentario(RETO.slug, 55, "  ¡Gracias por el ánimo!  ");
+
+    expect(resultado).toEqual({ ok: true });
+    expect(llamadasA("comentarios", "eq")).toEqual([
+      ["id", 55],
+      ["reto_id", RETO.id],
+    ]);
+    expect(llamadasA("comentarios", "insert")).toEqual([
+      [
+        {
+          reto_id: RETO.id,
+          parent_id: 55,
+          nombre: "Santi",
+          texto: "¡Gracias por el ánimo!",
+          visibilidad: "publico",
+          es_autor: true,
+        },
+      ],
+    ]);
+  });
+
+  it("usa el nombre del reto, recortado a 80, si quien_camina_nombre está vacío", async () => {
+    nombreCaminanteMock = "   ";
+    const retoNombreLargo = { ...RETO, nombre: "x".repeat(100) };
+    RETOS_POR_SLUG.set(RETO.slug, retoNombreLargo);
+    try {
+      await responderComentario(RETO.slug, 55, "hola");
+    } finally {
+      RETOS_POR_SLUG.set(RETO.slug, RETO);
+    }
+
+    const [[fila]] = llamadasA("comentarios", "insert");
+    expect(fila).toMatchObject({ nombre: "x".repeat(80) });
+  });
+
+  it("sin sesión no escribe y devuelve sesión caducada", async () => {
+    cookieMock = undefined;
+
+    await expect(responderComentario(RETO.slug, 55, "hola")).resolves.toEqual({
+      ok: false,
+      mensaje: expect.stringMatching(/sesión/),
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("con la sesión de otro reto no escribe", async () => {
+    await expect(responderComentario(RETO_B.slug, 55, "hola")).resolves.toMatchObject({ ok: false });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("un padre de otro reto (no encontrado al filtrar por reto_id) no se responde", async () => {
+    padreMock = null;
+
+    await expect(responderComentario(RETO.slug, 55, "hola")).resolves.toMatchObject({ ok: false });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("no responde a una respuesta, a un comentario oculto ni a uno privado", async () => {
+    for (const padre of [
+      { reto_id: RETO.id, parent_id: 9, visibilidad: "publico" as const, oculto: false },
+      { reto_id: RETO.id, parent_id: null, visibilidad: "publico" as const, oculto: true },
+      { reto_id: RETO.id, parent_id: null, visibilidad: "privado" as const, oculto: false },
+    ]) {
+      padreMock = padre;
+      await expect(responderComentario(RETO.slug, 55, "hola")).resolves.toMatchObject({ ok: false });
+    }
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("rechaza un texto vacío o de más de 1000 caracteres sin tocar la BD", async () => {
+    await expect(responderComentario(RETO.slug, 55, "   ")).resolves.toMatchObject({ ok: false });
+    await expect(responderComentario(RETO.slug, 55, "a".repeat(1001))).resolves.toMatchObject({ ok: false });
+    expect(llamadas.filter((l) => l.tabla === "comentarios")).toEqual([]);
   });
 });

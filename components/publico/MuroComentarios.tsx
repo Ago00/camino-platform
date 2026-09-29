@@ -1,26 +1,17 @@
-// Muro de comentarios públicos, paginado por offset ("cargar más", página=20).
-// Hace fetch a GET /api/comentarios. Sigue el patrón de paginación del
-// mockup (design-sandbox/app/camino/page.tsx, MuroComentarios).
+// Muro de comentarios públicos en hilos (FP3a, DT-030), paginado por offset
+// sobre los comentarios raíz ("cargar más", página=20). Hace fetch a
+// GET /[slug]/api/comentarios. Sigue el patrón de paginación del mockup
+// (design-sandbox/app/camino/page.tsx, MuroComentarios).
 
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import HiloComentario from "@/components/publico/HiloComentario";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import type { HiloPublico, RespuestaMuro } from "@/lib/types";
 
 const PAGINA = 20;
-
-interface ComentarioPublico {
-  id: number;
-  nombre: string;
-  texto: string;
-  created_at: string;
-}
-
-interface RespuestaComentarios {
-  comentarios: ComentarioPublico[];
-  siguienteOffset: number | null;
-}
 
 interface MuroComentariosProps {
   textos: Textos;
@@ -28,7 +19,7 @@ interface MuroComentariosProps {
 }
 
 export default function MuroComentarios({ textos, slug }: MuroComentariosProps) {
-  const [comentarios, setComentarios] = useState<ComentarioPublico[]>([]);
+  const [hilos, setHilos] = useState<HiloPublico[]>([]);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(0);
   const [cargando, setCargando] = useState(false);
   const cargadoInicial = useRef(false);
@@ -38,10 +29,13 @@ export default function MuroComentarios({ textos, slug }: MuroComentariosProps) 
     try {
       const response = await fetch(`/${slug}/api/comentarios?offset=${offset}&limit=${PAGINA}`);
       if (!response.ok) return;
-      const data: RespuestaComentarios = await response.json();
-      setComentarios((previos) =>
-        offset === 0 ? data.comentarios : [...previos, ...data.comentarios]
-      );
+      const data: RespuestaMuro = await response.json();
+      // Si entra una raíz nueva entre páginas, el offset desplaza y la siguiente repite un hilo.
+      setHilos((previos) => {
+        if (offset === 0) return data.comentarios;
+        const vistos = new Set(previos.map((h) => h.id));
+        return [...previos, ...data.comentarios.filter((h) => !vistos.has(h.id))];
+      });
       setSiguienteOffset(data.siguienteOffset);
     } finally {
       setCargando(false);
@@ -57,21 +51,14 @@ export default function MuroComentarios({ textos, slug }: MuroComentariosProps) 
   return (
     <div className="space-y-2.5">
       <AnimatePresence initial={false}>
-        {comentarios.map((c) => (
+        {hilos.map((hilo) => (
           <motion.div
-            key={c.id}
+            key={hilo.id}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
-            className="rounded-xl border px-4 py-3"
-            style={{ borderColor: "#00000010", background: "white" }}
           >
-            <div className="text-[13px] font-semibold" style={{ color: "#1B211D" }}>
-              {c.nombre}
-            </div>
-            <div className="text-[13.5px]" style={{ color: "#4A5450" }}>
-              {c.texto}
-            </div>
+            <HiloComentario hilo={hilo} textos={textos} slug={slug} />
           </motion.div>
         ))}
       </AnimatePresence>
@@ -85,7 +72,7 @@ export default function MuroComentarios({ textos, slug }: MuroComentariosProps) 
         >
           <IconChevronDown size={13} /> {cargando ? "Cargando…" : textos.muro_boton_cargar_mas}
         </button>
-      ) : comentarios.length > 0 ? (
+      ) : hilos.length > 0 ? (
         <div className="pt-1 text-center text-[11.5px]" style={{ color: "#9AA29C" }}>
           {textos.muro_mensaje_fin}
         </div>

@@ -26,7 +26,8 @@ camino-santi-ago/
 │       │                         # compatibilidad migración 0003) vive en
 │       │                         # lib/traza/progreso-actual.ts (calcularProgresoActual,
 │       │                         # extraída por DT-019); este fichero solo añade caché+rate limit
-│       ├── comentarios/route.ts  # F3: GET paginado + POST
+│       ├── comentarios/route.ts  # F3: GET paginado + POST; FP3a/DT-030: GET pagina raíces + respuestas
+│       │                         # por hilo; POST raíz o respuesta (parent_id), reglas también en BD (0011)
 │       ├── intenciones/route.ts  # F3: POST (cliente admin)
 │       ├── admin/login/route.ts  # F4
 │       ├── fase/route.ts         # auto-refresco de fase: GET mínimo, sin caché (DT-012)
@@ -35,6 +36,8 @@ camino-santi-ago/
 │   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC); prop puntoResaltado (DT-013);
 │   │                         # prop variante "ruta"|"libre" (DT-016, modo libre sin traza de fondo)
 │   ├── publico/              # F3: hero, stats, formularios, hilo
+│   │   ├── MuroComentarios.tsx / HiloComentario.tsx / RespuestaForm.tsx / InsigniaCaminante.tsx
+│   │   │                      # FP3a/DT-030: muro en hilos de un nivel, plegado si > 2 respuestas
 │   │   ├── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
 │   │   ├── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa
 │   │   ├── RecuadroLlegada.tsx  # DT-024: kicker+título+mensaje de la pantalla "llegada", extraído de
@@ -48,6 +51,8 @@ camino-santi-ago/
 │   │                              # CURRENT.md/DT-020 añade Stats.tsx (tiempo en marcha/km/ritmo,
 │   │                              # con ended_at como referencia final)
 │   └── admin/               # F4: secciones del panel
+│       ├── SeccionComentarios.tsx     # FP3a/DT-030: comentarios agrupados por hilo (agruparHilosAdmin)
+│       ├── FormRespuestaAdmin.tsx     # FP3a/DT-030: respuesta del caminante (responderComentario, es_autor)
 │       ├── ComposerMinutoAMinuto.tsx  # DT-013: texto + foto opcional; DT-017: envía con
 │       │                              # onSubmit propio (no <form action={fn}>: React 19
 │       │                              # resetearía el input de fichero al fallar), comprime
@@ -74,6 +79,8 @@ camino-santi-ago/
 │   │                          # Date.now()/new Date()); usadas por ModoDurante.tsx,
 │   │                          # ModoDuranteLibre.tsx, ModoLlegadaLibre.tsx y app/page.tsx
 │   │                          # (ModoLlegadaConectado)
+│   ├── comentarios/hilos.ts   # FP3a/DT-030: dominio puro de hilos — motivoRechazoPadre, agruparHilos,
+│   │                          # agruparHilosAdmin
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
 │   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
 │   ├── progreso-cache.ts      # DT-014: caché compartida de ProgresoPublico (antes vivía

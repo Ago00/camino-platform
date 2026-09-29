@@ -1863,3 +1863,37 @@ Hasta FP2.5 todos los paneles `/<slug>/admin` compartían la env var `ADMIN_PASS
 - **`editarReto`** guarda la contraseña nueva tras actualizar el reto y revalidar; si falla ese guardado, lanza "No se pudo guardar la contraseña de admin del reto." con el resto de cambios ya aplicados.
 - **Despliegue:** hasta aplicar `0010` y fijar la contraseña de cada reto desde el superadmin, ningún panel admin es accesible (fallar cerrado). Las cookies antiguas `{exp}` dejan de ser válidas al desplegar.
 - **Separación de firmas admin / superadmin (hallazgo de Seguridad):** ambas cookies se firmaban con `ADMIN_SESSION_SECRET` y la misma construcción `HMAC(payload)`, y `verificarSesionSuperadmin` solo exigía un `exp` numérico. Una cookie `admin_session` de cualquier reto (y desde FP2, la antigua `{exp}` del admin único) valía como `superadmin_session`. Corregido con una etiqueta de propósito en la firma (`HMAC(secreto, "admin.v2." + payload)` y `"superadmin.v2." + payload`) y validación zod `.strict()` del payload en ambas. Al desplegar se invalidan también las sesiones de superadmin.
+
+---
+
+## DT-030 — FP3a: Respuestas en hilo en los comentarios
+
+**Fecha:** 2026-09-29 · **Tarea:** FP3a — Respuestas en hilo
+
+### Contexto
+
+`comentarios.parent_id` existía desde 0007 sin uso. Producto decidió (cerrado): un solo nivel (solo se responde a raíces públicas, visibles y del mismo reto); responden visitantes (nombre + texto, siempre público) y el caminante desde el admin, con insignia "Caminante" que solo el admin puede poner; ocultar una raíz oculta su hilo en la web y borrarla borra sus respuestas; hilos con más de 2 respuestas plegados; sin notificaciones. La anon key es pública (cualquiera puede llamar a PostgREST directamente), así que las reglas no pueden vivir solo en la API.
+
+### Decisión
+
+1. **Reglas en BD (migración `0011_hilos_comentarios.sql`):** columna `es_autor boolean not null default false`; FK `parent_id` recreada con `on delete cascade`; check `comentarios_respuesta_publica` (respuesta ⇒ pública); trigger `comentarios_validar_respuesta` (security definer, before insert / update of parent_id) que rechaza con `check_violation` un padre inexistente, de otro reto, que sea respuesta, privado u oculto; índices parciales de raíces y de respuestas.
+2. **RLS:** SELECT de anon exige además, para una respuesta, `comentario_raiz_visible(parent_id)` — función security definer porque una política no puede consultar su propia tabla sin recursión. INSERT de anon exige `oculto = false and es_autor = false`. EXECUTE revocado a `public`, `anon` y `authenticated` en ambas funciones y concedido solo a `anon` en `comentario_raiz_visible`.
+3. **Dominio puro `lib/comentarios/hilos.ts`:** `motivoRechazoPadre(padre, retoId)` (mismas reglas que el trigger, para responder con un error claro antes de escribir), `agruparHilos(raices, respuestas)` (muro) y `agruparHilosAdmin(filas, filtro)` (panel: un hilo aparece si su raíz o alguna respuesta cumple el filtro; la raíz que no lo cumple se pinta atenuada como contexto).
+4. **API pública:** GET pagina solo raíces (`parent_id is null`, `created_at desc, id desc`, 20/pág) y pide las respuestas con una segunda consulta `.in("parent_id", ids de la página)`, `oculto = false`, orden ascendente; devuelve `RespuestaMuro` (`HiloPublico[]`). POST acepta `z.union` de dos esquemas `.strict()` (raíz `{nombre, texto, visibilidad}` / respuesta `{nombre, texto, parent_id}`): `es_autor`, o `visibilidad` en una respuesta, ⇒ 400. El padre se lee con el cliente anon filtrando por `id` y `reto_id`; cualquier rechazo ⇒ 422 con un mensaje único (no revela si existe un comentario privado). Mismo rate limit (10 POST/min/IP).
+5. **Admin:** Server Action `responderComentario(slug, parentId, texto): ResultadoPublicacion` — sesión con `resolverRetoConSesion`, padre por `id` + `reto_id`, `motivoRechazoPadre`, nombre = texto editable `quien_camina_nombre` (fallback `reto.nombre`, recorte a 80), `es_autor: true`. "Responder" solo en raíces públicas no ocultas; el borrado de una raíz avisa de cuántas respuestas se borran.
+6. **UI pública:** `HiloComentario` (plegado si > 2, toggle con `aria-expanded`), `RespuestaForm` (añade la respuesta al hilo en local al acertar), `InsigniaCaminante`. Claves de texto nuevas: `muro_boton_responder`, `muro_boton_ver_respuestas` (`{n}`), `muro_boton_ocultar_respuestas`, `muro_insignia_caminante`, `respuesta_form_placeholder_texto`, `respuesta_form_boton_enviar`. Textos del admin en código.
+
+### Alternativas valoradas
+
+**Reglas solo en la API.** Descartada: la anon key permite insertar/leer por PostgREST sin pasar por la API.
+**Política RLS con subconsulta directa a `comentarios`.** Descartada: recursión infinita de políticas; de ahí la función security definer.
+**Traer raíces y respuestas en una sola consulta paginada.** Descartada: la paginación por filas partiría hilos entre páginas; se pagina por raíces.
+**Guardar el nombre del caminante como constante.** Descartada: cada reto tiene su caminante; se usa su texto editable.
+
+### Notas de cierre (implementación)
+
+- **EXECUTE de las funciones:** el plan revocaba solo a `public`; Supabase concede EXECUTE a `anon`/`authenticated` por default privileges del schema `public`, así que se revoca también explícitamente a esos roles.
+- **Insert de la respuesta con `.select(...).single()`:** el POST devuelve la fila creada (id, created_at reales) para pintarla en local; funciona porque la nueva fila cumple la política SELECT (su raíz es visible). Un `check_violation` del trigger (padre ocultado entre la lectura y el insert) se traduce también a 422.
+- **Panel sin filtro en BD:** `SeccionComentarios` trae todos los comentarios del reto y filtra al agrupar (necesario para mostrar la raíz como contexto).
+- **`FiltroComentarios`** navegaba a `/admin?…` (ruta inexistente desde FP1); corregido a `/${slug}/admin?…`. El mismo fallo en pestañas (`TabsAdmin`), paginación (`EnlacePaginacion`, ambos con `usePathname`) y tráfico (`SeccionTrafico`) se corrigió en la misma tarea.
+- **Cliente sin zod:** `RespuestaForm` tipa la respuesta de la API como el resto de componentes públicos, sin añadir zod al bundle del navegador.

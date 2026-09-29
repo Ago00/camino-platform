@@ -2,6 +2,61 @@
 
 ---
 
+## `intenciones` probablemente permite fijar `created_at` vía PostgREST
+
+**Fecha:** 2026-09-30
+**Contexto:** En FP3a, Seguridad detectó que la anon key permitía insertar `comentarios` con `created_at` arbitrario (anclar arriba del muro); se cerró en 0011 con GRANT de INSERT por columnas. `intenciones` sigue el mismo patrón de 0007 y no se revisó.
+**Problema:** Un POST directo a PostgREST podría fijar `created_at` de una intención y alterar su orden.
+**Impacto:** Bajo (orden de la lista).
+**Solución propuesta:** Mismo patrón: `revoke insert on intenciones from anon, authenticated; grant insert (<columnas que envía la API>) on intenciones to anon;` y verificar como anon.
+**Prioridad:** Baja.
+
+---
+
+## El muro no muestra un comentario raíz nuevo hasta recargar
+
+**Fecha:** 2026-09-29
+**Contexto:** Hallazgo previo a FP3a, confirmado al implementarla. `ComentarioForm` expone `onEnviado` pero ningún caller lo cablea, y `MuroComentarios` no tiene polling. Las respuestas (FP3a) sí se añaden en local al hilo.
+**Problema:** Quien publica un comentario raíz público no lo ve en el muro hasta recargar; tampoco aparecen comentarios o respuestas de otros visitantes.
+**Impacto:** Sensación de que el comentario no se ha publicado; menor interacción.
+**Solución propuesta:** Cablear `onEnviado` para recargar la página 0 del muro (o insertar la raíz en local si la API la devolviera) y valorar un poll ligero como el de `MinutoAMinuto.tsx`.
+**Prioridad:** Media.
+
+---
+
+## `GET /[slug]/api/comentarios` no acota las respuestas por hilo
+
+**Fecha:** 2026-09-29
+**Contexto:** FP3a (DT-030): "sin límite de respuestas por hilo". La consulta de respuestas trae todas las de las (hasta 20) raíces de la página en una sola petición.
+**Problema:** PostgREST corta a 1000 filas por petición sin avisar: una página con más de 1000 respuestas en total perdería las más recientes en silencio.
+**Impacto:** Nulo con el volumen esperado (decenas de respuestas); relevante solo si un hilo se hace viral.
+**Solución propuesta:** Si llega a pasar, paginar respuestas por hilo (p. ej. las últimas N con un "ver anteriores") o detectar la página llena y avisar.
+**Prioridad:** Baja.
+
+---
+
+## `docs/producto/` no refleja las respuestas en hilo (FP3a)
+
+**Fecha:** 2026-09-29
+**Contexto:** FP3a, implementada por el pipeline técnico (ver lección de `docs/LESSONS.md` sobre `docs/producto/`).
+**Problema:** `funcionalidades.md`, `decisiones-producto.md` y `roadmap.md` no describen las respuestas, la insignia "Caminante" ni el borrado/ocultado en cascada del hilo.
+**Impacto:** Documentación de producto desactualizada.
+**Solución propuesta:** Invocar al Agente de Producto al cierre de FP3a.
+**Prioridad:** Baja.
+
+---
+
+## Recomendaciones de la revisión de FP3a (respuestas en hilo)
+
+**Fecha:** 2026-09-29
+**Contexto:** Revisión de FP3a (DT-030).
+**Problema:** (1) `components/publico/MuroComentarios.tsx:27-38`: si el GET falla (`!response.ok`) o la red lanza, el muro no muestra ningún estado de error, y el rechazo del `void cargarPagina(0)` queda sin manejar (anterior a FP3a, más visible ahora que el GET depende de `es_autor`). (2) Offset sobre raíces: si entra una raíz nueva entre dos páginas, la siguiente repite el último hilo y aparece una `key` duplicada en `hilos.map` (anterior a FP3a). (3) `components/publico/HiloComentario.tsx:56,66`: con el hilo plegado, `aria-controls` apunta a un id que no está en el DOM (la `<ul>` no se renderiza). (4) `RespuestaForm.tsx:93` y `MuroComentarios.tsx:68`: "Enviando…"/"Cargando…" en código y no en `textos` (patrón heredado). (5) `lib/comentarios/hilos.ts` `agruparHilosAdmin`: con filtro "Públicos", las respuestas visibles de una raíz oculta aparecen como públicas aunque en la web estén ocultas con su hilo (la raíz sí sale como contexto "oculto (con todo su hilo)"). (6) `FiltroComentarios` recibe `slug` por prop mientras `TabsAdmin`/`EnlacePaginacion` usan `usePathname`: dos patrones para lo mismo.
+**Impacto:** Bajo: UX ante fallos, un caso raro de duplicado, a11y menor, coherencia.
+**Solución propuesta:** (1) Estado `error` en el muro con `mensaje_error_generico` y `catch` en `cargarPagina`. (2) y (3) resueltos antes del commit de FP3a (deduplicación por `id` al concatenar páginas; `<ul hidden>`). (4) Claves de texto al tocar esos componentes. (5) En "Públicos", no contar como cumplidoras las respuestas de una raíz oculta (o marcarlas "oculta por su raíz"). (6) Unificar en `usePathname`.
+**Prioridad:** Baja.
+
+---
+
 ## Recomendaciones de la revisión de FP2.6 (contraseña de admin por reto)
 
 **Fecha:** 2026-09-29

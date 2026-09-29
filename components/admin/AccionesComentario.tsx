@@ -9,9 +9,18 @@ interface AccionesComentarioProps {
   id: number;
   oculto: boolean;
   slug: string;
+  /** Respuestas que se borran en cascada con este comentario (0 en una respuesta). */
+  numRespuestas: number;
 }
 
-export default function AccionesComentario({ id, oculto, slug }: AccionesComentarioProps) {
+function mensajeConfirmacionBorrado(numRespuestas: number): string {
+  const base = "¿Eliminar este comentario? Se borra de forma permanente, no se puede deshacer.";
+  if (numRespuestas === 0) return base;
+  const respuestas = numRespuestas === 1 ? "1 respuesta" : `${numRespuestas} respuestas`;
+  return `${base} Se borrarán también ${respuestas}.`;
+}
+
+export default function AccionesComentario({ id, oculto, slug, numRespuestas }: AccionesComentarioProps) {
   return (
     <div className="flex shrink-0 gap-1.5">
       {oculto ? (
@@ -33,7 +42,7 @@ export default function AccionesComentario({ id, oculto, slug }: AccionesComenta
       <BotonConfirmable
         etiqueta="Eliminar"
         etiquetaPendiente="Eliminando…"
-        mensajeConfirmacion="¿Eliminar este comentario? Se borra de forma permanente, no se puede deshacer."
+        mensajeConfirmacion={mensajeConfirmacionBorrado(numRespuestas)}
         accion={() => eliminarComentario(slug, id)}
         variante="peligro"
         className={CLASE_BOTON}

@@ -11,14 +11,14 @@ const OPCIONES: { valor: FiltroComentario; etiqueta: string }[] = [
 
 const C = { eucalipto: "#2F5D50", ink: "#1B211D" };
 
-export default function FiltroComentarios({ activo }: { activo: FiltroComentario }) {
+export default function FiltroComentarios({ activo, slug }: { activo: FiltroComentario; slug: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   function elegir(valor: FiltroComentario) {
     const params = new URLSearchParams(searchParams);
     params.set("filtroComentarios", valor);
-    router.push(`/admin?${params.toString()}`);
+    router.push(`/${slug}/admin?${params.toString()}`);
   }
 
   return (

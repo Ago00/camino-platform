@@ -81,10 +81,9 @@ export interface BaseDeDatos {
       };
       comentarios: {
         Row: Pick<Comentario, keyof Comentario>;
-        // reto_id requerido; oculto y parent_id opcionales (defaults en BD).
-        // FP3 usará parent_id para hilos de respuesta.
-        Insert: Omit<Pick<Comentario, keyof Comentario>, "id" | "created_at" | "oculto" | "parent_id"> &
-          Partial<Pick<Pick<Comentario, keyof Comentario>, "oculto" | "parent_id">>;
+        // reto_id requerido; oculto, parent_id y es_autor opcionales (defaults en BD).
+        Insert: Omit<Pick<Comentario, keyof Comentario>, "id" | "created_at" | "oculto" | "parent_id" | "es_autor"> &
+          Partial<Pick<Pick<Comentario, keyof Comentario>, "oculto" | "parent_id" | "es_autor">>;
         Update: Partial<Pick<Comentario, keyof Comentario>>;
         Relationships: [];
       };

@@ -1,17 +1,25 @@
 /**
- * GET /[slug]/api/comentarios — muro de comentarios públicos, paginado por offset.
- * POST /[slug]/api/comentarios — nuevo comentario de un seguidor.
+ * GET /[slug]/api/comentarios — muro de comentarios públicos en hilos
+ * (FP3a, DT-030), paginado por offset sobre los comentarios raíz.
+ * POST /[slug]/api/comentarios — nuevo comentario raíz o respuesta a una raíz.
  *
- * El slug se resuelve a un reto_id mediante obtenerRetoPorSlug (DT-026, FP1).
- * GET filtra por reto_id y oculto = false (defensa en profundidad: los comentarios
- * moderados como ocultos no se exponen aunque la RLS no lo impida directamente).
+ * El slug se resuelve a un reto_id mediante obtenerRetoPorSlug (DT-026, FP1) y
+ * toda consulta filtra por él (DT-028). GET filtra además `oculto = false`
+ * (defensa en profundidad: la RLS de anon ya lo impone, y desde 0011 oculta
+ * también las respuestas de una raíz oculta).
+ *
+ * Las reglas del hilo (un solo nivel, padre raíz pública visible del mismo
+ * reto, respuestas siempre públicas, `es_autor` solo desde el admin) están en
+ * BD (migración 0011); aquí se validan antes para responder 400/422 claros.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { agruparHilos, motivoRechazoPadre, type RespuestaPublicaConPadre } from "@/lib/comentarios/hilos";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabasePublic } from "@/lib/supabase/public";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
+import type { RespuestaMuro } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -20,16 +28,27 @@ const VENTANA_MS = 60_000;
 const LIMITE_GET_POR_MINUTO = 60;
 const LIMITE_POST_POR_MINUTO = 10;
 
+const COLUMNAS_PUBLICAS = "id, nombre, texto, created_at, es_autor";
+
+/** Postgres `check_violation`: lo lanza el trigger si el padre deja de ser
+ * válido entre la comprobación y el insert. */
+const CODIGO_CHECK_VIOLATION = "23514";
+
+const MENSAJE_RESPUESTA_NO_PERMITIDA = "no se puede responder a este comentario";
+
 const queryPaginacion = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(TAMANO_PAGINA_POR_DEFECTO),
 });
 
-const nuevoComentario = z.object({
-  nombre: z.string().trim().min(1).max(80),
-  texto: z.string().trim().min(1).max(1000),
-  visibilidad: z.enum(["publico", "privado"]),
-});
+const nombre = z.string().trim().min(1).max(80);
+const texto = z.string().trim().min(1).max(1000);
+
+// `.strict()` en ambos: un cuerpo con `es_autor`, o una respuesta con
+// `visibilidad`, no encaja en ninguna rama y se rechaza con 400.
+const nuevaRaiz = z.object({ nombre, texto, visibilidad: z.enum(["publico", "privado"]) }).strict();
+const nuevaRespuesta = z.object({ nombre, texto, parent_id: z.number().int().positive() }).strict();
+const nuevoComentario = z.union([nuevaRaiz, nuevaRespuesta]);
 
 export async function GET(
   request: NextRequest,
@@ -57,24 +76,49 @@ export async function GET(
   const { offset, limit } = paginacion.data;
   const supabase = getSupabasePublic();
 
-  const { data, error } = await supabase
+  const { data: raices, error: errorRaices } = await supabase
     .from("comentarios")
-    .select("id, nombre, texto, created_at")
+    .select(COLUMNAS_PUBLICAS)
     .eq("reto_id", reto.id)
     .eq("oculto", false)
+    .is("parent_id", null)
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) {
+  if (errorRaices) {
     return NextResponse.json({ error: "no se pudieron cargar los comentarios" }, { status: 500 });
   }
 
-  const comentarios = data ?? [];
+  const paginaRaices = raices ?? [];
+  const idsRaices = paginaRaices.map((raiz) => raiz.id);
+  let respuestas: RespuestaPublicaConPadre[] = [];
 
-  return NextResponse.json({
-    comentarios,
-    siguienteOffset: comentarios.length === limit ? offset + limit : null,
-  });
+  if (idsRaices.length > 0) {
+    const { data, error } = await supabase
+      .from("comentarios")
+      .select(`${COLUMNAS_PUBLICAS}, parent_id`)
+      .eq("reto_id", reto.id)
+      .eq("oculto", false)
+      .in("parent_id", idsRaices)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (error) {
+      return NextResponse.json({ error: "no se pudieron cargar los comentarios" }, { status: 500 });
+    }
+    // `.in("parent_id", ...)` ya excluye los null; el flatMap solo estrecha el tipo.
+    respuestas = (data ?? []).flatMap(({ parent_id, ...resto }) =>
+      parent_id === null ? [] : [{ ...resto, parent_id }]
+    );
+  }
+
+  const cuerpo: RespuestaMuro = {
+    comentarios: agruparHilos(paginaRaices, respuestas),
+    siguienteOffset: paginaRaices.length === limit ? offset + limit : null,
+  };
+
+  return NextResponse.json(cuerpo);
 }
 
 export async function POST(
@@ -97,9 +141,7 @@ export async function POST(
     return NextResponse.json({ error: "datos de comentario inválidos" }, { status: 400 });
   }
 
-  const { nombre, texto, visibilidad } = parsed.data;
   const { slug } = await params;
-
   const reto = await obtenerRetoPorSlug(slug);
   if (!reto) {
     return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
@@ -107,16 +149,46 @@ export async function POST(
 
   const supabase = getSupabasePublic();
 
-  const { error } = await supabase.from("comentarios").insert({
-    reto_id: reto.id,
-    nombre,
-    texto,
-    visibilidad,
-  });
+  if ("visibilidad" in parsed.data) {
+    const { nombre, texto, visibilidad } = parsed.data;
+    const { error } = await supabase.from("comentarios").insert({ reto_id: reto.id, nombre, texto, visibilidad });
+    if (error) {
+      return NextResponse.json({ error: "no se pudo guardar el comentario" }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true }, { status: 201 });
+  }
+
+  const { nombre, texto, parent_id } = parsed.data;
+
+  // Con el cliente anon la RLS solo devuelve raíces públicas no ocultas: un
+  // padre privado, oculto o inexistente llega como null. Todos los rechazos
+  // comparten mensaje para no revelar que existe un comentario privado.
+  const { data: padre, error: errorPadre } = await supabase
+    .from("comentarios")
+    .select("reto_id, parent_id, visibilidad, oculto")
+    .eq("id", parent_id)
+    .eq("reto_id", reto.id)
+    .maybeSingle();
+
+  if (errorPadre) {
+    return NextResponse.json({ error: "no se pudo guardar el comentario" }, { status: 500 });
+  }
+  if (motivoRechazoPadre(padre, reto.id) !== null) {
+    return NextResponse.json({ error: MENSAJE_RESPUESTA_NO_PERMITIDA }, { status: 422 });
+  }
+
+  const { data: comentario, error } = await supabase
+    .from("comentarios")
+    .insert({ reto_id: reto.id, parent_id, nombre, texto, visibilidad: "publico" })
+    .select(COLUMNAS_PUBLICAS)
+    .single();
 
   if (error) {
+    if (error.code === CODIGO_CHECK_VIOLATION) {
+      return NextResponse.json({ error: MENSAJE_RESPUESTA_NO_PERMITIDA }, { status: 422 });
+    }
     return NextResponse.json({ error: "no se pudo guardar el comentario" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true }, { status: 201 });
+  return NextResponse.json({ ok: true, comentario }, { status: 201 });
 }

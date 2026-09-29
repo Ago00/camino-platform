@@ -4,19 +4,20 @@
 
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TABS_ADMIN, type TabAdmin } from "@/lib/admin/navegacion";
 
 const C = { ink: "#1B211D", eucalipto: "#2F5D50" };
 
 export default function TabsAdmin({ activa }: { activa: TabAdmin }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   function irA(tab: TabAdmin) {
     const params = new URLSearchParams(searchParams);
     params.set("tab", tab);
-    router.push(`/admin?${params.toString()}`);
+    router.push(`${pathname}?${params.toString()}`);
   }
 
   return (

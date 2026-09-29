@@ -149,7 +149,7 @@ export default async function SeccionTrafico({ reto, granularidad, faseQuery, sl
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         {fasesDisponibles.length > 1 && (
-          <SelectorFase activa={faseActiva} disponibles={fasesDisponibles} granularidad={granularidad} />
+          <SelectorFase slug={slug} activa={faseActiva} disponibles={fasesDisponibles} granularidad={granularidad} />
         )}
         <BotonConfirmable
           etiqueta="Reset"
@@ -161,7 +161,7 @@ export default async function SeccionTrafico({ reto, granularidad, faseQuery, sl
         />
       </div>
 
-      <SelectorGranularidad activa={granularidad} fase={faseActiva} />
+      <SelectorGranularidad slug={slug} activa={granularidad} fase={faseActiva} />
 
       {totalVisitas === 0 ? (
         <div
@@ -246,10 +246,12 @@ function TarjetaMetrica({ etiqueta, valor }: { etiqueta: string; valor: number }
 }
 
 function SelectorFase({
+  slug,
   activa,
   disponibles,
   granularidad,
 }: {
+  slug: string;
   activa: FaseTraficoVisita;
   disponibles: FaseTraficoVisita[];
   granularidad: GranularidadTrafico;
@@ -259,7 +261,7 @@ function SelectorFase({
       {disponibles.map((fase) => (
         <Link
           key={fase}
-          href={`/admin?tab=trafico&gran=${granularidad}&fase=${fase}`}
+          href={`/${slug}/admin?tab=trafico&gran=${granularidad}&fase=${fase}`}
           className="rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors"
           style={
             activa === fase ? { background: C.eucalipto, color: "white" } : { color: C.ink, background: "#00000008" }
@@ -272,13 +274,21 @@ function SelectorFase({
   );
 }
 
-function SelectorGranularidad({ activa, fase }: { activa: GranularidadTrafico; fase: FaseTraficoVisita }) {
+function SelectorGranularidad({
+  slug,
+  activa,
+  fase,
+}: {
+  slug: string;
+  activa: GranularidadTrafico;
+  fase: FaseTraficoVisita;
+}) {
   return (
     <div className="flex gap-2">
       {OPCIONES_GRANULARIDAD.map((opcion) => (
         <Link
           key={opcion.valor}
-          href={`/admin?tab=trafico&gran=${opcion.valor}&fase=${fase}`}
+          href={`/${slug}/admin?tab=trafico&gran=${opcion.valor}&fase=${fase}`}
           className="rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors"
           style={
             activa === opcion.valor

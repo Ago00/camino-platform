@@ -99,16 +99,41 @@ export interface Comentario {
   /** Reto al que pertenece (DT-025). */
   reto_id: number;
   /**
-   * Comentario padre para hilos de respuesta (DT-025). Dormido hasta FP3:
-   * la columna existe en BD pero el código no la usa todavía.
+   * Comentario raíz al que responde (FP3a, DT-030). null = comentario raíz.
+   * Un solo nivel: el padre es siempre una raíz pública, no oculta y del
+   * mismo reto (trigger `comentarios_validar_respuesta`, migración 0011).
    */
   parent_id: number | null;
   nombre: string; // 1-80 chars, nunca anónimo
   texto: string; // 1-1000 chars
+  /** Las respuestas son siempre 'publico' (check en BD, migración 0011). */
   visibilidad: "publico" | "privado";
   /** El admin puede ocultar comentarios sin borrarlos. */
   oculto: boolean;
+  /**
+   * Respuesta del caminante desde el panel admin (insignia "Caminante").
+   * Solo el service role puede fijarla a true (RLS de INSERT, migración 0011).
+   */
+  es_autor: boolean;
   created_at: string; // ISO 8601
+}
+
+/** Campos de un comentario que pueden salir hacia la web pública (FP3a). */
+export interface ComentarioPublico {
+  id: number;
+  nombre: string;
+  texto: string;
+  created_at: string; // ISO 8601
+  es_autor: boolean;
+}
+
+/** Un comentario raíz con sus respuestas visibles, en orden cronológico. */
+export type HiloPublico = ComentarioPublico & { respuestas: ComentarioPublico[] };
+
+/** Respuesta de GET /[slug]/api/comentarios: una página de hilos (FP3a). */
+export interface RespuestaMuro {
+  comentarios: HiloPublico[];
+  siguienteOffset: number | null;
 }
 
 /**
