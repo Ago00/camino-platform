@@ -20,7 +20,9 @@ camino-santi-ago/
 │   │   └── actions.ts        # F4: server actions de admin (incluye minuto a minuto, DT-013)
 │   └── api/
 │       ├── track/route.ts    # F2: ingesta OwnTracks; filtro geográfico DT-006 solo en
-│       │                     # modo guiado, se salta en modo libre (DT-016)
+│       │                     # modo guiado, se salta en modo libre (DT-016); DT-035: token por reto
+│       │                     # (retos_gps), 401 único para cualquier fallo de autenticación, rate
+│       │                     # limit por IP (120/min) antes de BD y por reto (40/min) tras autenticar
 │       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007); el cálculo en sí
 │       │                         # (bifurcación por modo DT-016, histórico paginado DT-018,
 │       │                         # compatibilidad migración 0003) vive en
@@ -69,8 +71,13 @@ camino-santi-ago/
 │   │   └── ModoLlegadaLibre.tsx   # DT-016: "llegada" del modo libre (sin condicionales en ModoLlegada.tsx);
 │   │                              # CURRENT.md/DT-020 añade Stats.tsx (tiempo en marcha/km/ritmo,
 │   │                              # con ended_at como referencia final)
+│   ├── gps/ConfigGps.tsx     # DT-035: URL + QR de OwnTracks + Regenerar (cliente), compartido por la
+│   │                         # pestaña GPS del admin y las tarjetas del superadmin; recibe los datos ya
+│   │                         # preparados en el servidor (o null ⇒ "Sin token GPS" + "Generar")
 │   └── admin/               # F4: secciones del panel
 │       ├── SeccionConfiguracion.tsx   # FP3c/DT-032: pestaña "Configuración" (Server Component)
+│       ├── SeccionGps.tsx             # DT-035: pestaña "GPS" (Server Component); vuelve a verificar la
+│       │                              # sesión del reto antes de leer el token
 │       ├── FormConfiguracion.tsx      # FP3c/DT-032: interruptores (role="switch"), guardado conjunto;
 │       │                              # DT-034: "Peregrino animado" y campo "Perfil de Instagram" (guardarInstagram)
 │       ├── SeccionVistaPrevia.tsx     # DT-034: pestaña "Vista previa" — selector de fase (estado local),
@@ -119,7 +126,10 @@ camino-santi-ago/
 │   ├── vista-previa/          # DT-034: datos-ejemplo.ts (puro, `ahora` como parámetro, km de la traza de
 │   │                          # PINTADO solo para la maqueta), fuente.ts (real vs ejemplo, modo) y
 │   │                          # envio.ts (envioPermitido + aviso "Vista previa: no se envía")
-│   ├── superadmin/url-tracker.ts  # FP2.5/DT-034: URL de OwnTracks del reto, con y sin token (puro)
+│   ├── gps/                   # DT-035: url-tracker.ts (URL de /api/track con y sin token, origen de
+│   │                          # producción o de las cabeceras; puro), owntracks.ts (JSON de configuración
+│   │                          # y enlace owntracks:///config?inline=; puro) y config-gps-servidor.ts
+│   │                          # (solo servidor: origen + URL + enlace + QR SVG para ConfigGps)
 │   ├── minuto-a-minuto/       # FP3b/DT-031: contar-nuevas.ts (aviso "N nuevas" con la sección plegada)
 │   │                          # y polling.ts (URL del poll, también con feed vacío; fusión sin duplicar ids)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
@@ -179,6 +189,8 @@ camino-santi-ago/
 │   ├── supabase/             # F2
 │   │   ├── admin.ts          # cliente service role (solo servidor)
 │   │   ├── credenciales-admin.ts # DT-029: hash de la contraseña de admin por reto (`retos_admin`)
+│   │   ├── credenciales-gps.ts   # DT-035: token del GPS por reto (`retos_gps`): leer, listar, por slug
+│   │   │                         # (con el reto embebido, para /api/track), guardar y generar
 │   │   ├── public.ts         # cliente anon (peticiones públicas)
 │   │   ├── paginacion.ts     # DT-018: obtenerTodasLasFilas() — fetch paginado genérico con .range()
 │   │   │                     # en bucle (PostgREST corta a 1000 filas sin Range explícito), tope de
@@ -278,7 +290,9 @@ en cada petición.
   al reto del slug: tablas con `reto_id` se filtran por él; `posiciones` y
   `minuto_a_minuto` por el intento activo del reto. Las cachés en memoria
   (`lib/progreso-cache.ts`, `lib/historico-cache.ts`) van por `reto_id`.
-- `/api/track` recibe el reto en la URL (`?reto=<slug>`); sin reto válido no guarda nada.
+- `/api/track` recibe el reto en la URL (`?reto=<slug>`) y el token DE ESE RETO en `?t=` (DT-035,
+  `retos_gps`, tabla sin políticas RLS). Slug mal formado, reto inexistente, reto sin token o token
+  incorrecto ⇒ el mismo `401 {"error":"unauthorized"}`; no existe token global.
 - La sesión de admin (`admin_session`) está ligada a UN reto: firma `{r: retoId, s: slug,
   v: huella de su password_hash, exp}` (DT-029). `proxy.ts` solo comprueba firma, caducidad
   y slug (sin BD); la página del panel y CADA Server Action verifican además `r` y `v` contra
@@ -296,8 +310,9 @@ en cada petición.
   siempre con `components/publico/WebReto.tsx`; no se compone la web en ningún otro sitio. En la
   vista previa (`vistaPrevia`) ningún formulario envía, no hay polling hacia `/api/*` y no se monta
   `RefrescoAlCambiarFase`.
-- El `TRACK_TOKEN` solo sale del servidor hacia el panel superadmin, que verifica la sesión en la
-  propia página antes de leerlo (DT-034). Nunca en el admin de un reto.
+- El token del GPS de un reto solo se lee en páginas que verifican la sesión ellas mismas (DT-034/
+  DT-035): la del superadmin (todos los retos) y la pestaña GPS del admin (`SeccionGps`, solo su
+  reto, verificando de nuevo `resolverRetoConSesion`). Las acciones que lo regeneran nunca lo devuelven.
 - El `modo` de un intento (`'guiado' | 'libre'`, DT-016) se fija en `iniciarReto()`
   (transición `antes` → `durante`) y es inmutable durante toda su vida — cambiarlo
   exige "Reiniciar" (que abre un intento nuevo). `destino_lat`/`destino_lon` solo
@@ -307,9 +322,14 @@ en cada petición.
 
 Ver `docs/tecnico/plan-ejecucion-v1.md` para la lista completa:
 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`, `ADMIN_SESSION_SECRET`,
+`SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_SESSION_SECRET`,
 `SUPERADMIN_PASSWORD`, `NEXT_PUBLIC_MAPTILER_KEY`.
 
 **`ADMIN_PASSWORD` está obsoleta desde FP2.6 (DT-029):** ningún código la lee. Cada reto
 tiene su propia contraseña de admin, que fija el superadmin (hash scrypt en `retos_admin`).
 Se puede borrar de Vercel una vez desplegado FP2.6 y fijadas las contraseñas de los retos.
+
+**`TRACK_TOKEN` está obsoleta desde DT-035:** ningún código la lee; cada reto tiene su token en
+`retos_gps`. Se borra de Vercel tras aplicar `0016`, desplegar y reconfigurar los móviles con el QR.
+`VERCEL_PROJECT_PRODUCTION_URL` (la pone Vercel) fija el dominio de la URL del GPS y del QR; sin
+ella se usa el de la petición, con aviso en el panel.

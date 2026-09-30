@@ -104,6 +104,11 @@ vi.mock("@/lib/supabase/credenciales-admin", () => ({
   obtenerHashAdmin: async (retoId: number) => hashesMock.get(retoId) ?? null,
 }));
 
+const asignarTokenGpsNuevoSpy = vi.fn<(retoId: number) => Promise<boolean>>();
+vi.mock("@/lib/supabase/credenciales-gps", () => ({
+  asignarTokenGpsNuevo: (retoId: number) => asignarTokenGpsNuevoSpy(retoId),
+}));
+
 vi.mock("@/lib/textos/obtener-textos", () => ({
   obtenerTextos: async () => ({ quien_camina_nombre: nombreCaminanteMock }),
 }));
@@ -159,6 +164,7 @@ const {
   iniciarReto,
   mostrarComentario,
   ocultarComentario,
+  regenerarTokenGps,
   resetearContadorTrafico,
   responderComentario,
 } = await import("@/app/[slug]/admin/actions");
@@ -189,6 +195,7 @@ beforeEach(() => {
   subirFotoQuienCaminaSpy.mockReset();
   subirFotoMinutoAMinutoSpy.mockReset();
   borrarObjetoSpy.mockReset();
+  asignarTokenGpsNuevoSpy.mockReset().mockResolvedValue(true);
 });
 
 describe("requerirSesion — la sesión debe ser del reto del slug y de su contraseña vigente", () => {
@@ -797,5 +804,40 @@ describe("crearMinutoAMinuto — idempotencia por clave_envio (DT-033)", () => {
     });
     expect(subirFotoMinutoAMinutoSpy).not.toHaveBeenCalled();
     expect(escriturasEnBd()).toEqual([]);
+  });
+});
+
+describe("regenerarTokenGps — token del GPS del reto (DT-035)", () => {
+  it("genera un token nuevo para el reto del slug, revalida el panel y no devuelve el token", async () => {
+    const resultado = await regenerarTokenGps(RETO.slug);
+
+    expect(resultado).toEqual({ ok: true });
+    expect(asignarTokenGpsNuevoSpy).toHaveBeenCalledWith(RETO.id);
+    expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}/admin`);
+  });
+
+  it("con la sesión de otro reto no regenera el token de ese reto", async () => {
+    await expect(regenerarTokenGps(RETO_B.slug)).resolves.toEqual({
+      ok: false,
+      mensaje: expect.stringMatching(/sesión/),
+    });
+    expect(asignarTokenGpsNuevoSpy).not.toHaveBeenCalled();
+  });
+
+  it("sin cookie no regenera nada", async () => {
+    cookieMock = undefined;
+
+    await expect(regenerarTokenGps(RETO.slug)).resolves.toMatchObject({ ok: false });
+    expect(asignarTokenGpsNuevoSpy).not.toHaveBeenCalled();
+  });
+
+  it("si no se puede guardar el token devuelve el error y no revalida", async () => {
+    asignarTokenGpsNuevoSpy.mockResolvedValue(false);
+
+    await expect(regenerarTokenGps(RETO.slug)).resolves.toEqual({
+      ok: false,
+      mensaje: expect.stringMatching(/token del GPS/),
+    });
+    expect(revalidatePathSpy).not.toHaveBeenCalled();
   });
 });

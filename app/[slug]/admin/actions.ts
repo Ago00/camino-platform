@@ -27,6 +27,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { asignarTokenGpsNuevo } from "@/lib/supabase/credenciales-gps";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import {
   borrarObjeto,
@@ -803,4 +804,26 @@ export async function resetearContadorTrafico(slug: string): Promise<void> {
 
   if (error) throw new Error("No se pudo resetear el contador de tráfico.");
   revalidarAdmin(slug);
+}
+
+// ---------------------------------------------------------------------------
+// GPS (DT-035)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sustituye el token del GPS del reto por uno nuevo: el anterior deja de valer
+ * en el acto y el móvil hay que reconfigurarlo con el QR nuevo. Nunca
+ * devuelve el token: la pestaña GPS lo vuelve a leer al revalidarse, tras
+ * verificar la sesión. Devuelve el fallo en vez de lanzarlo (DT-017).
+ */
+export async function regenerarTokenGps(slug: string): Promise<ResultadoPublicacion> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+
+  if (!(await asignarTokenGpsNuevo(reto.id))) {
+    return { ok: false, mensaje: "No se pudo generar el token del GPS. Vuelve a intentarlo." };
+  }
+
+  revalidarAdmin(slug);
+  return { ok: true };
 }

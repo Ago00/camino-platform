@@ -22,6 +22,7 @@ export const TABS_ADMIN = [
   { valor: "trafico", etiqueta: "Tráfico" },
   { valor: "textos", etiqueta: "Textos" },
   { valor: "configuracion", etiqueta: "Configuración" },
+  { valor: "gps", etiqueta: "GPS" },
   { valor: "vistaprevia", etiqueta: "Vista previa" },
 ] as const;
 

@@ -63,6 +63,11 @@ describe("esTabValida", () => {
     expect(esTabValida("vistaprevia")).toBe(true);
     expect(TABS_ADMIN.find((tab) => tab.valor === "vistaprevia")?.etiqueta).toBe("Vista previa");
   });
+
+  it("acepta 'gps' y la pestaña se llama «GPS» (DT-035)", () => {
+    expect(esTabValida("gps")).toBe(true);
+    expect(TABS_ADMIN.find((tab) => tab.valor === "gps")?.etiqueta).toBe("GPS");
+  });
 });
 
 describe("esFaseWeb", () => {

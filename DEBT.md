@@ -2,6 +2,40 @@
 
 ---
 
+## Recordatorio: aplicar `supabase/migrations/0016_retos_gps.sql` contra producción ANTES de desplegar DT-035
+
+**Fecha:** 2026-10-01
+**Contexto:** Token de GPS por reto (DT-035). La migración está escrita; la aplica el orquestador.
+**Problema:** El código de DT-035 ya no lee `TRACK_TOKEN`: `/api/track` busca el token en `retos_gps`. Si se despliega sin la tabla, todos los envíos del GPS reciben 401 y el panel muestra "Sin token GPS" (y "Generar" falla).
+**Impacto:** Alto mientras no se aplique: pérdida total de posiciones GPS.
+**Estado 2026-10-01:** paso (1) HECHO — `0016` aplicada y verificada en producción (todos los retos con token de 32 caracteres base64url, anon sin SELECT, RLS activada). Quedan (2)–(4).
+**Solución propuesta:** Orden obligatorio: (1) aplicar `0016` y verificar `select reto_id, length(track_token), updated_at from retos_gps;` (una fila por reto, longitud 32); (2) desplegar; (3) reconfigurar el móvil de cada reto con el QR (ver "Reconfigurar OwnTracks…"); (4) borrar `TRACK_TOKEN` de Vercel.
+**Prioridad:** Alta.
+
+---
+
+## ~~`ConfigGps`: el aviso tras regenerar remite a un QR que está oculto~~ — RESUELTO (tras regenerar el QR nuevo queda visible)
+
+**Fecha:** 2026-10-01
+**Contexto:** DT-035, revisión. `components/gps/ConfigGps.tsx` vuelve a ocultar URL y QR tras regenerar (`setVisible(false)`, l. 57).
+**Problema:** El aviso dice "Vuelve a configurar el móvil con el QR de abajo" (l. 71), pero debajo solo aparece "Pulsa «Mostrar» para ver el QR".
+**Impacto:** Muy bajo: confusión momentánea.
+**Solución propuesta:** Cambiar el texto a "…con el nuevo QR (pulsa «Mostrar»)." o mantener `visible` tras regenerar.
+**Prioridad:** Baja.
+
+---
+
+## `ConfigGps` sin test de interacción
+
+**Fecha:** 2026-10-01
+**Contexto:** DT-035. El proyecto no tiene entorno DOM en los tests.
+**Problema:** Están probados la preparación de datos (URL, enlace, QR), las acciones y que sin sesión no se lee el token, pero nada comprueba en un DOM que `ConfigGps` oculte URL/QR/enlace hasta "Mostrar", que "Regenerar" pida confirmación y vuelva a ocultar, ni el fallback de "Copiar" sin portapapeles.
+**Impacto:** Bajo: una regresión solo se vería en el navegador.
+**Solución propuesta:** Con jsdom + Testing Library (ya recomendado en otras entradas). Mientras tanto, verificación manual en la preview (incluido escanear el QR con OwnTracks).
+**Prioridad:** Baja.
+
+---
+
 ## Muro en vivo y parada por 403: el cableado de los polls no tiene test de interacción
 
 **Fecha:** 2026-09-30
@@ -287,13 +321,13 @@ Las FK dependientes tienen `ON DELETE CASCADE`; `eliminarReto` funciona con reto
 
 ---
 
-## Reconfigurar OwnTracks con la nueva URL del tracker (`?reto=<slug>`)
+## Reconfigurar OwnTracks con el QR del reto (token por reto, DT-035)
 
-**Fecha:** 2026-09-29
-**Contexto:** FP2.5 (DT-028). `/api/track` exige ahora el reto en la URL; sin `?reto=` descarta el punto con 200 vacío (a propósito, para que OwnTracks no reintente).
-**Problema:** Un OwnTracks configurado con la URL antigua (`/api/track?t=...`) deja de guardar posiciones en silencio en cuanto se despliegue FP2.5 — el móvil no ve ningún error.
+**Fecha:** 2026-09-29 (actualizada 2026-10-01)
+**Contexto:** FP2.5 (DT-028) exigió el reto en la URL; DT-035 sustituye el `TRACK_TOKEN` global por un token propio de cada reto (`retos_gps`).
+**Problema:** Un OwnTracks configurado con la URL antigua (`?t=<TRACK_TOKEN>`, con o sin `reto`) recibe 401 en cuanto se despliegue DT-035 y deja de guardar posiciones.
 **Impacto:** Pérdida total de posiciones GPS del reto hasta reconfigurar el móvil.
-**Solución propuesta:** Tras desplegar, copiar la URL que muestra el panel superadmin para el reto (desde DT-034 ya completa, con `&t=<TRACK_TOKEN>`: botón "Copiar") y configurarla en OwnTracks; mandar un punto de prueba y comprobarlo en la pestaña Posición del admin.
+**Solución propuesta:** Tras aplicar `0016` y desplegar: en OwnTracks, Ajustes → Remote Control → activar "Allow external configuration"; abrir la pestaña GPS del admin del reto (o su tarjeta en el superadmin), pulsar "Mostrar" y escanear el QR con la cámara (o "Abrir en OwnTracks" desde el propio móvil); mandar un punto y comprobarlo en la pestaña Posición. Después, borrar `TRACK_TOKEN` de Vercel.
 **Prioridad:** Alta — operativa, obligatoria antes del próximo uso del GPS.
 
 ---
@@ -305,6 +339,7 @@ Las FK dependientes tienen `ON DELETE CASCADE`; `eliminarReto` funciona con reto
 **Problema:** Un mismo visitante navegando dos retos consume un único cupo por minuto; y como `TRACK_TOKEN` es global, dos trackers de retos distintos comparten los 40 req/min de `/api/track`.
 **Impacto:** Bajo y aceptado: los cupos (60 req/min por IP, 40 req/min por token) sobran para el uso real; solo afectaría con varios trackers de alta frecuencia a la vez.
 **Solución propuesta:** Si llega a notarse, incluir el slug en la clave de `/api/track` (`${token}:${slug}`) o pasar a tokens por reto.
+**Actualización 2026-10-01 (DT-035):** resuelta la parte de `/api/track`: token por reto y cupo propio por reto (`track:reto:<id>`, 40/min) más uno por IP (`track:ip:<ip>`, 120/min), con claves prefijadas. Sigue pendiente la de las APIs públicas: la clave es la IP a secas, compartida entre retos y entre rutas (un mismo visitante gasta el mismo cupo en `/<slug>/api/*` de cualquier reto y en el login del admin).
 **Prioridad:** Baja.
 
 ---
@@ -1123,6 +1158,7 @@ El comentario de cabecera describe ahora el botón con `router.push()`.
 **Problema:** Documentación embebida en el código que contradice el estado real del sistema. Un agente o desarrollador que lea estos ficheros por primera vez (por ejemplo para depurar un incidente en producción) puede concluir erróneamente que el cliente Supabase nunca se ha verificado contra una BD real, cuando de hecho lleva en producción real varias fases.
 **Impacto:** Puramente documental — cero efecto en comportamiento. Pero es el mismo patrón que ya causó una entrada de deuda en F4 (`EnlacePaginacion.tsx`) y ahora aparece de forma recurrente en 3 ficheros más — ver nueva entrada en `docs/LESSONS.md`.
 **Solución propuesta:** Actualizar los tres comentarios de cabecera para reflejar el estado real (Supabase en producción, verificado en integración desde F2 según `docs/bugs/BUGS.md`), eliminando cualquier referencia a "bloqueado por F0" o "no probado".
+**Actualización 2026-10-01 (DT-035):** `app/api/track/route.ts` ya está corregido (cabecera reescrita) y `lib/supabase/admin.ts` ya no lo decía. Queda `lib/supabase/public.ts`.
 **Prioridad:** Baja — documental, pero recurrente; conviene resolver en la próxima tarea que toque cualquiera de estos tres ficheros.
 
 ---

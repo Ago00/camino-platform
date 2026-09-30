@@ -58,6 +58,23 @@ Un reto sin fila aquí no tiene panel admin accesible (login responde 401).
 
 ---
 
+### `retos_gps`
+
+Token del GPS (OwnTracks) de cada reto (DT-035, migración 0016). Tabla aparte
+de `retos` por el mismo motivo que `retos_admin`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `reto_id` | bigint PK | FK → `retos.id`, `on delete cascade` |
+| `track_token` | text | `unique`, check `length >= 32`. En claro a propósito (el panel vuelve a mostrar URL y QR); 24 bytes aleatorios en base64url (`generarTokenGps`) |
+| `updated_at` | timestamptz | Default `now()`; el upsert lo fija al regenerar |
+
+Un reto sin fila aquí no puede recibir posiciones (`/api/track` responde 401);
+el panel ofrece "Generar". La migración 0016 siembra un token para cada reto
+existente; `crearReto` lo genera para los nuevos.
+
+---
+
 ### `intentos`
 
 Representa un intento de completar el reto. Puede haber N intentos en la BD,
@@ -240,6 +257,7 @@ retos (1) ──< textos            (N)     reto_id → retos.id
 retos (1) ──< visitas_web       (N)     reto_id → retos.id
 retos (1) ──< config_trafico    (1)     reto_id → retos.id (unique)
 retos (1) ──  retos_admin       (0..1)  reto_id → retos.id (PK, on delete cascade)
+retos (1) ──  retos_gps         (0..1)  reto_id → retos.id (PK, on delete cascade)
 
 intentos (1) ──< posiciones (N)          intento_id → intentos.id
 intentos (1) ──< minuto_a_minuto (N)     intento_id → intentos.id
@@ -263,6 +281,7 @@ comentarios (1) ──< comentarios (N)      parent_id → comentarios.id (nulla
 | `visitas_web` | Ninguna política (cero acceso) | ALL |
 | `config_trafico` | Ninguna política (cero acceso) | ALL |
 | `retos_admin` | Ninguna política + `revoke all` a `anon`/`authenticated` (0010) | ALL |
+| `retos_gps` | Ninguna política + `revoke all` a `anon`/`authenticated` (0016) | ALL |
 
 Todo el schema vive en `supabase/migrations/0007_schema_plataforma.sql` (FP0).
 El service role bypassa RLS por diseño de Supabase (no necesita políticas
@@ -291,9 +310,10 @@ iniciales), `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
 `intentos`, DT-024). Desde FP0 el esquema de plataforma está en `0007` y las
 posteriores: `0012_config_reto.sql` (configuración por reto en `retos` y RLS
 de INSERT de `comentarios`, DT-032), `0013_bucket_fotos.sql` (bucket de
-Storage `minuto-a-minuto`, que 0007 no creaba) y la última,
+Storage `minuto-a-minuto`, que 0007 no creaba),
 `0014_mam_clave_envio.sql` (`minuto_a_minuto.clave_envio` + índice único
-parcial, DT-033).
+parcial, DT-033) y la última, `0016_retos_gps.sql` (tabla `retos_gps` con el
+token del GPS de cada reto, DT-035).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase

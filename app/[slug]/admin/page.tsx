@@ -4,7 +4,8 @@
 // usarlo en sus Server Actions. Desde FP2.5 (DT-028) también les pasa el
 // `reto` resuelto para que cada sección lea solo los datos de ese reto.
 // Desde FP2.6 (DT-029) la sesión se verifica contra ESTE reto (id, slug y
-// huella de su contraseña actual), no solo su firma.
+// huella de su contraseña actual), no solo su firma. La pestaña GPS (DT-035)
+// lleva el token del reto y vuelve a verificar la sesión por sí misma.
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -27,6 +28,7 @@ import SeccionMinutoAMinuto from "@/components/admin/SeccionMinutoAMinuto";
 import SeccionTrafico from "@/components/admin/SeccionTrafico";
 import SeccionTextos from "@/components/admin/SeccionTextos";
 import SeccionConfiguracion from "@/components/admin/SeccionConfiguracion";
+import SeccionGps from "@/components/admin/SeccionGps";
 import SeccionVistaPrevia from "@/components/admin/SeccionVistaPrevia";
 
 export const dynamic = "force-dynamic";
@@ -89,6 +91,7 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
           {tab === "trafico" && <SeccionTrafico reto={reto} granularidad={granularidad} faseQuery={faseTraficoQuery} slug={slug} />}
           {tab === "textos" && <SeccionTextos reto={reto} slug={slug} />}
           {tab === "configuracion" && <SeccionConfiguracion reto={reto} slug={slug} />}
+          {tab === "gps" && <SeccionGps reto={reto} />}
           {tab === "vistaprevia" && <SeccionVistaPrevia slug={slug} />}
         </main>
       </div>

@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-10-01 — Token de GPS propio de cada reto y QR para configurar OwnTracks
+
+**Tipo:** Feature
+
+Cada reto tiene ahora su propio token para el GPS: el móvil de un reto ya no
+puede enviar posiciones a otro. El admin del reto (nueva pestaña "GPS") y el
+superadmin pueden ver la URL, copiarla y escanear un QR que deja OwnTracks
+configurado solo, y regenerar el token cuando quieran (el anterior deja de
+funcionar al momento). Tras desplegar hay que volver a configurar cada móvil
+con su QR.
+
+---
+
 ## 2026-09-30 — Muro de comentarios en vivo y pendientes antes del reto
 
 **Tipo:** Mejora + Fix

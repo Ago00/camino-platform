@@ -60,10 +60,11 @@ superadmin. No hay auto-registro: solo Santi crea retos.
 - **Eliminar reto** — con confirmación; borra el reto y todos sus datos.
 - **Estado de la contraseña** — cada tarjeta indica si el reto tiene
   contraseña de admin configurada (sin ella, su panel no es accesible).
-- **URL del GPS** — cada tarjeta muestra la URL exacta que hay que
-  configurar en OwnTracks para ese reto (`<web>/api/track?reto=<slug>`).
-  Mostrar la URL completa con el token incluido, lista
-  para copiar y pegar.
+- **GPS del reto** — cada tarjeta muestra lo mismo que la pestaña GPS del
+  admin de ese reto: la URL con su token propio y un QR que configura
+  OwnTracks solo (ocultos hasta pulsar "Mostrar"), "Copiar", "Abrir en
+  OwnTracks" y "Regenerar". Un reto sin token muestra "Sin token GPS" y el
+  botón "Generar". Al crear un reto se le genera su token.
 - **Cada acción dice qué ha pasado** — "Creando…"/"Guardando…"/
   "Eliminando…" mientras espera, mensaje de éxito o el motivo concreto del
   error (slug repetido, contraseña demasiado corta, sesión caducada…). Si
@@ -294,6 +295,23 @@ antes / durante / después del reto y abre en la pestaña que tiene sentido
 según la fase. Botón "Reset" que empieza a contar desde ahora sin borrar
 datos.
 
+### GPS
+
+Configurar el móvil que envía la posición del reto:
+
+- **URL del GPS** con el token propio de este reto y **QR** que configura
+  OwnTracks automáticamente. Ocultos por defecto ("Mostrar"), para que no
+  queden a la vista en una pantalla compartida.
+- **Copiar** la URL y **Abrir en OwnTracks** (útil si el panel se abre desde
+  el propio móvil).
+- **Regenerar** el token, con confirmación: el anterior deja de funcionar al
+  momento y hay que volver a configurar el móvil con el QR nuevo.
+- Instrucciones en cuatro pasos: instalar OwnTracks, activar en Ajustes →
+  Remote Control "Allow external configuration", escanear el QR y comprobar
+  en la pestaña Posición que llega un punto.
+- Si la web no conoce su dominio de producción, avisa de que la URL usa el
+  dominio desde el que se abre el panel.
+
 ### Vista previa
 
 Pestaña para ver la web pública tal y como quedaría en cada fase (antes,
@@ -305,7 +323,10 @@ cambiar de fase de verdad.
 ## GPS (OwnTracks)
 
 El móvil del caminante envía su posición con OwnTracks a
-`/api/track?reto=<slug>`: el reto va en la URL, así que cada caminante
-configura la de su reto y varios pueden enviar posiciones a la vez. La URL
-exacta de cada reto se consulta en el panel superadmin. Un envío sin reto, o
-con un reto que no existe, se ignora sin error.
+`/api/track?reto=<slug>&t=<token>`: el reto y su token van en la URL, así que
+cada caminante configura la de su reto y varios pueden enviar posiciones a la
+vez. Cada reto tiene su propio token: el móvil de un reto no puede enviar
+posiciones a otro. La URL y el QR que configura OwnTracks se consultan en la
+pestaña GPS del admin del reto o en el superadmin, donde también se regenera
+el token. Un envío sin reto, con un reto que no existe o con un token que no
+es el de ese reto se rechaza (el móvil lo ve como "no autorizado").

@@ -1856,6 +1856,10 @@ Tras FP0–FP2 todas las tablas top-level llevan `reto_id` (y `posiciones`/`minu
 - **`app/[slug]/page.tsx` y `app/[slug]/admin/page.tsx`** responden `notFound()` si el reto no se resuelve (antes la pública degradaba a `"portuguesa-110"`): el layout ya da 404 en ese caso, y sin reto no hay nada que filtrar.
 - **Invalidación del histórico:** `descartarPosicion` y `reiniciarReto` limpian también la caché de histórico del reto (antes solo la de progreso), porque con la caché por reto un reinicio dejaba hasta 20 s el histórico del intento anterior.
 
+### Nota posterior (2026-10-01) — token por reto (DT-035)
+
+El punto 7 queda modificado por DT-035: el token ya no es global sino de cada reto (`retos_gps`), y sin `reto`, con un slug mal formado o con un reto inexistente `/api/track` responde `401 {"error":"unauthorized"}` (antes `200 []`), igual que con un token incorrecto.
+
 ---
 
 ## DT-029 — FP2.6: Contraseña de admin propia por reto
@@ -2103,3 +2107,41 @@ Cuatro peticiones del usuario: (A) poder ver desde el admin cómo se vería ahor
 ### Nota posterior (2026-09-30) — Instagram: dominio a secas, rutas reservadas y web móvil
 
 `instagram.com` o `www.instagram.com` sin usuario cumplían el patrón de usuario (letras y puntos) y se guardaban como `https://instagram.com/instagram.com`. Ahora `esUsuarioValido` rechaza el propio dominio (`(www.|m.)instagram.com`), las rutas reservadas siguen siendo `p`, `reel`, `reels`, `explore`, `stories`, `accounts`, `direct` y `tv` (en URL, con `@` o a secas), y se acepta la web móvil `m.instagram.com/usuario` (normaliza a `https://instagram.com/usuario`; `esUrlPerfilInstagram` también la admite). Siguen sin aplicarse las reglas finas de Instagram sobre puntos (inicial/final o `..`), ver `DEBT.md`.
+
+### Nota posterior (2026-10-01) — la URL del GPS pasa a DT-035
+
+La parte D (URL del GPS con el `TRACK_TOKEN` global, `UrlTrackerConToken.tsx`) queda sustituida por DT-035: token propio por reto, visible también en el admin del reto, con QR de OwnTracks y regeneración. `lib/superadmin/url-tracker.ts` se movió a `lib/gps/url-tracker.ts`.
+
+---
+
+## DT-035 — Token de GPS por reto y QR de OwnTracks
+
+**Fecha:** 2026-10-01 · **Tarea:** Token de GPS por reto + QR de OwnTracks
+
+### Contexto
+
+`/api/track` comparaba contra una única env var (`TRACK_TOKEN`) para todos los retos (DT-028 dejó el token global y el reto en `?reto=`). Problemas: el móvil de un reto podía escribir posiciones en cualquier otro; rotar el token obligaba a cambiar Vercel, redesplegar y reconfigurar todos los móviles; solo el superadmin podía ver la URL (DT-034), y configurar OwnTracks exigía pegar la URL a mano en el móvil. El usuario pide: token propio por reto, visible, copiable y regenerable por el admin del reto y por el superadmin, y un QR que configure OwnTracks solo.
+
+### Decisión
+
+1. **Tabla `retos_gps`** (`0016`): `reto_id` PK/FK con cascada, `track_token text not null unique check (length >= 32)`, `updated_at`. RLS activada sin políticas y `revoke all` a anon/authenticated: solo service role. La migración siembra un token por reto existente con `pgcrypto` (24 bytes en base64url). **Token en claro**, no hasheado: el panel tiene que poder volver a mostrar la URL y el QR sin rotarlo; es un secreto aleatorio de 192 bits, no una contraseña humana, así que lo que se protege es el acceso a la tabla.
+2. **`lib/supabase/credenciales-gps.ts`**: `generarTokenGps()` (`randomBytes(24).toString("base64url")`), `obtenerTokenGps`, `listarCredencialesGps` (superadmin, una consulta), `obtenerTokenGpsPorSlug` (una consulta: `retos_gps` con `retos!inner(id, ruta_id)` filtrado por `retos.slug`, validada con zod), `guardarTokenGps` (upsert por `reto_id` con `updated_at`) y `asignarTokenGpsNuevo` (genera + guarda, reintento único ante 23505). Las lecturas nunca lanzan y fallan cerrado.
+3. **`/api/track`**: rate limit por IP (120/min) → formato del slug (zod) → `obtenerTokenGpsPorSlug` → SHA-256 + `timingSafeEqual` contra el token del reto o contra un valor ficticio aleatorio si no hay reto/token → rate limit por reto (40/min) → payload, intento activo, filtro geográfico (sin cambios). **Slug mal formado, sin `reto`, reto inexistente, reto sin token y token incorrecto ⇒ el mismo `401 {"error":"unauthorized"}`**. Cambia DT-028, que daba `200 []` al reto inexistente: con token por reto ese caso ya es un fallo de autenticación y unificarlo evita distinguir desde fuera qué retos existen con token. Desde el payload en adelante, los descartes siguen siendo `200 []`.
+4. **Acciones**: `regenerarTokenGps(slug)` (admin, `resolverRetoConSesion`) y `regenerarTokenGpsReto(retoId)` (superadmin, sesión + id validado). Upsert + `revalidatePath`; **nunca devuelven el token**. `crearReto` genera el token del reto nuevo; si falla, el reto se crea igual y la tarjeta ofrece "Generar" (misma acción).
+5. **El token solo se lee en páginas que verifican la sesión ellas mismas** (regla de DT-034): la página del superadmin y la pestaña GPS del admin (`SeccionGps`, que vuelve a llamar a `resolverRetoConSesion` aunque la página ya lo hizo).
+6. **OwnTracks** (`lib/gps/owntracks.ts`, puro): `construirConfigOwnTracks` con las claves verificadas en https://owntracks.org/booklet/tech/json/ — `_type: "configuration"`, `mode: 3` (HTTP), `url`, `tid` (2 caracteres del slug), `deviceId` (slug), `auth: false` (el token va en la query), `extendedData: true`, `monitoring: 1` (significant), `locatorInterval: 180`, `locatorDisplacement: 100`, `ignoreInaccurateLocations: 100`. `enlaceOwnTracks` = `owntracks:///config?inline=` + base64 (UTF-8) codificado para URL.
+7. **Origen de la URL**: `https://${VERCEL_PROJECT_PRODUCTION_URL}` si existe; si no, el de las cabeceras de la petición, con aviso en la UI (una preview o localhost dejaría al móvil sin destino).
+8. **UI** (`components/gps/ConfigGps.tsx`, cliente, compartido): recibe del servidor `DatosConfigGps` (URL con y sin token, enlace, QR SVG en data URL generado con `qrcode`, fecha, origen provisional) o `null`. URL y QR ocultos por defecto; Mostrar, Copiar (portapapeles o selección), "Abrir en OwnTracks", Regenerar con confirmación; instrucciones de 4 pasos. Admin: pestaña nueva "GPS". Superadmin: en cada tarjeta, en lugar de `UrlTrackerConToken`. La CSP actual solo fija `frame-ancestors`, así que no bloquea `img` con `data:`.
+
+### Alternativas valoradas
+
+**Hashear el token en BD** (como la contraseña de admin): descartada, obligaría a regenerar cada vez que haya que volver a enseñar el QR. **Columna en `retos`**: descartada, `retos` tiene SELECT para anon. **Mantener `TRACK_TOKEN` como fallback**: descartada, dejaría viva la credencial global que la tarea quiere eliminar. **Devolver el token desde la acción de regenerar**: descartada, las Server Actions son endpoints públicos; la página lo vuelve a leer tras verificar sesión. **QR en PNG**: descartada, SVG escala sin perder nitidez y no necesita codificador de imágenes.
+
+### Notas de cierre (implementación)
+
+- **`obtenerTokenGpsPorSlug` devuelve también `rutaId`** (el plan decía `{ retoId, token }`): el filtro geográfico necesita la ruta y así `/api/track` sigue haciendo una sola consulta para autenticar. `retos_gps` declara su `Relationships` hacia `retos` en `BaseDeDatos` para tipar el embed.
+- **Pestaña propia "GPS"** en el admin (el plan dejaba elegir): configurar un dispositivo es una tarea distinta de los interruptores de la web, y así el token no viaja al navegador cada vez que se abre Configuración.
+- **`ConfigGps` recibe `datos | null`** en vez de props sueltas; añade `urlSinToken` (enmascarar) y `origenProvisional` (aviso). "Abrir en OwnTracks" y el QR solo se pintan tras "Mostrar".
+- **Rate limit con claves prefijadas** (`track:ip:`, `track:reto:`) porque el `Map` de `lib/rate-limit.ts` es compartido con las rutas que usan la IP a secas.
+- **Slug mal formado ⇒ 401 sin consultar BD** (el formato del slug no es secreto; la comparación ficticia se reserva para los casos que sí consultan).
+- **Despliegue:** aplicar `0016` → desplegar → reconfigurar cada móvil con el QR → borrar `TRACK_TOKEN` de Vercel.

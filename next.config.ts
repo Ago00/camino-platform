@@ -30,9 +30,11 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "4.5mb",
     },
   },
-  // Anti-clickjacking en todo el sitio (DT-034): el superadmin copia al
-  // portapapeles la URL del GPS con TRACK_TOKEN, y una web ajena podría
-  // enmarcarlo para robarlo. 'self' mantiene el iframe de la vista previa.
+  // Anti-clickjacking en todo el sitio (DT-034): el superadmin y la pestaña
+  // GPS del admin muestran y copian la URL del GPS con el token del reto
+  // (DT-035), y una web ajena podría enmarcarlos para robarlo. 'self'
+  // mantiene el iframe de la vista previa. Esta CSP solo fija
+  // frame-ancestors: no restringe img-src, así que el QR en data: se pinta.
   async headers() {
     return [
       {

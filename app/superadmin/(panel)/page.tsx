@@ -4,25 +4,26 @@
 // para ese reto. Los formularios son componentes cliente con `useActionState`
 // (estado pendiente y resultado visibles); editar y eliminar redirigen aquí
 // con el aviso en la query (?guardado=<id> / ?eliminado=<slug>).
-// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028) —
-// completa, con el token, oculta hasta pulsar "Mostrar" (DT-034) —, si tiene
-// contraseña de admin configurada (FP2.6, DT-029) y enlaces a su web y a su
-// panel admin.
+// Cada tarjeta muestra la configuración del GPS del reto (DT-035: URL con su
+// token propio y QR de OwnTracks, ocultos hasta pulsar "Mostrar", y botón
+// para regenerar el token), si tiene contraseña de admin configurada (FP2.6,
+// DT-029) y enlaces a su web y a su panel admin.
 
 import Link from "next/link";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { RUTAS_PREDEFINIDAS } from "@/lib/rutas/catalogo";
+import ConfigGps from "@/components/gps/ConfigGps";
+import { obtenerOrigenTracker, prepararDatosConfigGps, type DatosConfigGps } from "@/lib/gps/config-gps-servidor";
 import { listarRetosConCredencial } from "@/lib/supabase/credenciales-admin";
+import { listarCredencialesGps } from "@/lib/supabase/credenciales-gps";
 import { listarTodosLosRetos } from "@/lib/supabase/retos";
 import { NOMBRE_COOKIE_SUPERADMIN_SESION, verificarSesionSuperadmin } from "@/lib/auth/superadmin-session";
-import { urlTrackerConToken, urlTrackerDelReto } from "@/lib/superadmin/url-tracker";
-import { editarReto, eliminarReto, cerrarSesionSuperadmin } from "./actions";
+import { editarReto, eliminarReto, cerrarSesionSuperadmin, regenerarTokenGpsReto } from "./actions";
 import BotonEliminarReto from "./BotonEliminarReto";
 import { COLORES_SUPERADMIN as C, EnlacesReto, MensajeResultado } from "./CamposReto";
 import FormularioCrearReto from "./FormularioCrearReto";
 import FormularioEditarReto from "./FormularioEditarReto";
-import UrlTrackerConToken from "./UrlTrackerConToken";
 import { leerAvisoPanel } from "./resultado-accion";
 import type { Reto } from "@/lib/types";
 
@@ -33,25 +34,33 @@ interface SuperadminPageProps {
 }
 
 export default async function SuperadminPage({ searchParams }: SuperadminPageProps) {
-  // Esta página envía el TRACK_TOKEN al navegador: la sesión se comprueba
-  // aquí mismo y no solo en el layout, que no impide que la página se
-  // renderice ni que su contenido viaje en el payload RSC (guía de
-  // autenticación de Next 16, "Layouts and auth checks").
+  // Esta página envía al navegador el token del GPS de cada reto (DT-035): la
+  // sesión se comprueba aquí mismo y no solo en el layout, que no impide que
+  // la página se renderice ni que su contenido viaje en el payload RSC (guía
+  // de autenticación de Next 16, "Layouts and auth checks").
   const almacenCookies = await cookies();
   if (!verificarSesionSuperadmin(almacenCookies.get(NOMBRE_COOKIE_SUPERADMIN_SESION)?.value)) {
     redirect("/superadmin/login");
   }
-  const trackToken = leerTrackToken();
 
   const sp = await searchParams;
   const editarId = sp.edit ? Number(sp.edit) : null;
   const aviso = leerAvisoPanel(sp);
 
-  const [retos, origen, retosConCredencial] = await Promise.all([
+  const [retos, origen, retosConCredencial, credencialesGps] = await Promise.all([
     listarTodosLosRetos(),
-    obtenerOrigenPeticion(),
+    obtenerOrigenTracker(),
     listarRetosConCredencial(),
+    listarCredencialesGps(),
   ]);
+  const datosGpsPorReto = new Map(
+    await Promise.all(
+      retos.map(async (reto): Promise<[number, DatosConfigGps | null]> => {
+        const credencial = credencialesGps.get(reto.id);
+        return [reto.id, credencial ? await prepararDatosConfigGps(reto.slug, credencial, origen) : null];
+      })
+    )
+  );
 
   // Acción de logout: redirige al login tras borrar la cookie.
   async function logout() {
@@ -109,8 +118,7 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
                   reto={reto}
                   modoEdicion={editarId === reto.id}
                   recienGuardado={aviso?.tipo === "guardado" && aviso.retoId === reto.id}
-                  urlTracker={urlTrackerDelReto(origen, reto.slug)}
-                  urlTrackerConToken={trackToken === null ? null : urlTrackerConToken(origen, reto.slug, trackToken)}
+                  datosGps={datosGpsPorReto.get(reto.id) ?? null}
                   tieneCredencial={retosConCredencial.has(reto.id)}
                 />
               ))}
@@ -129,34 +137,6 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
 }
 
 // ---------------------------------------------------------------------------
-// URL del tracker GPS (FP2.5, DT-028)
-// ---------------------------------------------------------------------------
-
-/**
- * Origen (`https://host`) de la petición actual, para mostrar la URL completa
- * del tracker. Null si no se puede determinar (sin cabecera Host válida): en
- * ese caso se muestra la ruta relativa. Solo se usa para mostrar texto en un
- * panel autenticado, nunca para redirigir ni construir enlaces.
- */
-async function obtenerOrigenPeticion(): Promise<string | null> {
-  const cabeceras = await headers();
-  const host = cabeceras.get("x-forwarded-host") ?? cabeceras.get("host");
-  if (!host || !/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return null;
-  const protocolo = cabeceras.get("x-forwarded-proto") === "http" ? "http" : "https";
-  return `${protocolo}://${host}`;
-}
-
-/**
- * Token global del tracker (env `TRACK_TOKEN`, el mismo que comprueba
- * /api/track), o null si no está configurado. Solo se llama tras verificar la
- * sesión del superadmin.
- */
-function leerTrackToken(): string | null {
-  const token = process.env.TRACK_TOKEN;
-  return token !== undefined && token.trim() !== "" ? token : null;
-}
-
-// ---------------------------------------------------------------------------
 // Componente de tarjeta de reto
 // ---------------------------------------------------------------------------
 
@@ -164,16 +144,14 @@ function RetoCard({
   reto,
   modoEdicion,
   recienGuardado,
-  urlTracker,
-  urlTrackerConToken,
+  datosGps,
   tieneCredencial,
 }: {
   reto: Reto;
   modoEdicion: boolean;
   recienGuardado: boolean;
-  urlTracker: string;
-  /** null si `TRACK_TOKEN` no está configurado. */
-  urlTrackerConToken: string | null;
+  /** null si el reto no tiene token del GPS. */
+  datosGps: DatosConfigGps | null;
   tieneCredencial: boolean;
 }) {
   return (
@@ -210,32 +188,12 @@ function RetoCard({
         </div>
       )}
 
-      {/* URL del GPS para OwnTracks (solo lectura) */}
+      {/* GPS del reto: URL, QR de OwnTracks y regenerar (DT-035) */}
       <div className="mt-2">
-        <p className="text-[12px] font-medium" style={{ color: C.gris }}>
-          URL del GPS (OwnTracks)
+        <p className="mb-1 text-[12px] font-medium" style={{ color: C.gris }}>
+          GPS (OwnTracks)
         </p>
-        {urlTrackerConToken !== null ? (
-          <>
-            <UrlTrackerConToken urlSinToken={urlTracker} urlConToken={urlTrackerConToken} />
-            <p className="mt-1 text-[12px]" style={{ color: C.gris }}>
-              El token es común a todos los retos; no lo compartas fuera de quien configura el móvil.
-            </p>
-          </>
-        ) : (
-          <>
-            <code
-              className="mt-0.5 block select-all break-all rounded-md px-2 py-1 font-mono text-[12.5px]"
-              style={{ background: C.paper }}
-            >
-              {urlTracker}
-            </code>
-            <p className="mt-0.5 text-[12px]" style={{ color: C.rojo }}>
-              <span className="font-mono">TRACK_TOKEN</span> no está configurado en el servidor: el GPS no
-              funcionará hasta que se defina.
-            </p>
-          </>
-        )}
+        <ConfigGps datos={datosGps} accionRegenerar={regenerarTokenGpsReto.bind(null, reto.id)} />
       </div>
 
       {/* Estado de la contraseña del panel admin del reto (FP2.6, DT-029) */}

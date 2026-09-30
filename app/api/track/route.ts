@@ -1,73 +1,70 @@
 /**
  * Ingesta de posiciones GPS desde OwnTracks (modo HTTP).
  *
- * NO SE HA PROBADO CONTRA UNA BASE DE DATOS REAL (F2, ver docs/tareas/CURRENT.md).
- * No existe todavía proyecto Supabase (bloqueado por F0): este endpoint está
- * escrito y testeado con el cliente Supabase mockado (route.test.ts), pero
- * falta la verificación de integración real: aplicar la migración, poner las
- * env vars, y mandar una petición real (OwnTracks o curl) contra una BD viva.
- * Cuando F0 esté lista, esa verificación es obligatoria antes de confiar en
- * este endpoint en producción.
+ * Verificado contra Supabase real desde F2 (ver docs/bugs/BUGS.md); los tests
+ * de route.test.ts usan el cliente mockado.
  *
- * Patrón reutilizado de la POC (docs/POC-tracking.md): token en query, buscar
- * intento activo, insertar, responder 200 con [] siempre — nunca dar pistas
- * al remitente sobre por qué se ignoró un punto (token malo, payload
- * inválido, sin intento activo, o punto fuera de rango son indistinguibles
- * desde fuera, salvo el único caso de 401 por token incorrecto).
+ * URL: `/api/track?reto=<slug>&t=<token del reto>`. Desde DT-035 cada reto
+ * tiene su propio token (`retos_gps`, lib/supabase/credenciales-gps.ts), que el
+ * admin del reto y el superadmin ven, copian o escanean como QR y pueden
+ * regenerar. Ya no existe un TRACK_TOKEN global.
  *
- * Añade las dos defensas de DT-006 que la POC no tenía:
- *   1. Comparación de token en tiempo constante (ver verificarToken()).
- *   2. Filtro de plausibilidad geográfica: rechaza puntos a más de
- *      SEPARACION_TRAZA_MAX_KM de la traza de cálculo.
+ * Orden de las defensas:
+ *   1. Rate limit por IP (120/min), antes de tocar BD: acota a quien prueba
+ *      tokens o slugs a ciegas.
+ *   2. Formato del slug (zod) y, en una sola consulta, el reto con su token.
+ *   3. Comparación del token en tiempo constante (ver `tokenEsValido`), contra
+ *      un valor ficticio si no hay reto o token, para que ese caso cueste lo
+ *      mismo. Slug mal formado, reto inexistente, reto sin token y token
+ *      incorrecto dan todos el mismo `401 {"error":"unauthorized"}`: desde
+ *      fuera no se distingue qué falló. (Hasta DT-035 un reto inexistente
+ *      daba `200 []`, DT-028; con token por reto ya no hay token válido que
+ *      proteger en ese caso, así que se unifica con el 401.)
+ *   4. Rate limit por reto (40/min, DT-011), tras autenticar: el cupo de un
+ *      reto no lo gasta nadie sin su token, ni lo comparte con otros retos.
+ *   5. Payload OwnTracks (zod), intento activo del reto y filtro de
+ *      plausibilidad geográfica (DT-006, solo modo guiado con ruta, DT-016).
  *
- * Rate limiting (DT-011): 40 req/min por token, antes de tocar BD. Responde
- * 429 sin cuerpo — mismo criterio de rechazo silencioso que el resto del
- * endpoint.
+ * Desde el paso 5, cualquier descarte responde `200 []`: OwnTracks no
+ * reintenta un punto que nunca se va a guardar, y el remitente no recibe
+ * pistas del motivo (payload inválido, sin intento activo, fuera de rango).
  *
- * Modo de intento (DT-016): el filtro de plausibilidad geográfica (punto 2
- * arriba) solo aplica cuando el intento activo está en modo 'guiado'. En
- * modo 'libre' no hay una traza fija contra la que comparar, así que el
- * filtro se desactiva por completo para ese intento — de ahí que el intento
- * activo (con su `modo`) se resuelva ANTES de decidir si se aplica el
- * filtro, no después como antes de esta tarea.
- *
- * Compatibilidad temporal con la migración sin aplicar (ver DEBT.md,
- * "recordatorio: aplicar supabase/migrations/0003_modo_intento.sql"): si la
- * columna `modo` todavía no existe en la BD real, la consulta del punto 5
- * falla con un error de Postgres. Sin manejo explícito, ese error se leía
- * como "sin intento activo" y el punto GPS se descartaba en silencio — un
- * corte real de la ingesta, no solo un problema cosmético. En ese caso se
- * reintenta con el select mínimo (solo `id`) y se trata el intento como modo
- * 'guiado' (con el filtro geográfico activo), el comportamiento exacto que
- * este endpoint ya tenía antes de DT-016.
- *
- * Reto del tracker (FP2.5, DT-028): con varios retos puede haber varios
- * intentos abiertos a la vez (uno por reto), así que el tracker indica a qué
- * reto pertenece en la URL: `/api/track?t=<TRACK_TOKEN>&reto=<slug>` (el
- * panel superadmin muestra la URL de cada reto). El token sigue siendo
- * global. Sin `reto`, con un slug mal formado o inexistente, el punto se
- * descarta con la misma respuesta vacía 200 — no se adivina el reto.
+ * Compatibilidad con la migración 0003 sin aplicar (ver DEBT.md): si la
+ * columna `modo` no existe, la consulta del intento falla; se reintenta con el
+ * select mínimo (solo `id`) y se trata el intento como 'guiado' (con filtro
+ * geográfico), el comportamiento anterior a DT-016.
  */
 
-import { createHash, timingSafeEqual } from "crypto";
+import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { consumir } from "@/lib/rate-limit";
+import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { obtenerTokenGpsPorSlug } from "@/lib/supabase/credenciales-gps";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
-import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { separacionDeTrazaM } from "@/lib/traza/proyeccion";
 import { SEPARACION_TRAZA_MAX_KM } from "@/lib/traza/umbrales";
 
-
 export const runtime = "nodejs";
 
-const LIMITE_PETICIONES_POR_MINUTO = 40;
+const LIMITE_POR_IP_POR_MINUTO = 120;
+const LIMITE_POR_RETO_POR_MINUTO = 40;
 const VENTANA_MS = 60_000;
 
+// Prefijos propios: `lib/rate-limit.ts` comparte un único Map con las demás
+// rutas, que usan la IP a secas como clave.
+const PREFIJO_CLAVE_IP = "track:ip:";
+const PREFIJO_CLAVE_RETO = "track:reto:";
+
+/**
+ * Valor con el que se compara cuando el reto no existe o no tiene token:
+ * aleatorio por instancia, así que ningún token recibido puede coincidir.
+ */
+const TOKEN_FICTICIO = randomBytes(32).toString("base64url");
+
 // ---------------------------------------------------------------------------
-// Validación del payload OwnTracks
+// Validación de la entrada
 // ---------------------------------------------------------------------------
 
 const payloadOwnTracks = z.object({
@@ -96,25 +93,23 @@ function respuestaVacia(): NextResponse {
   return NextResponse.json([], { status: 200 });
 }
 
+function respuestaNoAutorizada(): NextResponse {
+  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+}
+
 // ---------------------------------------------------------------------------
 // Comparación de token en tiempo constante
 // ---------------------------------------------------------------------------
 
 /**
- * Compara el token recibido contra TRACK_TOKEN sin filtrar información por
+ * Compara el token recibido contra el del reto sin filtrar información por
  * timing ni por longitud.
  *
  * `crypto.timingSafeEqual` exige que ambos buffers tengan la MISMA longitud
  * — si no, lanza síncronamente. Comparar longitudes antes (`if (a.length !==
  * b.length) return false`) reintroduce exactamente el timing leak que
- * `timingSafeEqual` existe para evitar: un atacante podría medir cuánto
- * tarda la respuesta y deducir la longitud del token por early-return.
- *
- * Solución: hashear ambos valores con SHA-256 antes de comparar. Un hash
- * tiene siempre longitud fija (32 bytes), así que `timingSafeEqual` nunca
- * lanza por longitud distinta, sin necesidad de ninguna rama condicional
- * dependiente del input. Es el patrón estándar para este problema (evita
- * tanto `===` de cadenas como el caso límite de longitudes distintas).
+ * `timingSafeEqual` existe para evitar. Hashear ambos valores con SHA-256
+ * da siempre 32 bytes, sin ninguna rama dependiente del input.
  */
 function tokenEsValido(tokenRecibido: string, tokenEsperado: string): boolean {
   const hashRecibido = createHash("sha256").update(tokenRecibido).digest();
@@ -127,31 +122,31 @@ function tokenEsValido(tokenRecibido: string, tokenEsperado: string): boolean {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // 1. Token de la query.
-  const tokenRecibido = request.nextUrl.searchParams.get("t") ?? "";
-  const tokenEsperado = process.env.TRACK_TOKEN;
-
-  // Si el servidor no tiene TRACK_TOKEN configurado, no hay nada válido con
-  // lo que comparar: se rechaza igual que un token incorrecto, sin distinguir
-  // el caso (evita revelar que el servidor está mal configurado).
-  if (!tokenEsperado || !tokenEsValido(tokenRecibido, tokenEsperado)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  // 2. Rate limit por token (DT-011): tras validar el token, para no usar
-  // el 429 como oráculo de qué tokens existen, y antes de tocar BD.
-  if (!consumir(tokenRecibido, LIMITE_PETICIONES_POR_MINUTO, VENTANA_MS)) {
+  // 1. Rate limit por IP, antes de tocar BD.
+  if (!consumir(`${PREFIJO_CLAVE_IP}${obtenerIpCliente(request)}`, LIMITE_POR_IP_POR_MINUTO, VENTANA_MS)) {
     return new NextResponse(null, { status: 429 });
   }
 
-  // 3. Slug del reto en la query (`?reto=<slug>`, FP2.5/DT-028). Validación
-  // de formato antes de tocar BD; si falta o es inválido, respuesta vacía.
+  // 2. Reto de la URL con su token. Un slug mal formado no llega a BD.
+  const tokenRecibido = request.nextUrl.searchParams.get("t") ?? "";
   const slugReto = slugRetoTracker.safeParse(request.nextUrl.searchParams.get("reto"));
   if (!slugReto.success) {
-    return respuestaVacia();
+    return respuestaNoAutorizada();
+  }
+  const retoConToken = await obtenerTokenGpsPorSlug(slugReto.data);
+
+  // 3. Token del reto en tiempo constante (ficticio si no hay reto o token).
+  const tokenValido = tokenEsValido(tokenRecibido, retoConToken?.token ?? TOKEN_FICTICIO);
+  if (!retoConToken || !tokenValido) {
+    return respuestaNoAutorizada();
   }
 
-  // Parsear el payload OwnTracks.
+  // 4. Rate limit por reto (DT-011), tras autenticar.
+  if (!consumir(`${PREFIJO_CLAVE_RETO}${retoConToken.retoId}`, LIMITE_POR_RETO_POR_MINUTO, VENTANA_MS)) {
+    return new NextResponse(null, { status: 429 });
+  }
+
+  // 5. Payload OwnTracks.
   let bodyJson: unknown;
   try {
     bodyJson = await request.json();
@@ -161,40 +156,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const payload = payloadOwnTracks.safeParse(bodyJson);
   if (!payload.success) {
-    // _type !== "location", o lat/lon no numéricos, o payload no parseable:
-    // se ignora sin dar pistas.
+    // _type !== "location", o lat/lon no numéricos: se ignora sin dar pistas.
     return respuestaVacia();
   }
 
   const { lat, lon, tst, batt, acc } = payload.data;
 
-  // 4. Resolver el reto de la URL. Sin reto válido no hay intento al que
-  // asignar el punto: se descarta con la misma respuesta vacía 200 para que
-  // OwnTracks no acumule reintentos de un punto que nunca se va a guardar.
-  const reto = await obtenerRetoPorSlug(slugReto.data);
-  if (!reto) {
-    return respuestaVacia();
-  }
-
-  // 5. Buscar el intento activo DE ESE RETO y su modo — se resuelve ANTES
-  // de decidir si se aplica el filtro geográfico (DT-016): en modo libre no
-  // hay traza fija, así que ese filtro no tiene sentido y se salta entero.
+  // 6. Intento activo DE ESE RETO y su modo — se resuelve ANTES de decidir si
+  // se aplica el filtro geográfico (DT-016).
   const supabase = getSupabaseAdmin();
   const { data: intentoActivo, error: errorIntento } = await soloIntentoActivoDelReto(
     supabase.from("intentos").select("id, modo"),
-    reto.id
+    retoConToken.retoId
   ).maybeSingle();
 
   let intentoId: number;
   let modoIntento: "guiado" | "libre";
 
   if (errorIntento) {
-    // Compatibilidad temporal: la columna `modo` puede no existir todavía
-    // (migración sin aplicar, ver comentario de cabecera). Reintenta con el
-    // select mínimo y trata el intento como modo guiado.
+    // Compatibilidad temporal con la migración 0003 sin aplicar (cabecera).
     const { data: intentoActivoMinimo, error: errorIntentoMinimo } = await soloIntentoActivoDelReto(
       supabase.from("intentos").select("id"),
-      reto.id
+      retoConToken.retoId
     ).maybeSingle();
 
     if (errorIntentoMinimo || !intentoActivoMinimo) {
@@ -211,22 +194,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     modoIntento = intentoActivo.modo;
   }
 
-  // 6. Filtro de plausibilidad geográfica (DT-006, capa 1) — solo modo
-  // 'guiado' (DT-016) y solo si el reto tiene ruta: un reto de ruta libre
-  // (`ruta_id` null) no tiene traza contra la que comparar, igual que un
-  // intento en modo libre.
-  if (modoIntento === "guiado" && reto.ruta_id !== null) {
-    const traza = cargarTrazaDeCalculo(reto.ruta_id);
+  // 7. Filtro de plausibilidad geográfica (DT-006) — solo modo 'guiado'
+  // (DT-016) y solo si el reto tiene ruta: sin ruta no hay traza con la que
+  // comparar, igual que en modo libre.
+  if (modoIntento === "guiado" && retoConToken.rutaId !== null) {
+    const traza = cargarTrazaDeCalculo(retoConToken.rutaId);
     const separacionM = separacionDeTrazaM(lat, lon, traza);
-    const separacionMaximaM = SEPARACION_TRAZA_MAX_KM * 1000;
-    if (separacionM > separacionMaximaM) {
+    if (separacionM > SEPARACION_TRAZA_MAX_KM * 1000) {
       return respuestaVacia();
     }
   }
 
-  // 7. Insertar la posición.
-  // No hay verificación de velocidad imposible aquí: eso lo hace
-  // calcularProgreso() en el dominio, no la ingesta (no se duplica).
+  // 8. Insertar la posición. La velocidad imposible la descarta
+  // calcularProgreso() en el dominio, no la ingesta.
   await supabase.from("posiciones").insert({
     intento_id: intentoId,
     lat,
@@ -237,6 +217,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     fuente: "app",
   });
 
-  // 8. Responder 200 con [] siempre.
   return respuestaVacia();
 }

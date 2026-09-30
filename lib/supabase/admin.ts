@@ -20,6 +20,7 @@ import type {
   Posicion,
   Reto,
   RetoAdmin,
+  RetoGps,
   Texto,
   VisitaWeb,
 } from "@/lib/types";
@@ -136,6 +137,24 @@ export interface BaseDeDatos {
           Partial<Pick<Pick<RetoAdmin, keyof RetoAdmin>, "updated_at">>;
         Update: Partial<Pick<RetoAdmin, keyof RetoAdmin>>;
         Relationships: [];
+      };
+      retos_gps: {
+        Row: Pick<RetoGps, keyof RetoGps>;
+        // Igual que retos_admin: el upsert fija updated_at para que cambie al regenerar.
+        Insert: Pick<Pick<RetoGps, keyof RetoGps>, "reto_id" | "track_token"> &
+          Partial<Pick<Pick<RetoGps, keyof RetoGps>, "updated_at">>;
+        Update: Partial<Pick<RetoGps, keyof RetoGps>>;
+        // Declarada para poder embeber `retos` en una sola consulta desde
+        // /api/track (`obtenerTokenGpsPorSlug`, lib/supabase/credenciales-gps.ts).
+        Relationships: [
+          {
+            foreignKeyName: "retos_gps_reto_id_fkey";
+            columns: ["reto_id"];
+            isOneToOne: true;
+            referencedRelation: "retos";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: Record<string, never>;

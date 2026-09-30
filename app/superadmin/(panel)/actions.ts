@@ -22,6 +22,11 @@
  * opcional al editar (vacía = no cambiar). Se guarda solo su hash scrypt en
  * `retos_admin`; el texto plano no se guarda, no se registra ni aparece nunca
  * en un resultado.
+ *
+ * Token del GPS por reto (DT-035): `crearReto` le genera uno; si falla, el
+ * reto se crea igual y su tarjeta muestra "Sin token GPS" con el botón
+ * "Generar" (`regenerarTokenGpsReto`, la misma acción que regenerar).
+ * Ninguna acción devuelve el token.
  */
 
 import { revalidatePath } from "next/cache";
@@ -34,6 +39,7 @@ import { esRutaPredefinida } from "@/lib/rutas/catalogo";
 import { hashearPassword } from "@/lib/auth/password";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { guardarHashAdmin } from "@/lib/supabase/credenciales-admin";
+import { asignarTokenGpsNuevo } from "@/lib/supabase/credenciales-gps";
 import { verificarSesionSuperadmin, NOMBRE_COOKIE_SUPERADMIN_SESION } from "@/lib/auth/superadmin-session";
 import {
   urlPanelTrasEliminar,
@@ -206,12 +212,14 @@ export async function crearReto(_estadoPrevio: ResultadoCrearReto | null, formDa
   // Aunque falle el intento se intenta guardar la contraseña: sin ella el
   // admin del reto no podría entrar a crear ese intento desde su panel.
   const passwordGuardada = await guardarPasswordAdmin(retoCreado.id, password.data);
+  const tokenGpsGuardado = await asignarTokenGpsNuevo(retoCreado.id);
+  const avisoTokenGps = tokenGpsGuardado ? "" : " No se pudo generar su token del GPS: pulsa «Generar» en su tarjeta.";
 
   if (errorIntento) {
     const avisoPassword = passwordGuardada ? "" : " Tampoco se pudo guardar la contraseña: fíjala editándolo.";
     return {
       ok: false,
-      mensaje: `El reto «${nombre}» se creó, pero no se pudo preparar su primer intento: créalo desde su panel admin.${avisoPassword}`,
+      mensaje: `El reto «${nombre}» se creó, pero no se pudo preparar su primer intento: créalo desde su panel admin.${avisoPassword}${avisoTokenGps}`,
     };
   }
   if (!passwordGuardada) {
@@ -219,11 +227,11 @@ export async function crearReto(_estadoPrevio: ResultadoCrearReto | null, formDa
     // la contraseña editándolo.
     return {
       ok: false,
-      mensaje: `El reto «${nombre}» se creó, pero no se pudo guardar la contraseña: fíjala editándolo.`,
+      mensaje: `El reto «${nombre}» se creó, pero no se pudo guardar la contraseña: fíjala editándolo.${avisoTokenGps}`,
     };
   }
 
-  return { ok: true, mensaje: `Reto «${nombre}» creado.`, slug };
+  return { ok: true, mensaje: `Reto «${nombre}» creado.${avisoTokenGps}`, slug };
 }
 
 /**
@@ -324,6 +332,23 @@ export async function eliminarReto(id: number): Promise<ResultadoAccionSuperadmi
   if (!retoEliminado) return RESULTADO_RETO_INEXISTENTE;
 
   redirect(urlPanelTrasEliminar(retoEliminado.slug));
+}
+
+/**
+ * Genera un token del GPS nuevo para el reto (o el primero, si no tenía): el
+ * anterior deja de valer en el acto. No devuelve el token; el panel lo vuelve
+ * a leer al revalidarse, tras verificar la sesión en la página.
+ */
+export async function regenerarTokenGpsReto(retoId: number): Promise<ResultadoAccionSuperadmin> {
+  if (!(await haySesionSuperadminValida())) return RESULTADO_SESION_CADUCADA;
+  if (!esquemaIdReto.safeParse(retoId).success) return RESULTADO_RETO_INEXISTENTE;
+
+  // Un reto inexistente hace fallar el upsert por la clave foránea: mismo
+  // mensaje genérico, y la revalidación retira su tarjeta si ya no está.
+  const guardado = await asignarTokenGpsNuevo(retoId);
+  revalidatePath("/superadmin");
+  if (!guardado) return { ok: false, mensaje: "No se pudo generar el token del GPS. Inténtalo de nuevo." };
+  return { ok: true, mensaje: "Token del GPS generado. Vuelve a configurar el móvil con el QR nuevo." };
 }
 
 /**

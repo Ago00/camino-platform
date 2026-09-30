@@ -46,7 +46,8 @@ multi-reto para amigos" en `decisiones-producto.md` y DT-025 a DT-033.
       real de tiles antes de guardarla — 2026-07-31
 - [x] Env vars cargadas en Vercel (Production): `NEXT_PUBLIC_SUPABASE_URL`,
       `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`,
-      `NEXT_PUBLIC_MAPTILER_KEY`
+      `NEXT_PUBLIC_MAPTILER_KEY`. `TRACK_TOKEN` queda obsoleta desde DT-035
+      (2026-10-01): cada reto tiene su propio token de GPS (`retos_gps`).
 - [x] `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` — cargadas en Vercel Production
       (confirmado en F5, 2026-08-01). `ADMIN_PASSWORD` queda obsoleta desde
       FP2.6 (2026-09-29): cada reto tiene su propia contraseña de admin.

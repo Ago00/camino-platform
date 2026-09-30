@@ -79,6 +79,11 @@ vi.mock("@/lib/supabase/credenciales-admin", () => ({
   guardarHashAdmin: (retoId: number, hash: string) => guardarHashAdminSpy(retoId, hash),
 }));
 
+const asignarTokenGpsNuevoSpy = vi.fn<(retoId: number) => Promise<boolean>>();
+vi.mock("@/lib/supabase/credenciales-gps", () => ({
+  asignarTokenGpsNuevo: (retoId: number) => asignarTokenGpsNuevoSpy(retoId),
+}));
+
 vi.mock("@/lib/auth/superadmin-session", () => ({
   NOMBRE_COOKIE_SUPERADMIN_SESION: "superadmin_session",
   verificarSesionSuperadmin: () => sesionValida,
@@ -98,7 +103,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-const { crearReto, editarReto, eliminarReto } = await import("@/app/superadmin/(panel)/actions");
+const { crearReto, editarReto, eliminarReto, regenerarTokenGpsReto } = await import("@/app/superadmin/(panel)/actions");
 const { verificarPassword } = await import("@/lib/auth/password");
 
 function formularioReto(campos: Record<string, string>): FormData {
@@ -120,6 +125,7 @@ beforeEach(() => {
   sesionValida = true;
   guardarHashAdminSpy.mockReset();
   guardarHashAdminSpy.mockResolvedValue(undefined);
+  asignarTokenGpsNuevoSpy.mockReset().mockResolvedValue(true);
 });
 
 describe("crearReto — resultado", () => {
@@ -392,5 +398,69 @@ describe("eliminarReto", () => {
 
     expect(resultado.ok).toBe(false);
     expect(llamadas).toHaveLength(0);
+  });
+});
+
+describe("crearReto — token del GPS (DT-035)", () => {
+  it("genera el token del GPS del reto recién creado", async () => {
+    await crearReto(null, formularioReto({ slug: "reto-nuevo", password_admin: "contraseña-valida" }));
+
+    expect(asignarTokenGpsNuevoSpy).toHaveBeenCalledWith(ID_RETO_CREADO);
+  });
+
+  it("si falla el token, el reto se crea igual y avisa de que se puede generar desde su tarjeta", async () => {
+    asignarTokenGpsNuevoSpy.mockResolvedValue(false);
+
+    const resultado = await crearReto(
+      null,
+      formularioReto({ slug: "reto-nuevo", nombre: "Mi reto", password_admin: "contraseña-valida" })
+    );
+
+    expect(resultado.ok).toBe(true);
+    expect(resultado.mensaje).toMatch(/Reto «Mi reto» creado..*token del GPS.*«Generar»/);
+  });
+
+  it("no genera token si el reto no llega a crearse", async () => {
+    respuestas["retos.insert"] = { data: null, error: { code: "23505", message: "duplicate" } };
+
+    await crearReto(null, formularioReto({ slug: "repetido", password_admin: "contraseña-valida" }));
+
+    expect(asignarTokenGpsNuevoSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("regenerarTokenGpsReto (DT-035)", () => {
+  it("genera un token nuevo para el reto y no lo incluye en el resultado", async () => {
+    const resultado = await regenerarTokenGpsReto(3);
+
+    expect(resultado.ok).toBe(true);
+    expect(asignarTokenGpsNuevoSpy).toHaveBeenCalledWith(3);
+    expect(Object.keys(resultado).sort()).toEqual(["mensaje", "ok"]);
+  });
+
+  it("con la sesión caducada no genera nada", async () => {
+    sesionValida = false;
+
+    const resultado = await regenerarTokenGpsReto(3);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.mensaje).toMatch(/sesión/);
+    expect(asignarTokenGpsNuevoSpy).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un id no válido sin tocar la BD", async () => {
+    const resultado = await regenerarTokenGpsReto(-1);
+
+    expect(resultado.ok).toBe(false);
+    expect(asignarTokenGpsNuevoSpy).not.toHaveBeenCalled();
+  });
+
+  it("si no se puede guardar devuelve un mensaje claro", async () => {
+    asignarTokenGpsNuevoSpy.mockResolvedValue(false);
+
+    await expect(regenerarTokenGpsReto(3)).resolves.toEqual({
+      ok: false,
+      mensaje: "No se pudo generar el token del GPS. Inténtalo de nuevo.",
+    });
   });
 });

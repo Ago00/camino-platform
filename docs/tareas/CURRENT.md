@@ -1,71 +1,81 @@
-# Tarea en curso — Lote de pendientes pre-reto: muro en vivo, sección apagada en caliente y ajustes del panel
+# Tarea en curso — DT-035: token de GPS por reto + QR de OwnTracks
 
-> El contenido anterior (vista previa, peregrino, Instagram en Configuración y URL del GPS)
-> se archivó en `docs/tareas/historico/2026-09-30-vista-previa-y-config.md`.
+> El contenido anterior (muro en vivo y pendientes menores) se archivó en
+> `docs/tareas/historico/2026-09-30-muro-en-vivo-y-menores.md`.
 
-## Prompt clarificado (aprobado por el orquestador)
+## Prompt clarificado (aprobado por el usuario)
 
-1. **Muro en vivo:** poll de la página 0 de `GET /[slug]/api/comentarios` cada 60 s solo con la pestaña visible (pausa en oculto, reanuda al volver); fusión por id (raíces nuevas arriba, respuestas nuevas en su hilo) sin perder páginas siguientes ni respuestas locales; el formulario de respuesta abierto no se desmonta. Sin poll en vista previa ni con la sección apagada. Fusión en función pura con tests.
-2. **Sección apagada en caliente:** 403 en el poll del minuto a minuto ⇒ parar el intervalo + `router.refresh()` una vez. Igual en el muro.
-3. **`iniciarReto` guiado sin ruta:** rechazo en servidor con mensaje claro y la opción oculta en la UI si `ruta_id` es null. Tests.
-4. **`ocultarComentario`/`mostrarComentario`:** filtrar `visibilidad='publico'`; sin filas ⇒ "No se puede ocultar un mensaje privado". Tests.
-5. **UUID sin contexto seguro:** fallback con `crypto.getRandomValues` (función pura en `lib/`, test de formato).
-6. **Instagram:** rechazar el dominio sin usuario y rutas reservadas (p, reel, reels, explore, stories, accounts, direct, tv); aceptar `m.instagram.com/usuario`. Tests.
-7. **`RespuestaForm`:** "Respondiendo a …" con `aria-describedby` del textarea; al cambiar de destinatario, foco al nombre si está vacío o al texto si no.
-
-Entradas de `DEBT.md` relacionadas. Sin migraciones (no ha hecho falta ninguna).
+Cada reto tiene su PROPIO token de GPS (desaparece `TRACK_TOKEN` global). El admin de cada reto
+(`/<slug>/admin`) y el superadmin pueden verlo, copiarlo y regenerarlo (regenerar invalida el
+anterior al instante). Un QR que configura OwnTracks automáticamente, en el admin del reto y en el
+superadmin.
 
 ## Decisión técnica
 
-Notas posteriores (2026-09-30) en DT-016, DT-030, DT-031, DT-032, DT-033 y DT-034 (`docs/tecnico/decisiones-tecnicas.md`).
+DT-035 en `docs/tecnico/decisiones-tecnicas.md` (plan aprobado: tabla `retos_gps` sin políticas,
+token en claro de 192 bits en base64url, `/api/track` con 401 único y rate limit por IP + por reto,
+acciones que nunca devuelven el token, `ConfigGps` compartido, QR SVG generado en servidor).
 
 ## Archivos creados/modificados (Implementador)
 
 | Archivo | Cambio |
 |---|---|
-| `lib/comentarios/muro-en-vivo.ts` (+ test) | Creado: `EstadoMuro`, `fusionarHilos`, `aplicarPaginaCero`, `aplicarPaginaSiguiente`, `aplicarRespuestaPropia` |
-| `components/publico/MuroComentarios.tsx` | Poll 60 s con `visibilitychange`, estado `EstadoMuro`, `catch` en cargas, recarga por fusión, 403 ⇒ parar + refresh |
-| `components/publico/HiloComentario.tsx` | Respuestas desde props; `onRespuestaPublicada`; pasa `destinatarioId` |
-| `components/publico/RespuestaForm.tsx` (+ `formularios-vista-previa.test.ts`) | `aria-describedby` + `aria-live`; foco al cambiar de destinatario (`destinatarioId`) |
-| `components/publico/useRefrescoSiSeccionApagada.ts` | Creado: hook 403 ⇒ `router.refresh()` una vez |
-| `components/publico/MinutoAMinuto.tsx` | 403 en el poll ⇒ `clearInterval` + refresh |
-| `lib/retos/config.ts` (+ test) | `esRespuestaDeSeccionApagada` |
-| `lib/retos/modo-inicio.ts` (+ test) | Creado: `modosDeInicioPermitidos`, `MENSAJE_GUIADO_SIN_RUTA` |
-| `app/[slug]/admin/actions.ts` (+ test) | `iniciarReto` rechaza guiado sin ruta; `cambiarOcultoDeComentarioPublico` (filtro `visibilidad`, `.select("id")`) |
-| `components/admin/ActividadAcciones.tsx`, `SeccionActividad.tsx` | Prop `modosDeInicio`; sin "Guiado" si no hay ruta |
-| `lib/envio/uuid.ts` (+ test) | Creado: `generarUuidV4`, `uuidV4DesdeBytes` |
-| `components/admin/ComposerMinutoAMinuto.tsx` | Usa `generarUuidV4()` |
-| `lib/retos/instagram.ts` (+ test) | Rechaza el dominio como usuario; admite `m.` |
-| `docs/tecnico/{decisiones-tecnicas,arquitectura}.md`, `CHANGELOG.md`, `DEBT.md` | Actualizados (3 entradas RESUELTAS, 3 parciales, 2 nuevas) |
+| `supabase/migrations/0016_retos_gps.sql` | Creado: tabla `retos_gps` + token para cada reto existente. **Aplicada y verificada** en producción por el orquestador (2026-10-01) |
+| `lib/types.ts`, `lib/supabase/admin.ts` | `RetoGps`; tabla `retos_gps` en `BaseDeDatos` (con `Relationships` hacia `retos` para el embed) |
+| `lib/supabase/credenciales-gps.ts` (+ test) | Creado: `generarTokenGps`, `obtenerTokenGps`, `listarCredencialesGps`, `obtenerTokenGpsPorSlug`, `guardarTokenGps`, `asignarTokenGpsNuevo` (reintento único ante 23505) |
+| `lib/gps/owntracks.ts` (+ test) | Creado: `construirConfigOwnTracks`, `enlaceOwnTracks`, `tidDesdeSlug` |
+| `lib/gps/url-tracker.ts` (+ test) | Movido desde `lib/superadmin/`; añade `origenDesdeCabeceras` y `origenDelTracker` |
+| `lib/gps/config-gps-servidor.ts` (+ test) | Creado: `obtenerOrigenTracker`, `prepararDatosConfigGps` (URL, enlace y QR SVG) |
+| `app/api/track/route.ts` (+ test reescrito) | Token por reto, 401 único, rate limit IP 120/min + reto 40/min, sin `TRACK_TOKEN`; cabecera actualizada |
+| `app/[slug]/admin/actions.ts` (+ test) | `regenerarTokenGps(slug)` |
+| `app/superadmin/(panel)/actions.ts` (+ test) | `crearReto` genera el token; `regenerarTokenGpsReto(retoId)` |
+| `components/gps/ConfigGps.tsx` | Creado: componente cliente compartido |
+| `components/admin/SeccionGps.tsx` (+ test) | Creado: pestaña GPS; vuelve a verificar la sesión |
+| `lib/admin/navegacion.ts` (+ test), `app/[slug]/admin/page.tsx` | Pestaña "GPS" |
+| `app/superadmin/(panel)/page.tsx` (+ test nuevo) | `ConfigGps` por tarjeta; sin `TRACK_TOKEN` |
+| `app/superadmin/(panel)/UrlTrackerConToken.tsx` | Eliminado |
+| `package.json`, `pnpm-lock.yaml` | `qrcode` + `@types/qrcode` |
+| `next.config.ts` | Solo comentario (la CSP no bloquea el QR en `data:`) |
+| `docs/tecnico/{decisiones-tecnicas,arquitectura,modelo-datos}.md`, `docs/producto/funcionalidades.md`, `CHANGELOG.md`, `DEBT.md` | Actualizados (DT-035 nuevo; notas en DT-028 y DT-034; DEBT: 2 entradas nuevas, 3 actualizadas) |
 
 ## Quality gates
 
 - `pnpm typecheck`: 0 errores
 - `pnpm lint`: 0 errores, 0 warnings
-- `pnpm test`: 762 tests en verde (59 ficheros)
+- `pnpm test`: 820 tests en verde (65 ficheros)
 - `pnpm build`: OK
 
 ## Decisiones de implementación (bloqueos menores resueltos) — revisar
 
-1. **Orden por `created_at desc, id desc` al fusionar** (no "nuevas delante + resto"): coincide con la API y deja bien colocadas también las raíces del hueco si entran más de 20 en un minuto.
-2. **Paginación como unión `sin-cargar | mas | fin`**: el poll no reabre "Cargar más" con todo cargado, salvo que la página 0 llegue llena sin ninguna raíz conocida (hueco).
-3. **El poll solo añade**: una raíz ocultada o borrada sigue en el muro abierto hasta recargar (no se quita nada bajo el dedo del visitante).
-4. **La recarga tras publicar usa la misma fusión**: ya no descarta las páginas extra cargadas.
-5. **Al volver a la pestaña se sondea en el acto** y luego se reanuda el intervalo.
-6. **Poll también en "llegada"**: el muro se monta ahí (felicitaciones) y no había motivo para excluirlo.
-7. **Mensajes de ocultar/mostrar/iniciar se lanzan** (contrato `void` de esas actions): en producción Next los redacta, pero la interfaz ya no permite llegar a esos casos. Mensaje de mostrar: "No se puede mostrar un mensaje privado."
-8. **`destinatarioId`** en `RespuestaForm` para detectar el cambio de destinatario aunque dos personas se llamen igual; `aria-live="polite"` en "Respondiendo a …" para anunciar el cambio.
-9. **Instagram:** sin reglas de puntos (fuera del alcance pedido; queda en DEBT).
-
-## Historial de revisión
-
-### Reviewer — ciclo 1 (2026-09-30): APROBADO, pasa a Seguridad
-
-- Sin bloqueantes. Revisados: fusión (idempotente, sin duplicados local/poll, conserva páginas y respuestas locales, misma referencia si no cambia), estado de respuestas en `MuroComentarios` + `HiloComentario` por props (plegado, `respondiendoA` por id, `key` estable), limpieza de intervalo y listener de `visibilitychange`, `router.refresh()` una sola vez por ref (sin bucle), vista previa sin poll, `iniciarReto`, ocultar/mostrar, UUID, Instagram y `RespuestaForm`.
-- Arreglo de docs del Reviewer: comentario obsoleto en `app/[slug]/api/minuto-a-minuto/route.ts` ("no hay polling que cortar").
-- Recomendaciones registradas en `DEBT.md`: 403 en carga inicial/recarga del muro no atendido (nueva). Ya existían: tests de interacción del cableado de polls y poll del minuto a minuto con pestaña oculta.
+1. **`obtenerTokenGpsPorSlug` devuelve también `rutaId`** (`{ retoId, rutaId, token }`): el filtro geográfico necesita la ruta y así sigue siendo una sola consulta (`retos_gps` con `retos!inner` embebido).
+2. **Pestaña propia "GPS"** en el admin (no dentro de Configuración): es una tarea distinta (configurar un dispositivo) y así el token no viaja al navegador cada vez que se abre Configuración.
+3. **`SeccionGps` vuelve a llamar a `resolverRetoConSesion`** aunque la página ya lo hizo: la sección lleva el token y no debe depender de quién la monte (consultas deduplicadas con `React.cache`).
+4. **`lib/superadmin/url-tracker.ts` pasa a `lib/gps/url-tracker.ts`**: ahora lo usan admin y superadmin; la lectura de cabeceras que vivía en la página del superadmin se extrae a `lib/gps/config-gps-servidor.ts` (lógica pura en `url-tracker.ts`).
+5. **QR en SVG** (`qrcode.toString({ type: "svg" })` → data URL), corrección "M". URL y QR solo se pintan tras "Mostrar"; "Abrir en OwnTracks" también.
+6. **`ConfigGps` recibe `datos: DatosConfigGps | null`** (en vez de props sueltas): `null` = "Sin token GPS" + "Generar". Añade `urlSinToken` (para enmascarar) y `origenProvisional` (aviso).
+7. **Claves de rate limit con prefijo** (`track:ip:`, `track:reto:`): el `Map` de `lib/rate-limit.ts` es compartido y las demás rutas usan la IP a secas.
+8. **`crearReto` sigue devolviendo `ok: true` si solo falla el token**, con el aviso en el mensaje ("pulsa «Generar» en su tarjeta").
+9. **Slug mal formado ⇒ 401 sin consultar la BD** (no hace falta la comparación ficticia: el formato del slug no es secreto).
 
 ## Verificación en navegador
 
 - **No hecha:** no hay `.env` local con Supabase ni navegador en este entorno.
-- **Pendiente en preview:** muro con dos pestañas (comentario/respuesta en una aparece en la otra en ≤ 60 s; con la pestaña oculta no hay peticiones en Network; al volver, petición inmediata); respuesta a medio escribir que sobrevive a un poll; apagar comentarios / minuto a minuto desde el admin con la web abierta ⇒ la sección desaparece sola; reto sin ruta sin botón "Guiado"; panel por `http://<ip-lan>:3000` publicando en el minuto a minuto.
+- **Pendiente en preview:** pestaña GPS del admin y tarjetas del superadmin (Mostrar/Ocultar, Copiar, QR visible y escaneable, Regenerar con confirmación, "Sin token GPS" + Generar); escanear el QR con OwnTracks en el móvil (con "Allow external configuration") y comprobar que llega un punto en Posición.
+
+## Despliegue (orden obligatorio)
+
+1. ~~Aplicar `0016_retos_gps.sql` en Supabase de producción.~~ Hecho y verificado (2026-10-01).
+2. Desplegar.
+3. Reconfigurar el móvil de cada reto con el QR (el `TRACK_TOKEN` deja de valer).
+4. Borrar `TRACK_TOKEN` de Vercel.
+
+## Historial de revisión
+
+### Reviewer — 2026-10-01 — Aprobado (pasa a Seguridad)
+
+Sin bloqueantes. `/api/track` conserva intento activo del reto, fallback 0003, modo guiado/libre y filtro
+geográfico por `ruta_id`; `TRACK_TOKEN` ya no aparece en código; claves de OwnTracks coinciden con la
+documentación oficial; el token solo se lee tras verificar sesión en la propia página/sección.
+Recomendaciones (registradas en `DEBT.md`): texto de `ConfigGps` tras regenerar ("QR de abajo" con el QR
+vuelto a ocultar). Docs retocadas por el Reviewer: estado de `0016` aplicada (aquí y en `DEBT.md`) y
+`TRACK_TOKEN` marcada obsoleta en `docs/producto/roadmap.md`.
