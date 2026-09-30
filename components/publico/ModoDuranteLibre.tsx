@@ -27,9 +27,10 @@ import IntencionForm from "@/components/publico/IntencionForm";
 import ComentariosConMuro from "@/components/publico/ComentariosConMuro";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import EnlaceInstagram from "@/components/publico/EnlaceInstagram";
+import { useVistaPrevia } from "@/components/publico/VistaPrevia";
 import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
-import type { ProgresoPublicoLibre } from "@/lib/types";
+import type { EntradaMinutoAMinutoPublica, ProgresoPublicoLibre } from "@/lib/types";
 import type { Textos } from "@/lib/textos/obtener-textos";
 import { urlInstagramVisible, type ConfigReto } from "@/lib/retos/config";
 
@@ -54,6 +55,8 @@ interface ModoDuranteLibreProps {
   /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
   slug: string;
   config: ConfigReto;
+  /** Mismo papel que en ModoDurante.tsx (vista previa con datos de ejemplo, DT-034). */
+  entradasMinutoAMinutoIniciales?: EntradaMinutoAMinutoPublica[];
 }
 
 export default function ModoDuranteLibre({
@@ -63,7 +66,9 @@ export default function ModoDuranteLibre({
   textos,
   slug,
   config,
+  entradasMinutoAMinutoIniciales,
 }: ModoDuranteLibreProps) {
+  const vistaPrevia = useVistaPrevia();
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
   const [ultimoTs, setUltimoTs] = useState<string | null>(progresoInicial.ultimaPosicion?.ts ?? null);
@@ -71,6 +76,8 @@ export default function ModoDuranteLibre({
   const [puntoResaltado, setPuntoResaltado] = useState<{ lat: number; lon: number; hora: string } | null>(null);
 
   useEffect(() => {
+    // Vista previa del admin (DT-034): foto fija, sin consultar la API.
+    if (vistaPrevia) return;
     const id = setInterval(async () => {
       try {
         const response = await fetch(`/${slug}/api/progreso`);
@@ -88,7 +95,7 @@ export default function ModoDuranteLibre({
       }
     }, POLLING_MS);
     return () => clearInterval(id);
-  }, [ultimoTs, slug]);
+  }, [ultimoTs, slug, vistaPrevia]);
 
   useEffect(() => {
     const id = setInterval(() => setHora(bandaHoraria(new Date())), 60_000);
@@ -133,7 +140,13 @@ export default function ModoDuranteLibre({
           textos={textos}
         />
         {config.seccion_minuto_a_minuto && (
-          <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
+          <MinutoAMinuto
+            polling
+            entradasIniciales={entradasMinutoAMinutoIniciales}
+            onSeleccionarPunto={setPuntoResaltado}
+            textos={textos}
+            slug={slug}
+          />
         )}
       </div>
 

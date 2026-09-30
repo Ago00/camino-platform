@@ -1,6 +1,7 @@
 // Detecta cambios de fase del intento activo y recarga la página entera
 // cuando ocurren (DT-012, docs/tecnico/decisiones-tecnicas.md). Se renderiza
-// una única vez en app/[slug]/page.tsx, junto al modo activo.
+// una única vez en components/publico/WebReto.tsx, junto al modo activo, y
+// nunca en la vista previa del admin (DT-034).
 // FP1 (DT-026): recibe `slug` para construir la URL correcta del endpoint.
 
 "use client";

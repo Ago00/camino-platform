@@ -38,6 +38,11 @@ camino-santi-ago/
 │   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC); prop puntoResaltado (DT-013);
 │   │                         # prop variante "ruta"|"libre" (DT-016, modo libre sin traza de fondo)
 │   ├── publico/              # F3: hero, stats, formularios, hilo
+│   │   ├── WebReto.tsx        # DT-034: composición de la web (Server Component, con los *Conectado y sus
+│   │   │                      # cargadores), compartida por app/[slug]/page.tsx y la vista previa del admin;
+│   │   │                      # `fuente` real/ejemplo; con `vistaPrevia` no monta RefrescoAlCambiarFase;
+│   │   │                      # PeregrinoLibre solo si config.peregrino_animado
+│   │   ├── VistaPrevia.tsx    # DT-034: VistaPreviaProvider + useVistaPrevia (formularios sin envío, sin polling)
 │   │   ├── MuroComentarios.tsx / HiloComentario.tsx / RespuestaForm.tsx / InsigniaCaminante.tsx
 │   │   │                      # FP3a/DT-030: muro en hilos de un nivel, plegado si > 2 respuestas;
 │   │   │                      # FP3c/DT-032: prop permitirRespuestas (sin "Responder" si el reto las apaga)
@@ -61,7 +66,10 @@ camino-santi-ago/
 │   │                              # con ended_at como referencia final)
 │   └── admin/               # F4: secciones del panel
 │       ├── SeccionConfiguracion.tsx   # FP3c/DT-032: pestaña "Configuración" (Server Component)
-│       ├── FormConfiguracion.tsx      # FP3c/DT-032: interruptores (role="switch"), guardado conjunto
+│       ├── FormConfiguracion.tsx      # FP3c/DT-032: interruptores (role="switch"), guardado conjunto;
+│       │                              # DT-034: "Peregrino animado" y campo "Perfil de Instagram" (guardarInstagram)
+│       ├── SeccionVistaPrevia.tsx     # DT-034: pestaña "Vista previa" — selector de fase (estado local),
+│       │                              # iframe 390×780 a /<slug>/admin/vista-previa?fase=…, "Recargar"
 │       ├── FotoQuienCaminaForm.tsx    # FP3c/DT-032: subir/cambiar/quitar la foto de "quién camina"
 │       │                              # (prepararFotoParaSubida + ejecutarConReintentos, como ModalFinalizar)
 │       ├── SeccionTextos.tsx          # FP3c/DT-032: textos agrupados por bloques (<details> + índice de anclas)
@@ -97,7 +105,13 @@ camino-santi-ago/
 │   ├── comentarios/hilos.ts   # FP3a/DT-030: dominio puro de hilos — motivoRechazoPadre, agruparHilos,
 │   │                          # agruparHilosAdmin
 │   ├── retos/config.ts        # FP3c/DT-032: dominio puro de la configuración del reto — configDelReto
-│   │                          # (campo ausente ⇒ encendido), fotoQuienCaminaDelReto, urlInstagramVisible
+│   │                          # (campo ausente ⇒ encendido, también peregrino_animado DT-034),
+│   │                          # fotoQuienCaminaDelReto, urlInstagramVisible
+│   ├── retos/instagram.ts     # DT-034: normalizarPerfilInstagram / esUrlPerfilInstagram (puro)
+│   ├── vista-previa/          # DT-034: datos-ejemplo.ts (puro, `ahora` como parámetro, km de la traza de
+│   │                          # PINTADO solo para la maqueta), fuente.ts (real vs ejemplo, modo) y
+│   │                          # envio.ts (envioPermitido + aviso "Vista previa: no se envía")
+│   ├── superadmin/url-tracker.ts  # FP2.5/DT-034: URL de OwnTracks del reto, con y sin token (puro)
 │   ├── minuto-a-minuto/       # FP3b/DT-031: contar-nuevas.ts (aviso "N nuevas" con la sección plegada)
 │   │                          # y polling.ts (URL del poll, también con feed vacío; fusión sin duplicar ids)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
@@ -167,7 +181,8 @@ camino-santi-ago/
 │   │                         # rutaObjetoDelReto() (guarda pura de qué se puede borrar) y borrarObjeto()
 │   ├── textos/               # F3
 │   │   ├── defaults.ts       # textos por defecto (override desde BD)
-│   │   ├── bloques.ts        # FP3c/DT-032: BLOQUES_TEXTOS para la pestaña Textos (exhaustividad en tipos)
+│   │   ├── bloques.ts        # FP3c/DT-032: BLOQUES_TEXTOS para la pestaña Textos (exhaustividad en tipos);
+│   │   │                     # DT-034: CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION (fuera de Textos, guardarTexto las rechaza)
 │   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
 │   ├── auth/                 # F4
 │   │   ├── admin-session.ts  # firma/verificación cookie HMAC ligada a reto {r,s,v,exp} (DT-029)
@@ -208,7 +223,7 @@ camino-santi-ago/
 | Constantes de dominio | `lib/traza/umbrales.ts` | Cada umbral con su porqué. |
 | Infraestructura BD | `lib/supabase/` | Solo clientes. Sin lógica de negocio. |
 | Endpoints | `app/api/` | Validación Zod en la frontera. Sin lógica de negocio. |
-| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con la cookie del reto del slug (`resolverRetoConSesion`, DT-029) como primera operación de cada acción. Los fallos esperados de `crearMinutoAMinuto`, `finalizarReto` (DT-024), `responderComentario` (DT-030), `guardarConfiguracion` y `guardarFotoQuienCamina` (DT-032) se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). `crearMinutoAMinuto` recalcula el progreso con `lib/traza/progreso-actual.ts` cuando la caché compartida está vacía, en vez de guardar la posición a `null` (DT-019). |
+| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con la cookie del reto del slug (`resolverRetoConSesion`, DT-029) como primera operación de cada acción. Los fallos esperados de `crearMinutoAMinuto`, `finalizarReto` (DT-024), `responderComentario` (DT-030), `guardarConfiguracion` y `guardarFotoQuienCamina` (DT-032) y `guardarInstagram` (DT-034) se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). `crearMinutoAMinuto` recalcula el progreso con `lib/traza/progreso-actual.ts` cuando la caché compartida está vacía, en vez de guardar la posición a `null` (DT-019). |
 | UI | `app/` + `components/` | Sin lógica de negocio. Consume `lib/`. |
 
 ## La regla no negociable de las dos trazas
@@ -268,6 +283,12 @@ en cada petición.
   se lee siempre con `configDelReto` (`lib/retos/config.ts`). Una sección apagada no se
   renderiza en ninguna fase ni modo y su API pública responde 403; los comentarios lo
   imponen también en la RLS de INSERT (0012).
+- La web pública y la vista previa del admin (`/<slug>/admin/vista-previa`, DT-034) se componen
+  siempre con `components/publico/WebReto.tsx`; no se compone la web en ningún otro sitio. En la
+  vista previa (`vistaPrevia`) ningún formulario envía, no hay polling hacia `/api/*` y no se monta
+  `RefrescoAlCambiarFase`.
+- El `TRACK_TOKEN` solo sale del servidor hacia el panel superadmin, que verifica la sesión en la
+  propia página antes de leerlo (DT-034). Nunca en el admin de un reto.
 - El `modo` de un intento (`'guiado' | 'libre'`, DT-016) se fija en `iniciarReto()`
   (transición `antes` → `durante`) y es inmutable durante toda su vida — cambiarlo
   exige "Reiniciar" (que abre un intento nuevo). `destino_lat`/`destino_lon` solo

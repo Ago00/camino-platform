@@ -13,20 +13,15 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { contarNuevas } from "@/lib/minuto-a-minuto/contar-nuevas";
 import { construirUrlPolling, fusionarSinDuplicados } from "@/lib/minuto-a-minuto/polling";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import type { EntradaMinutoAMinutoPublica } from "@/lib/types";
+import { useVistaPrevia } from "@/components/publico/VistaPrevia";
 
 const PAGINA = 20;
 const POLLING_MS = 30_000;
 
 const C = { ink: "#1B211D", muted: "#4A5450", ember: "#D9773B" };
 
-export interface EntradaMinutoAMinutoPublica {
-  id: number;
-  texto: string;
-  foto_url: string | null;
-  lat: number | null;
-  lon: number | null;
-  created_at: string;
-}
+export type { EntradaMinutoAMinutoPublica };
 
 interface RespuestaFeed {
   entradas: EntradaMinutoAMinutoPublica[];
@@ -74,6 +69,7 @@ export default function MinutoAMinuto({
     entradasIniciales ? idMasReciente(entradasIniciales) : null
   );
   const regionId = useId();
+  const vistaPrevia = useVistaPrevia();
   const nuevas = plegado ? contarNuevas(entradas, ultimoVistoId) : 0;
 
   const cargarPagina = useCallback(async (offset: number) => {
@@ -98,14 +94,15 @@ export default function MinutoAMinuto({
 
   // Poll de entradas nuevas (solo modo "durante"): cada 30 s, pide las
   // entradas con id mayor que la más reciente ya cargada (todas si el feed
-  // está vacío) y las añade arriba. Igual con la sección plegada o no.
+  // está vacío) y las añade arriba. Igual con la sección plegada o no. En la
+  // vista previa del admin no hay poll (DT-034): lo que se ve es una foto fija.
   const masRecienteIdRef = useRef<number | null>(null);
   useEffect(() => {
     masRecienteIdRef.current = entradas.length > 0 ? entradas[0].id : null;
   }, [entradas]);
 
   useEffect(() => {
-    if (!polling) return;
+    if (!polling || vistaPrevia) return;
 
     const id = setInterval(async () => {
       try {
@@ -122,7 +119,7 @@ export default function MinutoAMinuto({
     }, POLLING_MS);
 
     return () => clearInterval(id);
-  }, [polling, slug]);
+  }, [polling, vistaPrevia, slug]);
 
   function alternarPlegado() {
     // Al plegar, lo que hay en pantalla es la referencia del aviso; al

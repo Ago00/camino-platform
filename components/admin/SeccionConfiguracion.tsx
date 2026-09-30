@@ -1,5 +1,6 @@
 // Pestaña "Configuración" (FP3c, DT-032): interruptores de las secciones de la
-// web pública y de las respuestas de visitantes, y foto de "quién camina".
+// web pública, de las respuestas de visitantes y del peregrino animado, perfil
+// de Instagram (DT-034) y foto de "quién camina".
 // Server Component: la configuración ya viene en el `reto` resuelto por la
 // página (select * de `retos`), no hace falta otra consulta.
 
@@ -26,7 +27,11 @@ export default async function SeccionConfiguracion({ reto, slug }: { reto: Reto;
             recibido no se borra y lo sigues viendo aquí en el panel.
           </p>
         </div>
-        <FormConfiguracion configInicial={configDelReto(reto)} slug={slug} />
+        <FormConfiguracion
+          configInicial={configDelReto(reto)}
+          perfilInstagramInicial={textos.cierre_antes_instagram_url}
+          slug={slug}
+        />
       </section>
 
       <section className="space-y-3">

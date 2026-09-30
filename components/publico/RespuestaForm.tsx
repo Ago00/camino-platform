@@ -8,6 +8,8 @@
 import { useState } from "react";
 import type { Textos } from "@/lib/textos/obtener-textos";
 import type { ComentarioPublico } from "@/lib/types";
+import { useVistaPrevia } from "@/components/publico/VistaPrevia";
+import { AVISO_ENVIO_EN_VISTA_PREVIA, envioPermitido } from "@/lib/vista-previa/envio";
 
 const C = { eucalipto: "#2F5D50" };
 
@@ -35,10 +37,15 @@ export default function RespuestaForm({ textos, slug, parentId, destinatario, on
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState<Estado>("idle");
 
-  const incompleto = nombre.trim().length === 0 || texto.trim().length === 0;
+  const vistaPrevia = useVistaPrevia();
+  const puedeEnviar = envioPermitido({
+    vistaPrevia,
+    completo: nombre.trim().length > 0 && texto.trim().length > 0,
+    enviando: estado === "enviando",
+  });
 
   async function enviar() {
-    if (incompleto || estado === "enviando") return;
+    if (!puedeEnviar) return;
     setEstado("enviando");
     try {
       const response = await fetch(`/${slug}/api/comentarios`, {
@@ -86,13 +93,17 @@ export default function RespuestaForm({ textos, slug, parentId, destinatario, on
           <p className="text-[12px]" style={{ color: "#B03A2E" }} role="alert">
             {textos.mensaje_error_generico}
           </p>
+        ) : vistaPrevia ? (
+          <p className="text-[12px]" style={{ color: "#7C857F" }}>
+            {AVISO_ENVIO_EN_VISTA_PREVIA}
+          </p>
         ) : (
           <span />
         )}
         <button
           type="button"
           onClick={enviar}
-          disabled={incompleto || estado === "enviando"}
+          disabled={!puedeEnviar}
           className="rounded-full px-3.5 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-50"
           style={{ background: C.eucalipto }}
         >

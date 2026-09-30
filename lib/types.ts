@@ -44,6 +44,11 @@ export interface Reto {
   /** Respuestas de visitantes en los comentarios (FP3a). false = solo responde el caminante desde el admin. */
   respuestas_visitantes: boolean;
   /**
+   * Peregrino animado que pasea por la pantalla (DT-034, migración 0015).
+   * Default false en BD; true en 'santi-ago'. Leer con `configDelReto`.
+   */
+  peregrino_animado: boolean;
+  /**
    * Foto de "quién camina": URL pública del bucket `minuto-a-minuto` (objeto
    * `<reto_id>/quien-camina-…`) o ruta de `/public` heredada (`/santi.jpg`).
    * null = silueta genérica.
@@ -189,6 +194,13 @@ export interface MinutoAMinuto {
   created_at: string; // ISO 8601
   updated_at: string; // ISO 8601
 }
+
+/**
+ * Campos de una entrada del "minuto a minuto" que salen hacia la web pública
+ * (sin `clave_envio` ni `updated_at`). También los usan los datos de ejemplo
+ * de la vista previa del admin (DT-034).
+ */
+export type EntradaMinutoAMinutoPublica = Pick<MinutoAMinuto, "id" | "texto" | "foto_url" | "lat" | "lon" | "created_at">;
 
 /**
  * Una visita a la web pública, capturada server-side en `proxy.ts` (DT-022).

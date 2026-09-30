@@ -47,6 +47,8 @@ import type { ResultadoPublicacion, Reto } from "@/lib/types";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
+import { esClaveGestionadaEnConfiguracion } from "@/lib/textos/bloques";
+import { normalizarPerfilInstagram } from "@/lib/retos/instagram";
 import { motivoRechazoPadre, type MotivoRechazoPadre } from "@/lib/comentarios/hilos";
 
 class SesionInvalidaError extends Error {
@@ -470,6 +472,11 @@ export async function guardarTexto(slug: string, clave: string, valor: string): 
   if (!esClaveDeTexto(clave)) {
     throw new Error(`Clave de texto desconocida: ${clave}`);
   }
+  // Se validan y guardan desde Configuración (DT-034): por aquí se saltarían
+  // esa validación (p. ej. una URL de Instagram arbitraria).
+  if (esClaveGestionadaEnConfiguracion(clave)) {
+    throw new Error("Este texto se edita en la pestaña Configuración.");
+  }
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
@@ -490,8 +497,8 @@ function revalidarWebYAdmin(slug: string): void {
   revalidarAdmin(slug);
 }
 
-// `.strict()`: un campo que no sea uno de los cinco interruptores (p. ej.
-// `activo`, `slug` o `quien_camina_foto_url`) se rechaza en vez de ignorarse.
+// `.strict()`: un campo que no sea uno de los interruptores (p. ej. `activo`,
+// `slug` o `quien_camina_foto_url`) se rechaza en vez de ignorarse.
 const esquemaConfiguracion = z
   .object({
     seccion_intenciones: z.boolean(),
@@ -499,6 +506,7 @@ const esquemaConfiguracion = z
     seccion_minuto_a_minuto: z.boolean(),
     seccion_instagram: z.boolean(),
     respuestas_visitantes: z.boolean(),
+    peregrino_animado: z.boolean(),
   })
   .strict() satisfies z.ZodType<ConfigReto>;
 
@@ -517,6 +525,32 @@ export async function guardarConfiguracion(slug: string, config: unknown): Promi
 
   const { error } = await getSupabaseAdmin().from("retos").update(datos.data).eq("id", reto.id);
   if (error) return { ok: false, mensaje: "No se pudo guardar la configuración. Vuelve a intentarlo." };
+
+  revalidarWebYAdmin(slug);
+  return { ok: true };
+}
+
+const CLAVE_TEXTO_INSTAGRAM = "cierre_antes_instagram_url" satisfies ClaveTexto;
+
+/**
+ * Guarda el perfil de Instagram del reto (DT-034), normalizado a
+ * `https://instagram.com/usuario` (vacío = sin enlace), en la fila de `textos`
+ * de siempre. `valor` es `unknown` por el mismo motivo que en
+ * `guardarConfiguracion`: se valida aquí, no se confía en el cliente.
+ */
+export async function guardarInstagram(slug: string, valor: unknown): Promise<ResultadoPublicacion> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+
+  const texto = z.string().safeParse(valor);
+  if (!texto.success) return { ok: false, mensaje: "Perfil de Instagram no válido." };
+  const perfil = normalizarPerfilInstagram(texto.data);
+  if (!perfil.ok) return perfil;
+
+  const { error } = await getSupabaseAdmin()
+    .from("textos")
+    .upsert({ reto_id: reto.id, clave: CLAVE_TEXTO_INSTAGRAM, valor: perfil.url }, { onConflict: "reto_id,clave" });
+  if (error) return { ok: false, mensaje: "No se pudo guardar el perfil de Instagram. Vuelve a intentarlo." };
 
   revalidarWebYAdmin(slug);
   return { ok: true };

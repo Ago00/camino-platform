@@ -4,21 +4,25 @@
 // para ese reto. Los formularios son componentes cliente con `useActionState`
 // (estado pendiente y resultado visibles); editar y eliminar redirigen aquí
 // con el aviso en la query (?guardado=<id> / ?eliminado=<slug>).
-// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028), si
-// tiene contraseña de admin configurada (FP2.6, DT-029) y enlaces a su web y
-// a su panel admin.
+// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028) —
+// completa, con el token, oculta hasta pulsar "Mostrar" (DT-034) —, si tiene
+// contraseña de admin configurada (FP2.6, DT-029) y enlaces a su web y a su
+// panel admin.
 
 import Link from "next/link";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { RUTAS_PREDEFINIDAS } from "@/lib/rutas/catalogo";
 import { listarRetosConCredencial } from "@/lib/supabase/credenciales-admin";
 import { listarTodosLosRetos } from "@/lib/supabase/retos";
+import { NOMBRE_COOKIE_SUPERADMIN_SESION, verificarSesionSuperadmin } from "@/lib/auth/superadmin-session";
+import { urlTrackerConToken, urlTrackerDelReto } from "@/lib/superadmin/url-tracker";
 import { editarReto, eliminarReto, cerrarSesionSuperadmin } from "./actions";
 import BotonEliminarReto from "./BotonEliminarReto";
 import { COLORES_SUPERADMIN as C, EnlacesReto, MensajeResultado } from "./CamposReto";
 import FormularioCrearReto from "./FormularioCrearReto";
 import FormularioEditarReto from "./FormularioEditarReto";
+import UrlTrackerConToken from "./UrlTrackerConToken";
 import { leerAvisoPanel } from "./resultado-accion";
 import type { Reto } from "@/lib/types";
 
@@ -29,6 +33,16 @@ interface SuperadminPageProps {
 }
 
 export default async function SuperadminPage({ searchParams }: SuperadminPageProps) {
+  // Esta página envía el TRACK_TOKEN al navegador: la sesión se comprueba
+  // aquí mismo y no solo en el layout, que no impide que la página se
+  // renderice ni que su contenido viaje en el payload RSC (guía de
+  // autenticación de Next 16, "Layouts and auth checks").
+  const almacenCookies = await cookies();
+  if (!verificarSesionSuperadmin(almacenCookies.get(NOMBRE_COOKIE_SUPERADMIN_SESION)?.value)) {
+    redirect("/superadmin/login");
+  }
+  const trackToken = leerTrackToken();
+
   const sp = await searchParams;
   const editarId = sp.edit ? Number(sp.edit) : null;
   const aviso = leerAvisoPanel(sp);
@@ -96,6 +110,7 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
                   modoEdicion={editarId === reto.id}
                   recienGuardado={aviso?.tipo === "guardado" && aviso.retoId === reto.id}
                   urlTracker={urlTrackerDelReto(origen, reto.slug)}
+                  urlTrackerConToken={trackToken === null ? null : urlTrackerConToken(origen, reto.slug, trackToken)}
                   tieneCredencial={retosConCredencial.has(reto.id)}
                 />
               ))}
@@ -132,12 +147,13 @@ async function obtenerOrigenPeticion(): Promise<string | null> {
 }
 
 /**
- * URL que hay que configurar en OwnTracks para el reto: `/api/track` con el
- * slug en `?reto=`. El token (`t=`) no se muestra: es un secreto global que
- * vive en la env var `TRACK_TOKEN`.
+ * Token global del tracker (env `TRACK_TOKEN`, el mismo que comprueba
+ * /api/track), o null si no está configurado. Solo se llama tras verificar la
+ * sesión del superadmin.
  */
-function urlTrackerDelReto(origen: string | null, slug: string): string {
-  return `${origen ?? ""}/api/track?reto=${encodeURIComponent(slug)}`;
+function leerTrackToken(): string | null {
+  const token = process.env.TRACK_TOKEN;
+  return token !== undefined && token.trim() !== "" ? token : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,12 +165,15 @@ function RetoCard({
   modoEdicion,
   recienGuardado,
   urlTracker,
+  urlTrackerConToken,
   tieneCredencial,
 }: {
   reto: Reto;
   modoEdicion: boolean;
   recienGuardado: boolean;
   urlTracker: string;
+  /** null si `TRACK_TOKEN` no está configurado. */
+  urlTrackerConToken: string | null;
   tieneCredencial: boolean;
 }) {
   return (
@@ -196,16 +215,27 @@ function RetoCard({
         <p className="text-[12px] font-medium" style={{ color: C.gris }}>
           URL del GPS (OwnTracks)
         </p>
-        <code
-          className="mt-0.5 block select-all break-all rounded-md px-2 py-1 font-mono text-[12.5px]"
-          style={{ background: C.paper }}
-        >
-          {urlTracker}
-        </code>
-        <p className="mt-0.5 text-[12px]" style={{ color: C.gris }}>
-          Añade <span className="font-mono">&amp;t=</span> seguido del valor de{" "}
-          <span className="font-mono">TRACK_TOKEN</span>.
-        </p>
+        {urlTrackerConToken !== null ? (
+          <>
+            <UrlTrackerConToken urlSinToken={urlTracker} urlConToken={urlTrackerConToken} />
+            <p className="mt-1 text-[12px]" style={{ color: C.gris }}>
+              El token es común a todos los retos; no lo compartas fuera de quien configura el móvil.
+            </p>
+          </>
+        ) : (
+          <>
+            <code
+              className="mt-0.5 block select-all break-all rounded-md px-2 py-1 font-mono text-[12.5px]"
+              style={{ background: C.paper }}
+            >
+              {urlTracker}
+            </code>
+            <p className="mt-0.5 text-[12px]" style={{ color: C.rojo }}>
+              <span className="font-mono">TRACK_TOKEN</span> no está configurado en el servidor: el GPS no
+              funcionará hasta que se defina.
+            </p>
+          </>
+        )}
       </div>
 
       {/* Estado de la contraseña del panel admin del reto (FP2.6, DT-029) */}

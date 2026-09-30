@@ -1,18 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { BLOQUES_TEXTOS } from "@/lib/textos/bloques";
+import {
+  BLOQUES_TEXTOS,
+  CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION,
+  esClaveGestionadaEnConfiguracion,
+} from "@/lib/textos/bloques";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
 
 describe("BLOQUES_TEXTOS", () => {
-  it("cada clave de texto está en exactamente un bloque", () => {
+  it("cada clave de texto está en exactamente un bloque o se gestiona en Configuración, nunca en los dos", () => {
     const apariciones = new Map<string, number>();
     for (const bloque of BLOQUES_TEXTOS) {
       for (const clave of bloque.claves) apariciones.set(clave, (apariciones.get(clave) ?? 0) + 1);
+    }
+    for (const clave of CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION) {
+      apariciones.set(clave, (apariciones.get(clave) ?? 0) + 1);
     }
 
     for (const clave of CLAVES_TEXTOS) {
       expect({ clave, veces: apariciones.get(clave) ?? 0 }).toEqual({ clave, veces: 1 });
     }
     expect(apariciones.size).toBe(CLAVES_TEXTOS.length);
+  });
+
+  it("la URL de Instagram ya no sale en la pestaña Textos (se edita en Configuración, DT-034)", () => {
+    const clavesEnTextos = BLOQUES_TEXTOS.flatMap((bloque) => [...bloque.claves]);
+    expect(clavesEnTextos).not.toContain("cierre_antes_instagram_url");
+    expect(esClaveGestionadaEnConfiguracion("cierre_antes_instagram_url")).toBe(true);
+    expect(esClaveGestionadaEnConfiguracion("reto_titulo")).toBe(false);
   });
 
   it("los ids de bloque son únicos (se usan como anclas)", () => {

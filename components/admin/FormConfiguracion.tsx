@@ -1,13 +1,17 @@
-// Interruptores de la configuración del reto (FP3c, DT-032). Se editan en
-// local y se guardan juntos con un solo botón, para que apagar varias
-// secciones sea un único cambio en la web. Cada interruptor es un
-// <button role="switch" aria-checked>, accesible con teclado y lector.
+// Interruptores de la configuración del reto (FP3c, DT-032) y perfil de
+// Instagram (DT-034). Se editan en local y se guardan juntos con un solo
+// botón, para que apagar varias secciones sea un único cambio en la web. Cada
+// interruptor es un <button role="switch" aria-checked>, accesible con teclado
+// y lector. El perfil de Instagram se valida aquí con la misma función pura
+// que en el servidor (el servidor vuelve a validarlo) y se guarda con su
+// propia acción, solo si ha cambiado.
 
 "use client";
 
 import { useId, useState, useTransition } from "react";
-import { guardarConfiguracion } from "@/app/[slug]/admin/actions";
+import { guardarConfiguracion, guardarInstagram } from "@/app/[slug]/admin/actions";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
+import { normalizarPerfilInstagram } from "@/lib/retos/instagram";
 import type { CampoConfigReto, ConfigReto } from "@/lib/retos/config";
 
 const C = { ink: "#1B211D", muted: "#4A5450", eucalipto: "#2F5D50", peligro: "#B03A2E" };
@@ -46,7 +50,12 @@ const INTERRUPTORES: readonly DefinicionInterruptor[] = [
   {
     campo: "seccion_instagram",
     etiqueta: "Instagram",
-    descripcion: "Enlace a Instagram (solo si has puesto la URL en Textos).",
+    descripcion: "Enlace a tu perfil de Instagram (indícalo justo debajo).",
+  },
+  {
+    campo: "peregrino_animado",
+    etiqueta: "Peregrino animado",
+    descripcion: "El peregrino que pasea por la pantalla y deja huellas.",
   },
 ];
 
@@ -54,31 +63,66 @@ type EstadoGuardado = { fase: "inactivo" } | { fase: "guardado" } | { fase: "err
 
 interface FormConfiguracionProps {
   configInicial: ConfigReto;
+  /** URL guardada del perfil de Instagram (vacía = sin enlace). */
+  perfilInstagramInicial: string;
   slug: string;
 }
 
-export default function FormConfiguracion({ configInicial, slug }: FormConfiguracionProps) {
+export default function FormConfiguracion({ configInicial, perfilInstagramInicial, slug }: FormConfiguracionProps) {
   const [config, setConfig] = useState<ConfigReto>(configInicial);
   const [guardadaUltima, setGuardadaUltima] = useState<ConfigReto>(configInicial);
+  const [perfilInstagram, setPerfilInstagram] = useState(perfilInstagramInicial);
+  const [perfilGuardado, setPerfilGuardado] = useState(perfilInstagramInicial);
   const [estado, setEstado] = useState<EstadoGuardado>({ fase: "inactivo" });
   const [pendiente, startTransition] = useTransition();
 
-  const sinCambios = INTERRUPTORES.every(({ campo }) => config[campo] === guardadaUltima[campo]);
+  const interruptoresSinCambios = INTERRUPTORES.every(({ campo }) => config[campo] === guardadaUltima[campo]);
+  const perfilSinCambios = perfilInstagram.trim() === perfilGuardado.trim();
+  const sinCambios = interruptoresSinCambios && perfilSinCambios;
 
   function alternar(campo: CampoConfigReto) {
     setConfig((previa) => ({ ...previa, [campo]: !previa[campo] }));
     setEstado({ fase: "inactivo" });
   }
 
+  function cambiarPerfil(valor: string) {
+    setPerfilInstagram(valor);
+    setEstado({ fase: "inactivo" });
+  }
+
   function guardar() {
+    // Validación antes de enviar nada: con un perfil mal escrito no se guarda
+    // tampoco lo demás, para no dejar la configuración a medias.
+    let urlPerfil: string | null = null;
+    if (!perfilSinCambios) {
+      const perfil = normalizarPerfilInstagram(perfilInstagram);
+      if (!perfil.ok) {
+        setEstado({ fase: "error", mensaje: perfil.mensaje });
+        return;
+      }
+      urlPerfil = perfil.url;
+    }
+    const configAGuardar = config;
+
     startTransition(async () => {
       try {
-        const resultado = await guardarConfiguracion(slug, config);
-        if (!resultado.ok) {
-          setEstado({ fase: "error", mensaje: resultado.mensaje });
-          return;
+        if (!interruptoresSinCambios) {
+          const resultado = await guardarConfiguracion(slug, configAGuardar);
+          if (!resultado.ok) {
+            setEstado({ fase: "error", mensaje: resultado.mensaje });
+            return;
+          }
+          setGuardadaUltima(configAGuardar);
         }
-        setGuardadaUltima(config);
+        if (urlPerfil !== null) {
+          const resultado = await guardarInstagram(slug, urlPerfil);
+          if (!resultado.ok) {
+            setEstado({ fase: "error", mensaje: resultado.mensaje });
+            return;
+          }
+          setPerfilInstagram(urlPerfil);
+          setPerfilGuardado(urlPerfil);
+        }
         setEstado({ fase: "guardado" });
       } catch (error) {
         if (esControlDeFlujoDeNext(error)) throw error;
@@ -99,6 +143,14 @@ export default function FormConfiguracion({ configInicial, slug }: FormConfigura
               deshabilitado={pendiente}
               onAlternar={() => alternar(definicion.campo)}
             />
+            {definicion.campo === "seccion_instagram" && (
+              <CampoPerfilInstagram
+                valor={perfilInstagram}
+                sinEfecto={!config.seccion_instagram}
+                deshabilitado={pendiente}
+                onCambiar={cambiarPerfil}
+              />
+            )}
           </li>
         ))}
       </ul>
@@ -127,6 +179,48 @@ export default function FormConfiguracion({ configInicial, slug }: FormConfigura
           {estado.mensaje}
         </p>
       )}
+    </div>
+  );
+}
+
+function CampoPerfilInstagram({
+  valor,
+  sinEfecto,
+  deshabilitado,
+  onCambiar,
+}: {
+  valor: string;
+  sinEfecto: boolean;
+  deshabilitado: boolean;
+  onCambiar: (valor: string) => void;
+}) {
+  const idCampo = useId();
+  const idAyuda = useId();
+
+  return (
+    <div className="mt-3" style={{ opacity: sinEfecto ? 0.55 : 1 }}>
+      <label htmlFor={idCampo} className="text-[13px] font-medium" style={{ color: C.ink }}>
+        Perfil de Instagram
+      </label>
+      <input
+        id={idCampo}
+        type="text"
+        inputMode="url"
+        autoComplete="off"
+        spellCheck={false}
+        value={valor}
+        onChange={(e) => onCambiar(e.target.value)}
+        disabled={deshabilitado}
+        maxLength={300}
+        placeholder="@usuario o instagram.com/usuario"
+        aria-describedby={idAyuda}
+        className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-[14px] outline-none placeholder:text-[#A8AEA8] disabled:opacity-60"
+        style={{ borderColor: "#00000015" }}
+      />
+      <p id={idAyuda} className="mt-1 text-[12px] leading-snug" style={{ color: C.muted }}>
+        Se guarda como https://instagram.com/usuario. Vacío, no se muestra ningún enlace.
+        {sinEfecto && " Sin efecto mientras Instagram esté apagado."}
+      </p>
     </div>
   );
 }

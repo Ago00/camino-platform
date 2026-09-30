@@ -2,6 +2,67 @@
 
 ---
 
+## ~~Las llamadas de la web a `/<slug>/api/*` se registran como visitas en "Tráfico"~~ — RESUELTO (proxy.ts ignora /:slug/api/*, con tests)
+
+**Fecha:** 2026-09-30
+**Contexto:** Detectado en la revisión de DT-034 (vista previa) al comprobar que la vista previa no registra visitas. Es previo a esa tarea.
+**Problema:** El `matcher` de `proxy.ts` (`/((?!api|_next/static|…).*)`) solo excluye rutas que *empiezan* por `/api`. `/<slug>/api/progreso`, `/<slug>/api/fase`, `/<slug>/api/minuto-a-minuto`, `/<slug>/api/comentarios`… empiezan por el slug, pasan por `proxyPublico` y cada una inserta una fila en `visitas_web`. Con la web abierta en "durante", cada visitante suma varias "visitas" cada 30 s (polling de progreso, fase y minuto a minuto). La vista previa del admin también genera filas por sus lecturas GET (muro, primera página del minuto a minuto), aunque su propia página (`/<slug>/admin/vista-previa`) no cuente.
+**Impacto:** Alto para la pestaña "Tráfico" durante el reto: visitas totales y desglose "Por página" inflados por el polling; además, un insert en BD por cada petición de API.
+**Solución propuesta:** En `proxy.ts`, pasar de largo (sin `registrarVisita`) cuando el segundo segmento sea `api` (`/^\/[^/]+\/api(\/|$)/`), con test en `proxy.test.ts`. Valorar limpiar las filas existentes con `ruta like '/%/api/%'`.
+**Prioridad:** Alta.
+
+---
+
+## ~~Recordatorio: aplicar `supabase/migrations/0015_peregrino_animado.sql` contra producción~~ — RESUELTO
+
+Aplicada por el orquestador el 2026-09-30 (`santi-ago` a `true`, el resto a `false`).
+
+**Fecha:** 2026-09-30
+**Contexto:** Vista previa, peregrino, Instagram y URL del GPS (DT-034). La migración está escrita; la aplica el orquestador.
+**Problema:** Hasta aplicarla, `retos.peregrino_animado` no existe: `configDelReto` lo trata como encendido (el peregrino sigue en todas las webs, como antes) y guardar la configuración desde el panel falla (el `update` envía la columna).
+**Impacto:** Medio mientras no se aplique: el admin no puede guardar la pestaña Configuración.
+**Solución propuesta:** Aplicar `0015` y verificar: `select slug, peregrino_animado from retos;` ⇒ `santi-ago` a `true`, el resto a `false`; `column_default` de la columna `false`, `is_nullable` `NO`.
+**Prioridad:** Alta.
+
+---
+
+## La web ignora el texto editable `mensaje_llegada_default`
+
+**Fecha:** 2026-09-30
+**Contexto:** Detectado al mover la composición de la web a `components/publico/WebReto.tsx` (DT-034). No se tocó para no cambiar comportamiento en esa tarea.
+**Problema:** Si el intento no tiene `mensaje_llegada`, `WebReto.tsx` (y `SeccionActividad.tsx` para el valor inicial del modal "Finalizar") usan `TEXTOS_POR_DEFECTO.mensaje_llegada_default`, no el valor editado en la pestaña Textos. La clave aparece en Textos pero editarla no cambia nada.
+**Impacto:** Bajo: en la práctica el modal "Finalizar" siempre guarda un mensaje, así que el default casi nunca se ve. Confunde al admin que lo edita.
+**Solución propuesta:** Pasar `textos.mensaje_llegada_default` en vez de la constante (en WebReto y en SeccionActividad), o quitar la clave de la pestaña Textos si no se quiere editable.
+**Prioridad:** Baja.
+
+---
+
+## Vista previa: el bloqueo de los formularios no tiene test de interacción
+
+**Fecha:** 2026-09-30
+**Contexto:** DT-034. El proyecto no tiene entorno DOM en los tests (solo `node`).
+**Problema:** Que un formulario en la vista previa no haga `fetch` se garantiza con la regla pura `envioPermitido` (probada) y se comprueba con `renderToString` que cada formulario lee el contexto (aviso visible). No hay ningún test que pulse el botón con el formulario relleno y verifique que no hay petición.
+**Impacto:** Bajo: el cableado es de una línea por formulario y usa la misma función que el `disabled`.
+**Solución propuesta:** Si se añade jsdom + Testing Library (ya recomendado en otras entradas), un test por formulario que rellene, pulse y compruebe que `fetch` no se llama.
+**Prioridad:** Baja.
+
+---
+
+## Recomendaciones de la revisión de DT-034 (vista previa, peregrino, Instagram, URL del GPS)
+
+**Fecha:** 2026-09-30
+**Contexto:** Revisión del lote DT-034.
+**Problema:**
+(1) Ningún test protege que `WebReto` no monte `RefrescoAlCambiarFase` con `vistaPrevia` (si se monta, el iframe se recarga en bucle al previsualizar una fase distinta de la real) ni que `PeregrinoLibre` dependa de `config.peregrino_animado`. Tampoco que `FaseConDatosEjemplo` pase `SIN_ENTRADAS` con el minuto a minuto apagado.
+(2) `lib/retos/instagram.ts`: `instagram.com` o `www.instagram.com` a secas (sin usuario) pasan como usuario (el patrón admite puntos) y se guardan como `https://instagram.com/instagram.com`. Tampoco se aplican las reglas reales de Instagram (sin punto inicial/final ni dos puntos seguidos) ni se acepta `m.instagram.com`.
+(3) `esUrlPerfilInstagram` exige esquema: si el valor guardado de `santi-ago` en `textos.cierre_antes_instagram_url` no lo lleva (o no es un perfil), el enlace desaparece de su web tras desplegar.
+(4) Los km de los datos de ejemplo del modo guiado salen de la traza de PINTADO (acortada por DP), así que el mojón de ejemplo no cuadra con la longitud real de la ruta.
+**Impacto:** Bajo, salvo (3), que cambia la web de `santi-ago` si el valor no es válido.
+**Solución propuesta:** (1) Test con `renderToString` de `WebReto` en "antes" con `RefrescoAlCambiarFase`/`PeregrinoLibre` sustituidos por dobles. (2) Rechazar usuarios con punto inicial/final, `..` o que terminen en un dominio (`.com`), y admitir `m.`. (3) Antes de desplegar: `select valor from textos where clave = 'cierre_antes_instagram_url';` y, si no pasa, volver a guardarlo desde Configuración. (4) Si molesta, escalar con la longitud del catálogo de rutas.
+**Prioridad:** Media para (3) (comprobar antes de desplegar); Baja el resto.
+
+---
+
 ## `vitest` 3.x con avisos moderados (GHSA-82fw-gwwq-j7x9)
 
 **Fecha:** 2026-09-30
@@ -64,17 +125,6 @@
 
 ---
 
-## `docs/producto/` no refleja la configuración por reto (FP3c)
-
-**Fecha:** 2026-09-30
-**Contexto:** FP3c (DT-032) se implementó con las decisiones de producto cerradas en el prompt; el Implementador no escribe en `docs/producto/`.
-**Problema:** `funcionalidades.md` y `decisiones-producto.md` no recogen la pestaña "Configuración" (interruptores de secciones, respuestas de visitantes, foto de quién camina) ni los textos agrupados por bloques.
-**Impacto:** Documentación de producto desfasada.
-**Solución propuesta:** Invocar al Agente de Producto al cerrar la tarea.
-**Prioridad:** Baja.
-
----
-
 ## ~~"Minuto a minuto" plegable: botón y aviso sin contexto para lector de pantalla (FP3b)~~ — RESUELTO
 
 **Fecha:** 2026-09-30 → Resuelto 2026-09-30 (cabecera en acordeón)
@@ -89,17 +139,6 @@ Toda la cabecera es el botón (`aria-expanded`/`aria-controls`): su nombre acces
 **Problema:** `cargarPagina` tiene `try/finally` sin `catch`: un fallo de red en la carga inicial (`void cargarPagina(0)`) o en "Cargar más" produce un unhandled rejection. Además, las respuestas de `fetch` se tipan con anotación (`const data: RespuestaFeed = await response.json()`) sin validar con Zod.
 **Impacto:** Ruido en consola/monitorización ante fallos de red; si la forma de la API cambia, el error aparece lejos del origen.
 **Solución propuesta:** Añadir `catch` silencioso como en el poll, y un esquema Zod compartido para `RespuestaFeed` usado en carga y poll.
-**Prioridad:** Baja.
-
----
-
-## `docs/producto/` no refleja el "minuto a minuto" plegable (FP3b)
-
-**Fecha:** 2026-09-30
-**Contexto:** FP3b (DT-031) se implementó con las decisiones de producto cerradas en el prompt, pero el Implementador no escribe en `docs/producto/`.
-**Problema:** `funcionalidades.md` y `decisiones-producto.md` no recogen que la sección se pliega (abierta en "durante", plegada en "llegada", sin persistir, aviso de nuevas).
-**Impacto:** La documentación de producto queda desfasada respecto a la web.
-**Solución propuesta:** Invocar al Agente de Producto para registrar la funcionalidad y la decisión.
 **Prioridad:** Baja.
 
 ---
@@ -129,17 +168,6 @@ Toda la cabecera es el botón (`aria-expanded`/`aria-controls`): su nombre acces
 **Problema:** PostgREST corta a 1000 filas por petición sin avisar: una página con más de 1000 respuestas en total perdería las más recientes en silencio.
 **Impacto:** Nulo con el volumen esperado (decenas de respuestas); relevante solo si un hilo se hace viral.
 **Solución propuesta:** Si llega a pasar, paginar respuestas por hilo (p. ej. las últimas N con un "ver anteriores") o detectar la página llena y avisar.
-**Prioridad:** Baja.
-
----
-
-## `docs/producto/` no refleja las respuestas en hilo (FP3a)
-
-**Fecha:** 2026-09-29
-**Contexto:** FP3a, implementada por el pipeline técnico (ver lección de `docs/LESSONS.md` sobre `docs/producto/`).
-**Problema:** `funcionalidades.md`, `decisiones-producto.md` y `roadmap.md` no describen las respuestas, la insignia "Caminante" ni el borrado/ocultado en cascada del hilo.
-**Impacto:** Documentación de producto desactualizada.
-**Solución propuesta:** Invocar al Agente de Producto al cierre de FP3a.
 **Prioridad:** Baja.
 
 ---
@@ -195,17 +223,6 @@ Las acciones devuelven `ResultadoAccionSuperadmin`/`ResultadoCrearReto` (`app/su
 
 ---
 
-## `docs/producto/` no refleja el panel superadmin ni la nueva home de listado de retos (FP2)
-
-**Fecha:** 2026-09-29
-**Contexto:** Revisión de FP2 (DT-027). Mismo patrón registrado en LESSONS.md ("Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre"): FP2 añade dos superficies de usuario visibles (panel `/superadmin` para gestión de retos y la home `/` como listado dinámico de retos activos) con `CHANGELOG.md` y documentación técnica al día, pero `docs/producto/funcionalidades.md` no las describe.
-**Problema:** Documentación de producto ausente para las dos novedades de FP2.
-**Impacto:** Puramente documental.
-**Solución propuesta:** El Agente de Producto añade a `funcionalidades.md` una sección "Panel superadmin" (CRUD de retos, auth con SUPERADMIN_PASSWORD) y actualiza la descripción de la home (`/`) para reflejar el listado dinámico de retos activos con mensaje de vacío.
-**Prioridad:** Baja.
-
----
-
 ## ~~Migración `0008_cascade_delete.sql` pendiente de aplicar en Supabase de producción~~ — RESUELTO
 
 **Fecha:** 2026-09-29 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
@@ -237,7 +254,7 @@ Las FK dependientes tienen `ON DELETE CASCADE`; `eliminarReto` funciona con reto
 **Contexto:** FP2.5 (DT-028). `/api/track` exige ahora el reto en la URL; sin `?reto=` descarta el punto con 200 vacío (a propósito, para que OwnTracks no reintente).
 **Problema:** Un OwnTracks configurado con la URL antigua (`/api/track?t=...`) deja de guardar posiciones en silencio en cuanto se despliegue FP2.5 — el móvil no ve ningún error.
 **Impacto:** Pérdida total de posiciones GPS del reto hasta reconfigurar el móvil.
-**Solución propuesta:** Tras desplegar, copiar la URL que muestra el panel superadmin para el reto (`<origen>/api/track?reto=<slug>`), añadirle `&t=<TRACK_TOKEN>` y configurarla en OwnTracks; mandar un punto de prueba y comprobarlo en la pestaña Posición del admin.
+**Solución propuesta:** Tras desplegar, copiar la URL que muestra el panel superadmin para el reto (desde DT-034 ya completa, con `&t=<TRACK_TOKEN>`: botón "Copiar") y configurarla en OwnTracks; mandar un punto de prueba y comprobarlo en la pestaña Posición del admin.
 **Prioridad:** Alta — operativa, obligatoria antes del próximo uso del GPS.
 
 ---
@@ -260,17 +277,6 @@ Las FK dependientes tienen `ON DELETE CASCADE`; `eliminarReto` funciona con reto
 **Problema:** El intento queda guardado como "guiado" y sin destino, así que la vista libre no muestra distancia restante.
 **Impacto:** Bajo: solo cosmético en retos libres mal iniciados; no hay error ni mezcla de datos.
 **Solución propuesta:** En `iniciarReto` (y en la UI de `ActividadAcciones`), exigir modo libre con destino cuando `reto.ruta_id` es null.
-**Prioridad:** Baja.
-
----
-
-## `docs/producto/` no refleja la URL del GPS por reto (FP2.5)
-
-**Fecha:** 2026-09-29
-**Contexto:** FP2.5 (DT-028). El panel superadmin muestra ahora la URL del tracker de cada reto y la configuración de OwnTracks cambia.
-**Problema:** `docs/producto/funcionalidades.md` no lo describe.
-**Impacto:** Puramente documental.
-**Solución propuesta:** El Agente de Producto añade la URL del GPS por reto a la sección del panel superadmin y actualiza las instrucciones de configuración del tracker.
 **Prioridad:** Baja.
 
 ---
@@ -364,17 +370,6 @@ Todos los endpoints y server actions bajo `app/[slug]/` resuelven `reto_id` din�
 
 ---
 
-## `docs/producto/funcionalidades.md` no refleja el modal "Finalizar" con preview real ni la foto de llegada opcional (DT-024)
-
-**Fecha:** 2026-08-12
-**Contexto:** Revisión de la tarea "Modal Finalizar con preview real y foto de llegada opcional" (DT-024). Mismo patrón ya registrado varias veces en `docs/LESSONS.md` ("Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre"): esta tarea cambia de forma visible cómo Santi finaliza el reto (modal con preview real en vez de `window.confirm()`, más una foto de llegada opcional), con `CHANGELOG.md` y documentación técnica (`decisiones-tecnicas.md`, `arquitectura.md`, `modelo-datos.md`) al día, pero `docs/producto/funcionalidades.md` (línea ~69-71, entrada "Finalizar") sigue describiendo solo "cierra el reto con un mensaje de llegada, editable antes de enviar... Pide confirmación" — sin mencionar el modal, la preview real ni la foto opcional.
-**Problema:** Documentación de producto desactualizada respecto al comportamiento real de "Finalizar".
-**Impacto:** Puramente documental. Cero efecto en comportamiento.
-**Solución propuesta:** El Agente de Producto actualiza la entrada "Finalizar" de `funcionalidades.md` para describir el modal, la preview real (mismo marcado que la pantalla de llegada pública) y la foto opcional (adjuntar/reemplazar/quitar).
-**Prioridad:** Baja.
-
----
-
 ## ~~Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql` contra producción~~ — RESUELTO
 
 **Fecha:** 2026-08-12 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
@@ -404,41 +399,6 @@ La tabla `config_trafico` existe en el proyecto de la plataforma.
 
 **Fecha:** 2026-08-12 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
 La tabla `visitas_web` existe en el proyecto de la plataforma.
-
----
-
-## `docs/producto/` no refleja la nueva pestaña "Tráfico" del panel admin
-
-**Fecha:** 2026-08-12
-**Contexto:** Mismo patrón ya registrado dos veces en `docs/LESSONS.md`
-("Features cerradas por el pipeline técnico dejan `docs/producto/`
-desactualizado si nadie invoca al Agente de Producto al cierre"): esta tarea
-(DT-022, pestaña "Tráfico") añade una pestaña nueva de cara a Santi, con
-`CHANGELOG.md` y documentación técnica (`decisiones-tecnicas.md`,
-`arquitectura.md`, `modelo-datos.md`) al día, pero `docs/producto/funcionalidades.md`
-no se ha tocado — no tiene ninguna sección del panel admin (hueco
-preexistente, ya señalado en una entrada anterior de este mismo fichero
-sobre la pestaña "Mapa" de DT-021).
-**Problema:** Documentación de producto desactualizada/incompleta respecto
-al panel admin en general, no solo a esta pestaña.
-**Impacto:** Puramente documental. Cero efecto en comportamiento.
-**Solución propuesta:** El Agente de Producto añade una sección "Panel
-admin" a `funcionalidades.md` con todas las pestañas existentes (Actividad,
-Posición, Mapa, Intenciones, Comentarios, Minuto a minuto, Tráfico, Textos),
-no solo la de esta tarea — aprovechando que ya hay dos entradas de deuda
-pendientes por el mismo hueco.
-**Prioridad:** Baja.
-
----
-
-## `docs/producto/funcionalidades.md` no refleja el cambio de pintado del mapa (DT-021) ni la nueva pestaña "Mapa" del admin
-
-**Fecha:** 2026-08-12
-**Contexto:** Detectado por el Reviewer en la revisión de DT-021 ("Mapa público en modo guiado pinta la traza real, no la oficial; nueva vista de comparación en el admin"), aplicando la regla ya registrada en `docs/LESSONS.md` ("Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre"). La entrada "Durante" de `funcionalidades.md` (línea ~15-16) sigue describiendo el comportamiento anterior a esta tarea: "Mapa en directo con la posición de Santi, la traza y el tramo ya andado encendido" — desde DT-021, en modo guiado el mapa ya no pinta la traza oficial partida en andado/restante, pinta el recorrido GPS real. Además, `funcionalidades.md` no tiene ninguna sección sobre el panel admin, así que la pestaña "Mapa" nueva (comparación traza oficial vs. real + punto de referencia) tampoco queda documentada allí — este segundo punto es un hueco preexistente al panel admin en general, no introducido por esta tarea.
-**Problema:** Documentación de producto desactualizada respecto al comportamiento real para la parte pública; ausente por completo para la parte admin.
-**Impacto:** Puramente documental. Cero efecto en comportamiento del sistema. `CHANGELOG.md` y la documentación técnica (`decisiones-tecnicas.md`, `arquitectura.md`) sí están al día.
-**Solución propuesta:** El Agente de Producto actualiza la entrada "Durante" de `funcionalidades.md` para describir el pintado del recorrido real (no la traza oficial) y el marcador ⛪ de destino, y valora si añadir una sección "Panel admin" con la pestaña "Mapa" (y, ya que se está, el resto de pestañas existentes que tampoco están documentadas desde el punto de vista de producto).
-**Prioridad:** Baja.
 
 ---
 
@@ -741,30 +701,6 @@ seguida de un error evitable.
 `{ estado: "lista" }`, comprobar también `esMimePermitido(aEnviar.type)` y
 devolver un estado de error con el mismo criterio que "demasiado-grande"
 (mensaje explícito, antes de subir nada). Es un `if` con el import ya presente.
-**Prioridad:** Baja.
-
----
-
-## `docs/producto/funcionalidades.md` no refleja que la foto publicada es una copia recomprimida en el móvil
-
-**Fecha:** 2026-08-09
-**Contexto:** Detectado por el Reviewer en la revisión de DT-017, aplicando la
-regla de `docs/LESSONS.md` ("Features cerradas por el pipeline técnico dejan
-`docs/producto/` desactualizado"). La entrada "Minuto a minuto" de
-`funcionalidades.md` (línea ~95) dice que la foto "se sube directamente desde el
-móvil/ordenador", sin mencionar que desde DT-017 lo que se publica es una copia
-recodificada a JPEG en el navegador, que puede perder algo de calidad y, en
-fotos excepcionalmente pesadas, resolución.
-**Problema:** El propio usuario planteó y decidió expresamente este tradeoff
-(rechazó primero la reducción fija a 1600 px y aceptó después la escalera
-adaptativa), así que es una decisión de producto consciente que no queda escrita
-en ningún documento de producto: solo vive en DT-017 y en `docs/tareas/CURRENT.md`,
-que se archiva al cerrar la tarea.
-**Impacto:** Puramente documental. Cero efecto en comportamiento.
-**Solución propuesta:** El Agente de Producto añade a la entrada "Minuto a
-minuto" de `funcionalidades.md` una línea sobre la copia recomprimida (y su
-motivo: subida rápida con cobertura mala), y valora una entrada breve en
-`decisiones-producto.md` con el tradeoff calidad/velocidad ya decidido.
 **Prioridad:** Baja.
 
 ---
@@ -1160,17 +1096,6 @@ El comentario de cabecera describe ahora el botón con `router.push()`.
 
 ---
 
-## `docs/producto/roadmap.md` y `funcionalidades.md` no reflejan "Minuto a minuto" como implementado
-
-**Fecha:** 2026-08-02
-**Contexto:** Detectado por el Reviewer en la revisión de la tarea "Minuto a minuto (feed en directo con fotos)". La feature está completamente implementada (DT-013), documentada en `CHANGELOG.md` y en la documentación técnica (`arquitectura.md`, `modelo-datos.md`), pero `docs/producto/roadmap.md` sigue listando "Minuto a minuto (feed de mensajes en directo, editable desde admin)" bajo la sección "Ideas v2 (fuera de alcance v1)" sin marcarlo como hecho, y `docs/producto/funcionalidades.md` no describe la nueva sección desde el punto de vista del usuario (a diferencia del resto de funcionalidades del documento).
-**Problema:** Documentación de producto desactualizada respecto al estado real del sistema. Un lector de `roadmap.md`/`funcionalidades.md` (incluido el Agente de Producto en una tarea futura) puede concluir que la feature sigue sin construir.
-**Impacto:** Puramente documental — cero efecto en comportamiento. Reduce la fiabilidad de la documentación de producto como fuente de verdad de qué existe ya en el producto.
-**Solución propuesta:** El Agente de Producto debe mover el ítem de `roadmap.md` de "Ideas v2" a la sección de hechos (o marcarlo `[x]` con contexto de qué fase/tarea lo implementó, igual que el resto de ítems ya cerrados), y añadir una entrada en `funcionalidades.md` describiendo el feed "minuto a minuto" desde la perspectiva del usuario (qué ve, cuándo, cómo interactúa con el mapa).
-**Prioridad:** Baja.
-
----
-
 ## `MinutoAMinuto.tsx` asume sin documentarlo que `entradas[0]` es siempre la entrada más reciente para el poll incremental
 
 **Fecha:** 2026-08-02
@@ -1215,17 +1140,6 @@ El comentario de cabecera describe ahora el botón con `router.push()`.
 
 ---
 
-## `docs/producto/decisiones-producto.md` no refleja las cifras nuevas de la traza tras DT-015
-
-**Fecha:** 2026-08-07
-**Contexto:** Detectado por el Reviewer en la revisión de DT-015 (extensión sur del corredor corregida con `t03v`). La entrada "La traza es un corredor: el recorrido real empieza donde Santi pulse Iniciar" (2026-07-30) sigue diciendo, en su "Consecuencia técnica", que "la traza pasa de 100,21 km a ~105 km (7.121 puntos)". Esa cifra es la de DT-005, ya no la vigente (110,43 km / 7.951 puntos tras DT-015). `docs/tecnico/decisiones-tecnicas.md` sí resolvió el mismo problema para DT-001 añadiendo una nota explícita que remite a DT-015; `decisiones-producto.md` no recibió el mismo tratamiento porque no estaba en el alcance de ficheros a tocar de esta tarea.
-**Problema:** Documentación de producto con una cifra desactualizada en un log histórico de decisiones. `docs/producto/contexto.md` (el documento de "estado actual") sí está correcto con 110,43 km — el desfase es solo en el log de decisiones.
-**Impacto:** Puramente documental. Quien lea `decisiones-producto.md` de forma aislada (sin cruzar con `decisiones-tecnicas.md` o `contexto.md`) puede quedarse con la cifra de ~105 km como vigente.
-**Solución propuesta:** Añadir una nota breve a esa entrada, mismo patrón que la nota de DT-015 en `decisiones-tecnicas.md` (DT-001): "la cifra de esta decisión es la vigente en su fecha; DT-015 (2026-08-07) la corrige a 110,43 km / 7.951 puntos".
-**Prioridad:** Baja.
-
----
-
 ## `nota_extension_sur` en `traza.geojson` mezcla dos medidas distintas bajo una misma cifra ("~10,2 km al sur de O Porriño")
 
 **Fecha:** 2026-08-07
@@ -1247,14 +1161,4 @@ El comentario de cabecera describe ahora el botón con `router.push()`.
 **Prioridad:** Baja — cosmético, modo libre es una feature nueva sin uso real todavía que lo confirme como problema.
 
 ---
-
-## `docs/producto/funcionalidades.md`, `roadmap.md` y `decisiones-producto.md` no reflejan el modo de intento configurable (guiado/libre)
-
-**Fecha:** 2026-08-07
-**Contexto:** Detectado por el Reviewer en la revisión de "Modo de intento configurable (guiado / libre con destino en línea recta)" (DT-016). La feature está completamente implementada y bien documentada en `CHANGELOG.md`, `docs/tecnico/arquitectura.md` y `docs/tecnico/modelo-datos.md`, pero `docs/producto/funcionalidades.md` sigue describiendo la web pública solo en términos del modo guiado (barra de progreso, km andados/restantes, sin ninguna mención al modo libre ni a la distancia restante en línea recta) y `docs/producto/decisiones-producto.md` no tiene ninguna entrada sobre la decisión de producto de ofrecer un modo de intento configurable. `roadmap.md` tampoco menciona la idea en ningún punto, ni antes ni después de implementarla.
-**Problema:** Documentación de producto desactualizada respecto al estado real del sistema — mismo patrón ya registrado antes en este archivo para "Minuto a minuto" (ver entrada de 2026-08-02, ya cerrada por el Agente de Producto). Un lector de `funcionalidades.md` (incluido el propio Agente de Producto en una tarea futura) no sabría, sin cruzar con `docs/tecnico/`, que el modo libre existe.
-**Impacto:** Puramente documental — cero efecto en comportamiento. Reduce la fiabilidad de la documentación de producto como fuente de verdad de qué existe ya en el producto. Es la segunda vez que este patrón ocurre (ver `docs/LESSONS.md`, entrada sobre documentación de producto no actualizada tras features cerradas sin pasar por el Agente de Producto).
-**Solución propuesta:** El Agente de Producto debe añadir una sección a `funcionalidades.md` describiendo el modo libre desde la perspectiva del usuario (qué ve, en qué se diferencia de "durante"/"llegada" guiado), y una entrada en `decisiones-producto.md` con la decisión de ofrecer un modo configurable al iniciar.
-**Prioridad:** Baja.
-
----
+

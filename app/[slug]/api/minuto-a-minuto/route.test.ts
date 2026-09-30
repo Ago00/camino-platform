@@ -21,6 +21,7 @@ const RETO: Reto = {
   seccion_minuto_a_minuto: true,
   seccion_instagram: true,
   respuestas_visitantes: true,
+  peregrino_animado: true,
   quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };

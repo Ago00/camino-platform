@@ -28,6 +28,7 @@ const RETO: Reto = {
   seccion_minuto_a_minuto: true,
   seccion_instagram: true,
   respuestas_visitantes: true,
+  peregrino_animado: true,
   quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };
@@ -150,6 +151,7 @@ const {
   eliminarMinutoAMinuto,
   guardarConfiguracion,
   guardarFotoQuienCamina,
+  guardarInstagram,
   guardarTexto,
   ocultarComentario,
   resetearContadorTrafico,
@@ -390,9 +392,10 @@ describe("guardarConfiguracion — interruptores de la web pública (FP3c, DT-03
     seccion_minuto_a_minuto: false,
     seccion_instagram: true,
     respuestas_visitantes: false,
+    peregrino_animado: false,
   };
 
-  it("actualiza solo el reto del slug con los cinco booleanos y revalida la web y el panel", async () => {
+  it("actualiza solo el reto del slug con los interruptores y revalida la web y el panel", async () => {
     await expect(guardarConfiguracion(RETO.slug, CONFIG)).resolves.toEqual({ ok: true });
 
     expect(llamadasA("retos", "update")).toEqual([[CONFIG]]);
@@ -443,6 +446,78 @@ describe("guardarConfiguracion — interruptores de la web pública (FP3c, DT-03
     errorAlResolverMock = { message: "fallo" };
 
     await expect(guardarConfiguracion(RETO.slug, CONFIG)).resolves.toMatchObject({ ok: false });
+    expect(revalidatePathSpy).not.toHaveBeenCalled();
+  });
+
+  it("exige peregrino_animado (DT-034): sin él o no booleano se rechaza sin escribir", async () => {
+    const sinPeregrino = { ...CONFIG };
+    Reflect.deleteProperty(sinPeregrino, "peregrino_animado");
+
+    await expect(guardarConfiguracion(RETO.slug, sinPeregrino)).resolves.toMatchObject({ ok: false });
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, peregrino_animado: "si" })).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+});
+
+describe("guardarTexto — claves gestionadas en Configuración (DT-034)", () => {
+  it("rechaza la URL de Instagram sin escribir, para que no se salte la normalización", async () => {
+    await expect(guardarTexto(RETO.slug, "cierre_antes_instagram_url", "javascript:alert(1)")).rejects.toThrow(
+      /Configuración/
+    );
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("sigue guardando cualquier otra clave con upsert por reto y clave", async () => {
+    await guardarTexto(RETO.slug, "reto_titulo", "Mi reto");
+
+    expect(llamadasA("textos", "upsert")).toEqual([
+      [{ reto_id: RETO.id, clave: "reto_titulo", valor: "Mi reto" }, { onConflict: "reto_id,clave" }],
+    ]);
+  });
+});
+
+describe("guardarInstagram — perfil de Instagram del reto (DT-034)", () => {
+  it("normaliza el perfil, lo guarda en la fila de textos del reto y revalida la web y el panel", async () => {
+    await expect(guardarInstagram(RETO.slug, " @santi.ago ")).resolves.toEqual({ ok: true });
+
+    expect(llamadasA("textos", "upsert")).toEqual([
+      [
+        { reto_id: RETO.id, clave: "cierre_antes_instagram_url", valor: "https://instagram.com/santi.ago" },
+        { onConflict: "reto_id,clave" },
+      ],
+    ]);
+    expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}`);
+    expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}/admin`);
+  });
+
+  it("vacío guarda cadena vacía (sin enlace)", async () => {
+    await expect(guardarInstagram(RETO.slug, "")).resolves.toEqual({ ok: true });
+
+    const [[fila]] = llamadasA("textos", "upsert");
+    expect(fila).toMatchObject({ valor: "" });
+  });
+
+  it("rechaza valores que no son un perfil de Instagram sin escribir", async () => {
+    for (const valor of ["javascript:alert(1)", "https://evil.example/santi", "instagram.com/p/abc", 42, null]) {
+      await expect(guardarInstagram(RETO.slug, valor)).resolves.toMatchObject({ ok: false });
+    }
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("con la sesión de otro reto devuelve sesión caducada sin escribir", async () => {
+    await expect(guardarInstagram(RETO_B.slug, "@santi")).resolves.toEqual({
+      ok: false,
+      mensaje: expect.stringMatching(/sesión/),
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("si falla el upsert devuelve error y no revalida", async () => {
+    errorAlResolverMock = { message: "fallo" };
+
+    await expect(guardarInstagram(RETO.slug, "@santi")).resolves.toMatchObject({ ok: false });
     expect(revalidatePathSpy).not.toHaveBeenCalled();
   });
 });

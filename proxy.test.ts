@@ -237,3 +237,20 @@ describe("proxy — / (pass-through)", () => {
     expect(insertSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("proxy — /:slug/api/* (no son visitas)", () => {
+  it.each(["/portuguesa-110/api/progreso", "/portuguesa-110/api/minuto-a-minuto?despuesDeId=0", "/portuguesa-110/api"])(
+    "no registra visita ni fija cookie en %s",
+    async (ruta) => {
+      const response = await proxy(new NextRequest(`http://localhost${ruta}`));
+      expect(response.status).toBe(200);
+      expect(insertSpy).not.toHaveBeenCalled();
+      expect(response.cookies.get("visitante_id")).toBeUndefined();
+    }
+  );
+
+  it("sigue registrando una subruta del reto que solo empieza por 'api' (/:slug/apiario)", async () => {
+    await proxy(new NextRequest("http://localhost/portuguesa-110/apiario"));
+    expect(insertSpy).toHaveBeenCalled();
+  });
+});

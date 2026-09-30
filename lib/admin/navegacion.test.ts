@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  TABS_ADMIN,
+  esFaseWeb,
   esFiltroComentarioValido,
   esGranularidadValida,
   esTabValida,
@@ -55,5 +57,20 @@ describe("esTabValida", () => {
 
   it("acepta 'configuracion' (FP3c)", () => {
     expect(esTabValida("configuracion")).toBe(true);
+  });
+
+  it("acepta 'vistaprevia' y la pestaña se llama «Vista previa» (DT-034)", () => {
+    expect(esTabValida("vistaprevia")).toBe(true);
+    expect(TABS_ADMIN.find((tab) => tab.valor === "vistaprevia")?.etiqueta).toBe("Vista previa");
+  });
+});
+
+describe("esFaseWeb", () => {
+  it.each(["antes", "durante", "llegada"] as const)("acepta '%s'", (valor) => {
+    expect(esFaseWeb(valor)).toBe(true);
+  });
+
+  it.each([undefined, "", "despues", "LLEGADA", "xyz"])("rechaza %j (incluida la fase 'despues' de Tráfico)", (valor) => {
+    expect(esFaseWeb(valor)).toBe(false);
   });
 });

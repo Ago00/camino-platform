@@ -2,7 +2,11 @@
 // "Antes", cinta "En directo" de "Durante"). Una sola clave editable
 // (`textos.cierre_antes_instagram_url`) alimenta todas las apariciones — es
 // la misma cuenta en cualquier pantalla, así que un solo campo en el admin
-// basta. No se pinta nada si la URL está vacía.
+// basta (desde DT-034 se edita en "Configuración", normalizado). No se pinta
+// nada si la URL no es un perfil de Instagram válido: defensa ante valores
+// guardados antes de la normalización (otro dominio, `javascript:`…).
+
+import { esUrlPerfilInstagram } from "@/lib/retos/instagram";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
 
@@ -14,7 +18,7 @@ interface EnlaceInstagramProps {
 }
 
 export default function EnlaceInstagram({ url, tono = "claro", className = "" }: EnlaceInstagramProps) {
-  if (url.trim() === "") return null;
+  if (!esUrlPerfilInstagram(url)) return null;
 
   const estilos = tono === "oscuro" ? { borderColor: "#ffffff33", color: "#ffffff" } : { borderColor: `${C.gold}66`, color: C.ink };
 

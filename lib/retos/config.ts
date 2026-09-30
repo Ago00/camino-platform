@@ -1,6 +1,7 @@
 /**
  * Configuración de la web pública de un reto (FP3c, DT-032): qué secciones se
- * muestran y si los visitantes pueden responder comentarios.
+ * muestran, si los visitantes pueden responder comentarios y si pasea el
+ * peregrino animado (DT-034).
  *
  * Dominio puro. Toda lectura de la configuración pasa por `configDelReto`, que
  * trata un campo ausente como encendido: si el código se despliega antes de
@@ -9,6 +10,7 @@
  */
 
 import type { Reto } from "@/lib/types";
+import { esUrlPerfilInstagram } from "@/lib/retos/instagram";
 
 export const CAMPOS_CONFIG_RETO = [
   "seccion_intenciones",
@@ -16,6 +18,7 @@ export const CAMPOS_CONFIG_RETO = [
   "seccion_minuto_a_minuto",
   "seccion_instagram",
   "respuestas_visitantes",
+  "peregrino_animado",
 ] as const;
 
 export type CampoConfigReto = (typeof CAMPOS_CONFIG_RETO)[number];
@@ -29,6 +32,9 @@ export function configDelReto(reto: Partial<Pick<Reto, CampoConfigReto>>): Confi
     seccion_minuto_a_minuto: reto.seccion_minuto_a_minuto ?? true,
     seccion_instagram: reto.seccion_instagram ?? true,
     respuestas_visitantes: reto.respuestas_visitantes ?? true,
+    // Sin la migración 0015 la columna no llega: se mantiene el peregrino que
+    // la web ya tenía. El default de BD (false) solo aplica a retos nuevos.
+    peregrino_animado: reto.peregrino_animado ?? true,
   };
 }
 
@@ -42,8 +48,9 @@ export function fotoQuienCaminaDelReto(reto: Partial<Pick<Reto, "quien_camina_fo
 
 /**
  * URL de Instagram que debe pintarse, o null: hace falta el interruptor
- * encendido y una URL no vacía en el texto editable.
+ * encendido y una URL de perfil de Instagram válida (DT-034; un valor antiguo
+ * que no lo sea no se pinta).
  */
 export function urlInstagramVisible(config: ConfigReto, url: string): string | null {
-  return config.seccion_instagram && url.trim() !== "" ? url : null;
+  return config.seccion_instagram && esUrlPerfilInstagram(url) ? url.trim() : null;
 }

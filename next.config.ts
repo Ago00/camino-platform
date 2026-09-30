@@ -30,6 +30,20 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "4.5mb",
     },
   },
+  // Anti-clickjacking en todo el sitio (DT-034): el superadmin copia al
+  // portapapeles la URL del GPS con TRACK_TOKEN, y una web ajena podría
+  // enmarcarlo para robarlo. 'self' mantiene el iframe de la vista previa.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

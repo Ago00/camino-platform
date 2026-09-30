@@ -2030,3 +2030,40 @@ El composer del minuto a minuto reintenta automáticamente la Server Action ante
 - **Límite conocido:** si tras un error se edita el texto y se reenvía, la clave es nueva; si el primer envío sí había llegado, quedan dos entradas (con textos distintos). Es la semántica buscada: la clave identifica una entrada concreta, no "lo último que se intentó publicar".
 - **La clave no es secreta:** la policy SELECT de `anon` (0007) la deja leer por PostgREST como el resto de la fila; conocerla no permite escribir (solo el service role inserta). La API pública no la selecciona.
 - **Mismo lote:** `cargarImagen` (`lib/imagen/preparar-foto.ts`) rechaza a los 10 s (`LIMITE_DECODIFICACION_MS`) y la degradación al original lo absorbe; el composer, el modal "Finalizar" y la foto de quién camina muestran "Sigue subiendo, no cierres la página." pasados 15 s de envío, sin abortar (`lib/envio/aviso-envio-lento.ts`: las Server Actions no aceptan `AbortSignal` y abortar agravaría los duplicados).
+
+---
+
+## DT-034 — Vista previa de la web en el admin, peregrino opcional, Instagram en Configuración y URL del GPS con token
+
+**Fecha:** 2026-09-30 · **Tarea:** Vista previa y feedback del usuario
+
+### Contexto
+
+Cuatro peticiones del usuario: (A) poder ver desde el admin cómo se vería ahora la web en cada fase con la configuración actual; (B) apagar el peregrino animado; (C) editar el perfil de Instagram desde Configuración; (D) ver en el superadmin la URL completa del GPS con el token ("no veo el api track token").
+
+### Decisión
+
+**A. Vista previa.**
+1. **Una sola composición:** la de `app/[slug]/page.tsx` se mueve a `components/publico/WebReto.tsx` (Server Component, con los `*Conectado` y sus cargadores). Props: `reto, config, textos, trazaCoords, fase, fuente, vistaPrevia`; `fuente` es `{ tipo: "real"; intento } | { tipo: "ejemplo"; datos: DatosEjemplo }`. La página pública queda mínima y la vista previa usa exactamente el mismo componente.
+2. **Página `app/[slug]/admin/vista-previa/page.tsx`:** `force-dynamic`, `robots: noindex, nofollow`, sesión verificada con `resolverRetoConSesion` (sin ella, `/admin/login?returnTo=/<slug>/admin`), `?fase=` validado con `esFaseWeb` (inválido ⇒ "antes"). Vive bajo `/:slug/admin/*`: el proxy ya la protege y no registra visitas por la página (sus lecturas GET a `/<slug>/api/*` sí se registran por un problema previo del `matcher` de `proxy.ts`, ver `DEBT.md`).
+3. **Datos:** reales si la fase elegida es la del intento activo (`debeUsarDatosReales`, `lib/vista-previa/fuente.ts`); si no, `datosEjemplo(fase, modo, trazaCoords, ahora)` (`lib/vista-previa/datos-ejemplo.ts`, puro): guiado ~42 % con km de la traza de PINTADO (solo para la maqueta; nunca se lee `traza.geojson`), libre sobre una traza sintética fija, tiempos relativos a `ahora`, 3 entradas del minuto a minuto con ids negativos y sin foto. Modo: el del intento, libre si el reto no tiene ruta (`modoDeVistaPrevia`).
+4. **Sin escrituras ni polling:** contexto cliente `VistaPreviaProvider`/`useVistaPrevia` (`components/publico/VistaPrevia.tsx`). `IntencionForm`, `ComentarioForm` y `RespuestaForm` usan `envioPermitido` (`lib/vista-previa/envio.ts`) para el `disabled` y para salir antes del `fetch`, con el aviso "Vista previa: no se envía". `ModoDurante`, `ModoDuranteLibre` y `MinutoAMinuto` no crean el `setInterval`. `RefrescoAlCambiarFase` no se monta (la fase previsualizada no coincide con `/api/fase` y recargaría el iframe sin parar). Las lecturas (primera página del minuto a minuto real, muro) siguen siendo GET normales.
+5. **Pestaña "Vista previa"** (`SeccionVistaPrevia.tsx`): selector de fase como estado local (el `?fase=` del panel ya es de Tráfico), iframe 390×780 con marco de móvil y botón "Recargar" (cambia la `key`).
+
+**B. Peregrino.** Columna `retos.peregrino_animado boolean not null default false` (`0015`), `true` en `santi-ago`. Entra en `CAMPOS_CONFIG_RETO`; `configDelReto` usa `?? true` para que desplegar antes de la migración no cambie la web. Interruptor en Configuración; zod de `guardarConfiguracion` lo exige. `WebReto` solo monta `PeregrinoLibre` si está encendido.
+
+**C. Instagram.** `normalizarPerfilInstagram` (`lib/retos/instagram.ts`, puro) acepta `@usuario`, `usuario`, `instagram.com/usuario` o `http(s)://(www.)instagram.com/usuario[/][?…]` y devuelve `https://instagram.com/usuario` (vacío = sin enlace); rechaza otros dominios, esquemas (`javascript:`), rutas con más segmentos y rutas reservadas (`p`, `reel`, `explore`…). Se guarda en la fila de siempre (`textos.cierre_antes_instagram_url`) con una acción nueva `guardarInstagram(slug, valor)`. La clave sale de la pestaña Textos (`CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION` en `lib/textos/bloques.ts`, incluida en la comprobación de exhaustividad) y `guardarTexto` la rechaza. La web solo la pinta si pasa `esUrlPerfilInstagram` (en `urlInstagramVisible` y en `EnlaceInstagram`).
+
+**D. URL del GPS.** El superadmin muestra `<origen>/api/track?reto=<slug>&t=<TRACK_TOKEN>` (`lib/superadmin/url-tracker.ts`) en `UrlTrackerConToken.tsx`: oculta por defecto, "Mostrar" y "Copiar" (portapapeles; si falla, la deja seleccionada). Sin `TRACK_TOKEN`, aviso. El token se lee en el servidor y solo se envía a esta página, que verifica la sesión del superadmin por sí misma antes de leerlo.
+
+### Alternativas valoradas
+
+**Vista previa como ruta pública con `?preview=`**: descartada, cualquiera podría ver datos de ejemplo mezclados con la web real y habría que autenticar una ruta pública. **Duplicar la composición en la página de vista previa**: descartada, las dos acabarían divergiendo. **Bloquear escrituras solo en el servidor** (detectar que vienen del iframe): descartada, las APIs públicas no distinguen al admin y el visitante vería errores; el bloqueo en el cliente es suficiente porque la vista previa no tiene más privilegios que un visitante. **Guardar Instagram dentro de `guardarConfiguracion`**: descartada, mezcla un `update` de `retos` con un upsert en `textos` y rompe el esquema estricto de interruptores; una acción propia es más clara y el formulario solo la llama si el perfil cambió.
+
+### Notas de cierre (implementación)
+
+- **`guardarInstagram` en vez de ampliar `guardarConfiguracion`** (el plan dejaba elegir). Un solo botón "Guardar configuración": valida el perfil en el cliente antes de enviar nada (con un perfil mal escrito no se guardan tampoco los interruptores) y luego llama a cada acción solo si su parte cambió. Si la segunda falla, la primera ya quedó guardada y se muestra el error.
+- **`esUrlPerfilInstagram` exige esquema pero admite `www.`, barra final, query y `http`**: así los valores guardados antes de la normalización (p. ej. `https://www.instagram.com/usuario/`) se siguen pintando y solo desaparecen los que no son un perfil.
+- **Llegada de ejemplo al 100 %** (0 km restantes; el plan hablaba de ~42 %, que es el valor de "durante").
+- **`EntradaMinutoAMinutoPublica` pasa a `lib/types.ts`** (derivado de `MinutoAMinuto`) para que `lib/vista-previa/` no importe tipos de un componente; `MinutoAMinuto.tsx` lo reexporta.
+- **El superadmin verifica la sesión en la página**, además del layout y el proxy: según la guía de autenticación de Next 16, un layout no impide que la página se renderice ni que su contenido viaje en el payload RSC, y esta página lleva el token.

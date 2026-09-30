@@ -25,9 +25,10 @@ import IntencionForm from "@/components/publico/IntencionForm";
 import ComentariosConMuro from "@/components/publico/ComentariosConMuro";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import EnlaceInstagram from "@/components/publico/EnlaceInstagram";
+import { useVistaPrevia } from "@/components/publico/VistaPrevia";
 import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
-import type { ProgresoPublicoGuiado } from "@/lib/types";
+import type { EntradaMinutoAMinutoPublica, ProgresoPublicoGuiado } from "@/lib/types";
 import type { Textos } from "@/lib/textos/obtener-textos";
 import { urlInstagramVisible, type ConfigReto } from "@/lib/retos/config";
 
@@ -58,6 +59,11 @@ interface ModoDuranteProps {
   /** Slug del reto para construir las URLs de las APIs públicas (DT-026). */
   slug: string;
   config: ConfigReto;
+  /**
+   * Entradas del minuto a minuto ya cargadas (solo la vista previa del admin
+   * con datos de ejemplo, DT-034). Sin ellas el feed pide la primera página.
+   */
+  entradasMinutoAMinutoIniciales?: EntradaMinutoAMinutoPublica[];
 }
 
 export default function ModoDurante({
@@ -68,7 +74,9 @@ export default function ModoDurante({
   textos,
   slug,
   config,
+  entradasMinutoAMinutoIniciales,
 }: ModoDuranteProps) {
+  const vistaPrevia = useVistaPrevia();
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
   const [ultimoTs, setUltimoTs] = useState<string | null>(progresoInicial.ultimaPosicion?.ts ?? null);
@@ -81,6 +89,8 @@ export default function ModoDurante({
   } | null>(null);
 
   useEffect(() => {
+    // Vista previa del admin (DT-034): foto fija, sin consultar la API.
+    if (vistaPrevia) return;
     const id = setInterval(async () => {
       try {
         const response = await fetch(`/${slug}/api/progreso`);
@@ -99,7 +109,7 @@ export default function ModoDurante({
       }
     }, POLLING_MS);
     return () => clearInterval(id);
-  }, [ultimoTs, slug]);
+  }, [ultimoTs, slug, vistaPrevia]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -144,7 +154,13 @@ export default function ModoDurante({
           textos={textos}
         />
         {config.seccion_minuto_a_minuto && (
-          <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} slug={slug} />
+          <MinutoAMinuto
+            polling
+            entradasIniciales={entradasMinutoAMinutoIniciales}
+            onSeleccionarPunto={setPuntoResaltado}
+            textos={textos}
+            slug={slug}
+          />
         )}
       </div>
 

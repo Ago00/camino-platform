@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-09-30 — Panel admin: vista previa de la web, peregrino opcional e Instagram en Configuración
+
+**Tipo:** Feature + Mejora
+
+El panel del reto tiene una pestaña "Vista previa" que enseña la web dentro de
+un marco de móvil y deja elegir entre Antes, Durante y Llegada, con la
+configuración y los textos actuales. Si el reto todavía no está en esa fase,
+Durante y Llegada se ven con datos de ejemplo. En la vista previa los
+formularios no envían nada. En Configuración hay un interruptor "Peregrino
+animado" (el muñeco que pasea por la pantalla; apagado en los retos nuevos) y
+un campo "Perfil de Instagram" que acepta `@usuario`, el usuario solo o el
+enlace del perfil, y lo guarda como enlace limpio. Ese campo sale de la
+pestaña Textos. La web solo muestra el botón de Instagram si el enlace es de
+verdad un perfil de Instagram. En el superadmin, cada reto muestra la URL
+completa del GPS para OwnTracks, token incluido, oculta hasta pulsar "Mostrar"
+y con un botón "Copiar".
+
+---
+
 ## 2026-09-30 — Web pública: responder a cualquier respuesta y cabecera del minuto a minuto más clara
 
 **Tipo:** Mejora

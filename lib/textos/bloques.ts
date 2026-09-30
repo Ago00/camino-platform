@@ -3,17 +3,30 @@
  * panel admin (FP3c, DT-032). Solo presentación: el orden y el título de cada
  * bloque siguen el recorrido de la web pública.
  *
- * Invariante: cada clave de `CLAVES_TEXTOS` está en exactamente un bloque. Que
- * esté en alguno lo comprueba el compilador (`ClavesTextoSinBloque`); que no
- * esté en dos, `bloques.test.ts`. Al añadir una clave nueva a `defaults.ts`,
- * hay que colocarla aquí o no compila.
+ * Invariante: cada clave de `CLAVES_TEXTOS` está en exactamente un bloque o en
+ * `CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION`. Que esté en alguno lo comprueba
+ * el compilador (`ClavesTextoSinBloque`); que no esté en dos, `bloques.test.ts`.
+ * Al añadir una clave nueva a `defaults.ts`, hay que colocarla aquí o no compila.
  */
 
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import type { CampoConfigReto } from "@/lib/retos/config";
 
+/**
+ * Claves que viven en la tabla `textos` pero se editan en la pestaña
+ * "Configuración" con su propia validación (DT-034). No salen en la pestaña
+ * Textos y `guardarTexto` las rechaza, para que nadie se salte esa validación.
+ */
+export const CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION = ["cierre_antes_instagram_url"] as const satisfies readonly ClaveTexto[];
+
+type ClaveGestionadaEnConfiguracion = (typeof CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION)[number];
+
+export function esClaveGestionadaEnConfiguracion(clave: string): clave is ClaveGestionadaEnConfiguracion {
+  return (CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION as readonly string[]).includes(clave);
+}
+
 /** Interruptor de sección de la configuración del reto del que depende un bloque. */
-export type SeccionConfigurable = Exclude<CampoConfigReto, "respuestas_visitantes">;
+export type SeccionConfigurable = Exclude<CampoConfigReto, "respuestas_visitantes" | "peregrino_animado">;
 
 interface BloqueTextos {
   id: string;
@@ -97,12 +110,6 @@ export const BLOQUES_TEXTOS = [
     claves: ["cierre_antes_titulo", "cierre_antes"],
   },
   {
-    id: "instagram",
-    titulo: "Instagram",
-    seccion: "seccion_instagram",
-    claves: ["cierre_antes_instagram_url"],
-  },
-  {
     id: "durante",
     titulo: "Durante",
     claves: [
@@ -152,5 +159,8 @@ type ClaveEnBloque = (typeof BLOQUES_TEXTOS)[number]["claves"][number];
 
 type DebeSerNever<T extends never> = T;
 
-/** No compila si alguna clave de `CLAVES_TEXTOS` no está en ningún bloque. */
-export type ClavesTextoSinBloque = DebeSerNever<Exclude<ClaveTexto, ClaveEnBloque>>;
+/**
+ * No compila si alguna clave de `CLAVES_TEXTOS` no está en ningún bloque ni
+ * se gestiona en Configuración.
+ */
+export type ClavesTextoSinBloque = DebeSerNever<Exclude<ClaveTexto, ClaveEnBloque | ClaveGestionadaEnConfiguracion>>;

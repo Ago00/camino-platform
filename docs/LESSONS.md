@@ -6,6 +6,18 @@ de cada tarea. No es deuda ni bugs — es lo que cambia cómo se decide.
 
 ---
 
+## Al anidar rutas bajo un prefijo dinámico (`/:slug/...`), revisar las exclusiones del `matcher` del proxy
+
+**Registrada:** 2026-09-30 (revisión de DT-034)
+**Por quién:** Reviewer
+
+**Contexto:** con multi-tenant (DT-025/DT-026) las APIs pasaron de `/api/*` a `/<slug>/api/*`. El `matcher` de `proxy.ts` siguió siendo `/((?!api|…).*)`, que solo excluye lo que *empieza* por `/api`.
+**Qué salió mal:** todas las llamadas de la web a `/<slug>/api/*` (incluido el polling cada 30 s) pasan por `proxyPublico` y se guardan como visitas en "Tráfico". Ningún test lo cubría: `proxy.test.ts` solo probaba páginas.
+**Qué hacer:** cuando una tarea mueve rutas bajo un segmento dinámico, revisar cada exclusión por prefijo (matcher, `startsWith`, regex del proxy) y añadir un test del proxy con una ruta de API anidada que compruebe que no se registra visita.
+**Tags:** proxy, matcher, multi-tenant, tráfico
+
+---
+
 ## MapLibre: las capas GL `line`/`circle` no pintan de forma fiable
 
 **Registrada:** 2026-07-30 (de la POC)

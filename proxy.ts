@@ -43,6 +43,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return proxyAdmin(request);
   }
 
+  // Las APIs del reto (/:slug/api/*) no son visitas: el matcher solo excluye
+  // /api raíz, y sin esto el polling de la web contaba como tráfico.
+  if (/^\/[^/]+\/api(\/|$)/.test(pathname)) {
+    return NextResponse.next();
+  }
+
   return proxyPublico(request);
 }
 

@@ -31,12 +31,13 @@ datos aislados en el resto de tablas top-level vía `reto_id` FK.
 | `seccion_intenciones` | boolean | default `true` (FP3c, DT-032, 0012). `false` = sin intenciones en la web; POST ⇒ 403 |
 | `seccion_comentarios` | boolean | default `true`. `false` = sin formulario ni muro; API GET/POST ⇒ 403; RLS de INSERT de anon lo rechaza |
 | `seccion_minuto_a_minuto` | boolean | default `true`. `false` = el feed no se pinta ni hace polling; API GET ⇒ 403. El admin puede seguir publicando |
-| `seccion_instagram` | boolean | default `true`. El enlace se pinta solo si está a `true` y el texto `cierre_antes_instagram_url` no está vacío |
+| `seccion_instagram` | boolean | default `true`. El enlace se pinta solo si está a `true` y el texto `cierre_antes_instagram_url` es una URL de perfil de Instagram válida (`esUrlPerfilInstagram`, DT-034) |
 | `respuestas_visitantes` | boolean | default `true`. `false` = sin "Responder" en el muro; POST de respuesta ⇒ 403 y RLS lo rechaza; las respuestas del caminante (service role) siguen permitidas |
+| `peregrino_animado` | boolean | default `false` (DT-034, 0015); `true` en `santi-ago`. Muestra el peregrino animado (`PeregrinoLibre`) en la web. Sin la columna, `configDelReto` lo da por encendido |
 | `quien_camina_foto_url` | text | Foto de "quién camina". URL pública del bucket `minuto-a-minuto` (`<reto_id>/quien-camina-…`) o ruta de `/public` heredada (`/santi.jpg` en `santi-ago`). `null` = silueta |
 | `created_at` | timestamptz | Automático |
 
-**Configuración (FP3c):** el código lee siempre estas columnas con `configDelReto` (`lib/retos/config.ts`), que trata un campo ausente como `true` por si el código llega antes que la migración 0012. Solo el admin del reto las edita (pestaña "Configuración"); el superadmin crea retos sin fijarlas (defaults).
+**Configuración (FP3c):** el código lee siempre estas columnas con `configDelReto` (`lib/retos/config.ts`), que trata un campo ausente como `true` por si el código llega antes que la migración 0012 (o la 0015 para `peregrino_animado`). Solo el admin del reto las edita (pestaña "Configuración"); el superadmin crea retos sin fijarlas (defaults).
 
 **Fila inicial:** `portuguesa-110` — el reto del Camino Portugués, `id = 1`.
 
@@ -156,6 +157,8 @@ Textos editables de la web desde el panel admin.
 **Patrón de uso:** el código tiene un valor por defecto en `lib/textos/defaults.ts`. Si existe una fila en esta tabla con la misma clave para el reto activo, ese valor sobreescribe el por defecto. Nunca sale en blanco.
 
 **Invariante:** añadir una clave nueva requiere código (decidir dónde se pinta). Editar un texto existente no requiere código — solo el panel admin.
+
+**Claves gestionadas en Configuración (DT-034):** `cierre_antes_instagram_url` se edita en la pestaña Configuración (`guardarInstagram`) y se guarda siempre normalizada a `https://instagram.com/<usuario>` o vacía. No sale en la pestaña Textos y `guardarTexto` la rechaza (`CLAVES_TEXTO_GESTIONADAS_EN_CONFIGURACION`, `lib/textos/bloques.ts`). Filas anteriores con otro formato no se migran: la web solo las pinta si son un perfil de Instagram válido.
 
 ### `minuto_a_minuto`
 

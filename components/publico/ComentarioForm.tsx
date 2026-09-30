@@ -5,6 +5,8 @@
 
 import { useState } from "react";
 import type { Textos } from "@/lib/textos/obtener-textos";
+import { useVistaPrevia } from "@/components/publico/VistaPrevia";
+import { AVISO_ENVIO_EN_VISTA_PREVIA, envioPermitido } from "@/lib/vista-previa/envio";
 
 const C = { eucalipto: "#2F5D50" };
 
@@ -26,9 +28,15 @@ export default function ComentarioForm({ textos, onEnviado, slug }: ComentarioFo
   const [nombre, setNombre] = useState("");
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState<Estado>("idle");
+  const vistaPrevia = useVistaPrevia();
+  const puedeEnviar = envioPermitido({
+    vistaPrevia,
+    completo: nombre.trim().length > 0 && texto.trim().length > 0,
+    enviando: estado === "enviando",
+  });
 
   async function enviar() {
-    if (nombre.trim().length === 0 || texto.trim().length === 0 || estado === "enviando") return;
+    if (!puedeEnviar) return;
     setEstado("enviando");
     const visibilidad = tipo;
     try {
@@ -95,7 +103,7 @@ export default function ComentarioForm({ textos, onEnviado, slug }: ComentarioFo
         </div>
         <button
           onClick={enviar}
-          disabled={nombre.trim().length === 0 || texto.trim().length === 0 || estado === "enviando"}
+          disabled={!puedeEnviar}
           className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50"
           style={{ background: C.eucalipto }}
         >
@@ -103,6 +111,11 @@ export default function ComentarioForm({ textos, onEnviado, slug }: ComentarioFo
         </button>
       </div>
 
+      {vistaPrevia && (
+        <p className="mt-2 text-[12.5px]" style={{ color: "#7C857F" }}>
+          {AVISO_ENVIO_EN_VISTA_PREVIA}
+        </p>
+      )}
       {estado === "enviado" && (
         <p className="mt-2 text-[12.5px]" style={{ color: C.eucalipto }}>
           {textos.comentario_form_mensaje_exito}

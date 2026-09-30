@@ -15,6 +15,24 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 | F4 | Panel admin (login, proxy, secciones) | **hecho** |
 | F5 | Cierre (Reviewer, Seguridad OWASP/RLS, deploy producción, prueba real) | **hecho (ingeniería)** |
 
+## Fases de plataforma multi-reto
+
+Desde 2026-09-28 el producto deja de ser la web de un único reto y pasa a ser
+una plataforma multi-reto para amigos. Ver "La web pasa a ser una plataforma
+multi-reto para amigos" en `decisiones-producto.md` y DT-025 a DT-033.
+
+| Fase | Descripción | Estado |
+|---|---|---|
+| FP0 | Esquema multi-reto (tabla `retos`, datos por reto, rutas en `lib/rutas/`) | **hecho** (2026-09-28) |
+| FP1 | Cada reto en `/<slug>` y su admin en `/<slug>/admin` | **hecho** (2026-09-29) |
+| FP2 | Panel `/superadmin` (crear/editar/eliminar retos, desplegable de rutas) y portada `/` con retos activos | **hecho** (2026-09-29) |
+| FP2.5 | Datos aislados por reto; GPS con el reto en la URL; varios retos en marcha a la vez | **hecho** (2026-09-29) |
+| FP2.6 | Contraseña de admin propia por reto, fijada desde el superadmin | **hecho** (2026-09-29) |
+| FP3a | Respuestas de un nivel en comentarios, insignia "Caminante" | **hecho** (2026-09-29) |
+| FP3b | "Minuto a minuto" plegable con aviso de nuevas | **hecho** (2026-09-30) |
+| FP3c | Configuración por reto y textos por bloques | **hecho** (2026-09-30) |
+| — | Vista previa, peregrino on/off, perfil de Instagram, URL del GPS con token | hecho |
+
 ---
 
 ## F0 — Infraestructura (hecha, 2026-07-31)
@@ -30,7 +48,8 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
       `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`,
       `NEXT_PUBLIC_MAPTILER_KEY`
 - [x] `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` — cargadas en Vercel Production
-      (confirmado en F5, 2026-08-01)
+      (confirmado en F5, 2026-08-01). `ADMIN_PASSWORD` queda obsoleta desde
+      FP2.6 (2026-09-29): cada reto tiene su propia contraseña de admin.
 
 ## F2 — Datos e ingesta
 
@@ -143,6 +162,62 @@ oficial (mismo comportamiento que modo libre); panel admin gana pestaña
       referencia al punto proyectado)
 - [x] Reviewer y Seguridad aprobados (2 rondas de Seguridad — bloqueante de
       coste corregido)
+
+---
+
+## Post-F5 — Otras mejoras del reto de Santi (hecho, 2026-08-07 → 2026-08-13)
+
+- [x] Modo de intento configurable: guiado o libre con destino en línea
+      recta (2026-08-07, DT-016)
+- [x] Fotos del minuto a minuto recomprimidas en el móvil y envío con
+      reintentos (2026-08-09, DT-017)
+- [x] Pestaña "Tráfico" en el admin: visitas anónimas, antes/durante/después,
+      botón Reset (2026-08-12, DT-022)
+- [x] "Finalizar" con vista previa real y foto de llegada opcional
+      (2026-08-12, DT-024)
+- [x] Enlace a Instagram en "Antes" y "Durante" (2026-08-13)
+- [x] "¡AUPA ATLETI!" al pinchar el peregrino (2026-08-12)
+
+---
+
+## Plataforma — FP0 a FP2.6 (hecho, 2026-09-28 → 2026-09-29)
+
+- [x] Esquema multi-reto: tabla `retos`, todos los datos ligados a un reto
+- [x] Rutas del catálogo en `lib/rutas/<ruta_id>/` (v1: `portuguesa-110`);
+      retos de ruta libre sin traza
+- [x] Web pública en `/<slug>` y panel admin en `/<slug>/admin`
+- [x] Panel `/superadmin` (solo Santi, contraseña propia): crear, editar y
+      eliminar retos; ruta en desplegable; mensajes claros de resultado y
+      error; enlaces a la web y al panel de cada reto
+- [x] Portada `/` con los retos activos (un reto inactivo sale de la
+      portada pero sigue accesible por enlace)
+- [x] Reto original renombrado a `santi-ago`
+- [x] Datos aislados por reto; varios retos en marcha a la vez
+- [x] GPS con el reto en la URL (`/api/track?reto=<slug>`); el superadmin
+      muestra la URL de cada reto
+- [x] Contraseña de admin propia por reto, fijada solo desde el superadmin
+
+## Plataforma — FP3 (hecho, 2026-09-29 → 2026-09-30)
+
+- [x] **FP3a** — Respuestas de un nivel en comentarios (visitantes y
+      caminante con insignia "Caminante"); "Responder" también en cada
+      respuesta; hilos largos plegados
+- [x] Panel admin: comentarios en Públicos / Privados / Ocultos (a los
+      privados no se responde); enlace "Ver web"
+- [x] **FP3b** — "Minuto a minuto" plegable en acordeón (abierto en
+      "durante", plegado en "llegada") con insignia de "N nuevas"
+- [x] **FP3c** — Pestaña "Configuración": interruptores de intenciones,
+      comentarios, minuto a minuto e Instagram; respuestas de visitantes
+      on/off; foto de "quién camina". Textos agrupados por bloques
+- [x] Endurecimiento pre-reto: el minuto a minuto no duplica entradas si se
+      corta la conexión; preparar o subir fotos no se queda colgado sin aviso
+- [x] Subida de fotos arreglada en la plataforma (faltaba el almacenamiento)
+- [x] Pestaña "Vista previa" en el admin: ver la web en fase antes /
+      durante / llegada con la configuración actual
+- [x] Interruptor del peregrino animado en Configuración (encendido en
+      `santi-ago`, apagado por defecto en retos nuevos)
+- [x] Perfil de Instagram del reto en Configuración
+- [x] URL del GPS con token en el superadmin, lista para copiar
 
 ---
 

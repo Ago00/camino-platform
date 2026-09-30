@@ -10,6 +10,8 @@
  * vivir en un módulo sin directiva.
  */
 
+import type { Fase } from "@/lib/types";
+
 export const TABS_ADMIN = [
   { valor: "actividad", etiqueta: "Actividad" },
   { valor: "posicion", etiqueta: "Posición" },
@@ -20,6 +22,7 @@ export const TABS_ADMIN = [
   { valor: "trafico", etiqueta: "Tráfico" },
   { valor: "textos", etiqueta: "Textos" },
   { valor: "configuracion", etiqueta: "Configuración" },
+  { valor: "vistaprevia", etiqueta: "Vista previa" },
 ] as const;
 
 export type TabAdmin = (typeof TABS_ADMIN)[number]["valor"];
@@ -70,4 +73,13 @@ export type FaseTraficoTab = "antes" | "durante" | "despues";
 
 export function esFaseTraficoValida(valor: string | undefined): valor is FaseTraficoTab {
   return valor === "antes" || valor === "durante" || valor === "despues";
+}
+
+/**
+ * Fase de la web pública elegida en la vista previa del admin (DT-034,
+ * `?fase=` de `/<slug>/admin/vista-previa`). Distinta de `FaseTraficoTab`:
+ * aquí la tercera fase es "llegada", como en `Fase`.
+ */
+export function esFaseWeb(valor: string | undefined): valor is Fase {
+  return valor === "antes" || valor === "durante" || valor === "llegada";
 }
