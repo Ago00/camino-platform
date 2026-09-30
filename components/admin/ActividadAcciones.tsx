@@ -2,7 +2,8 @@
 // pide o no confirmación según el diseño acordado en docs/tareas/CURRENT.md:
 //
 // - antes  → elegir modo (guiado/libre, DT-016) + Iniciar (confirmación, por
-//             simetría con las demás transiciones)
+//             simetría con las demás transiciones). Sin ruta, "Guiado" no se
+//             ofrece (lib/retos/modo-inicio.ts; la action lo rechaza igualmente)
 // - durante → Finalizar (abre ModalFinalizar.tsx, DT-024: mensaje + foto
 //             opcional + preview real) + Reiniciar (confirmación; aborta el
 //             intento en marcha)
@@ -26,6 +27,8 @@ interface ActividadAccionesProps {
   fotoLlegadaUrlActual: string | null;
   llegadaKicker: string;
   llegadaTitulo: string;
+  /** Modos que admite el reto (`modosDeInicioPermitidos`): sin ruta, solo libre. */
+  modosDeInicio: readonly [ModoIntento, ...ModoIntento[]];
   slug: string;
 }
 
@@ -35,10 +38,11 @@ export default function ActividadAcciones({
   fotoLlegadaUrlActual,
   llegadaKicker,
   llegadaTitulo,
+  modosDeInicio,
   slug,
 }: ActividadAccionesProps) {
   if (fase === "antes") {
-    return <IniciarConModo slug={slug} />;
+    return <IniciarConModo slug={slug} modosDeInicio={modosDeInicio} />;
   }
 
   if (fase === "durante") {
@@ -56,8 +60,15 @@ export default function ActividadAcciones({
   return <RetomarYReiniciar slug={slug} />;
 }
 
-function IniciarConModo({ slug }: { slug: string }) {
-  const [modo, setModo] = useState<ModoIntento>("guiado");
+function IniciarConModo({
+  slug,
+  modosDeInicio,
+}: {
+  slug: string;
+  modosDeInicio: readonly [ModoIntento, ...ModoIntento[]];
+}) {
+  const [modo, setModo] = useState<ModoIntento>(modosDeInicio[0]);
+  const guiadoPermitido = modosDeInicio.includes("guiado");
   const [destinoLat, setDestinoLat] = useState("");
   const [destinoLon, setDestinoLon] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +86,7 @@ function IniciarConModo({ slug }: { slug: string }) {
     lonNum >= -180 &&
     lonNum <= 180;
 
-  const puedeIniciar = modo === "guiado" || destinoValido;
+  const puedeIniciar = modosDeInicio.includes(modo) && (modo === "guiado" || destinoValido);
 
   function iniciar() {
     if (!window.confirm("¿Iniciar el reto? La web pública pasará a mostrar el mapa en directo.")) {
@@ -101,9 +112,16 @@ function IniciarConModo({ slug }: { slug: string }) {
           Modo del intento
         </label>
         <div className="mt-1 flex gap-2">
-          <SelectorModoBoton etiqueta="Guiado" activo={modo === "guiado"} onClick={() => setModo("guiado")} />
+          {guiadoPermitido && (
+            <SelectorModoBoton etiqueta="Guiado" activo={modo === "guiado"} onClick={() => setModo("guiado")} />
+          )}
           <SelectorModoBoton etiqueta="Libre" activo={modo === "libre"} onClick={() => setModo("libre")} />
         </div>
+        {!guiadoPermitido && (
+          <p className="mt-1 text-[12.5px]" style={{ color: "#4A5450" }}>
+            Este reto no tiene ruta: se inicia en modo libre, con un destino.
+          </p>
+        )}
       </div>
 
       {modo === "libre" && (

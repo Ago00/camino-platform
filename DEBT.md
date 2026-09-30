@@ -2,6 +2,39 @@
 
 ---
 
+## Muro en vivo y parada por 403: el cableado de los polls no tiene test de interacción
+
+**Fecha:** 2026-09-30
+**Contexto:** Lote de pendientes pre-reto (muro en vivo, sección apagada en caliente). El proyecto no tiene entorno DOM en los tests.
+**Problema:** La fusión (`lib/comentarios/muro-en-vivo.ts`) y la regla del 403 (`esRespuestaDeSeccionApagada`) están probadas como funciones puras, pero nada comprueba que `MuroComentarios` pare el intervalo con la pestaña oculta y lo reanude al volver, que no sondee en la vista previa, que el formulario de respuesta abierto sobreviva a un poll, ni que el 403 pare el poll del muro o del minuto a minuto y llame a `router.refresh()` una sola vez. Tampoco el movimiento de foco de `RespuestaForm` al cambiar de destinatario.
+**Impacto:** Bajo-medio: una regresión en el cableado (p. ej. dependencias del efecto) solo se vería en el navegador.
+**Solución propuesta:** Con jsdom + Testing Library (ya recomendado en otras entradas), tests con temporizadores falsos que simulen `visibilitychange`, respuestas 200/403 de `fetch` y un `useRouter` doble. Mientras tanto, verificación manual en la preview.
+**Prioridad:** Baja.
+
+---
+
+## Muro: el 403 solo se atiende en el poll, no en la carga inicial ni en la recarga tras publicar
+
+**Fecha:** 2026-09-30
+**Contexto:** Revisión del lote pre-reto (muro en vivo). `MuroComentarios` usa `refrescarPaginaCero` en tres sitios (carga inicial, `recargar()` tras publicar y el poll) pero solo `sondear()` pasa el estado a `useRefrescoSiSeccionApagada`.
+**Problema:** Si el admin apaga los comentarios entre el render del servidor y la hidratación, o justo antes de que el visitante publique, la carga inicial / recarga recibe 403 y se ignora: el muro queda vacío (o sin cambios) hasta el siguiente tick del poll (hasta 60 s) o indefinidamente si la pestaña está oculta.
+**Impacto:** Muy bajo: ventana de carrera pequeña, sin datos erróneos, solo una sección vacía un rato.
+**Solución propuesta:** Pasar el `status` de la carga inicial y de `recargar()` por `pararSiSeccionApagada` (p. ej. mover la llamada dentro de `refrescarPaginaCero`, que ya es el camino común) y marcar el poll como parado.
+**Prioridad:** Baja.
+
+---
+
+## El poll del minuto a minuto sigue corriendo con la pestaña oculta
+
+**Fecha:** 2026-09-30
+**Contexto:** Al añadir el poll del muro (60 s, pausado con la pestaña oculta) se mantuvo sin cambios el del minuto a minuto (30 s, siempre activo), que quedaba fuera del alcance.
+**Problema:** Una pestaña en segundo plano sigue pidiendo `/<slug>/api/minuto-a-minuto` cada 30 s (y `RefrescoAlCambiarFase` y el progreso también sondean). Los dos polls de la web siguen criterios distintos.
+**Impacto:** Bajo: peticiones baratas, pero consumen cupo de rate limit por IP y batería en móvil.
+**Solución propuesta:** Extraer el patrón de visibilidad del muro a un hook (`useIntervaloConPestanaVisible`) y usarlo en el minuto a minuto (y valorar en progreso y fase).
+**Prioridad:** Baja.
+
+---
+
 ## ~~Las llamadas de la web a `/<slug>/api/*` se registran como visitas en "Tráfico"~~ — RESUELTO (proxy.ts ignora /:slug/api/*, con tests)
 
 **Fecha:** 2026-09-30
@@ -58,6 +91,7 @@ Aplicada por el orquestador el 2026-09-30 (`santi-ago` a `true`, el resto a `fal
 (3) `esUrlPerfilInstagram` exige esquema: si el valor guardado de `santi-ago` en `textos.cierre_antes_instagram_url` no lo lleva (o no es un perfil), el enlace desaparece de su web tras desplegar.
 (4) Los km de los datos de ejemplo del modo guiado salen de la traza de PINTADO (acortada por DP), así que el mojón de ejemplo no cuadra con la longitud real de la ruta.
 **Impacto:** Bajo, salvo (3), que cambia la web de `santi-ago` si el valor no es válido.
+**Actualización 2026-09-30:** de (2) ya se rechaza el dominio a secas (`instagram.com`, `www.`/`m.`) y se acepta `m.instagram.com/usuario`; siguen sin aplicarse las reglas de puntos (inicial/final, `..`).
 **Solución propuesta:** (1) Test con `renderToString` de `WebReto` en "antes" con `RefrescoAlCambiarFase`/`PeregrinoLibre` sustituidos por dobles. (2) Rechazar usuarios con punto inicial/final, `..` o que terminen en un dominio (`.com`), y admitir `m.`. (3) Antes de desplegar: `select valor from textos where clave = 'cierre_antes_instagram_url';` y, si no pasa, volver a guardarlo desde Configuración. (4) Si molesta, escalar con la longitud del catálogo de rutas.
 **Prioridad:** Media para (3) (comprobar antes de desplegar); Baja el resto.
 
@@ -88,11 +122,14 @@ Aplicada por el orquestador el 2026-09-30 (`santi-ago` a `true`, el resto a `fal
 (7) Sin tests de componente para los formularios del superadmin, `HiloComentario` ni el acordeón. La lógica está en funciones puras testeadas; el cableado depende de la verificación manual.
 **Impacto:** Bajo: UX/a11y menores y coherencia.
 **Solución propuesta:** (1) Mover el foco al formulario en cada cambio de destinatario y enlazar el `<p>` con `aria-describedby`. (2) Confirmar con Producto. Si se quiere contestar a la raíz con respuestas visibles, mostrar también su botón. (3) Envolver el botón en un `<h3>`. (4) Tipar el prop. (5) Si se necesita, usar un fallback con `crypto.getRandomValues`. (6) Rechazar en la action si `visibilidad = 'privado'`. (7) Valorar tests con Testing Library si se añade jsdom.
+**Resuelto el 2026-09-30:** (1) `aria-describedby` + `aria-live` en "Respondiendo a …" y foco al nombre (vacío) o al texto al cambiar de destinatario; (5) `generarUuidV4` en `lib/envio/uuid.ts`; (6) `ocultarComentario`/`mostrarComentario` filtran `visibilidad = 'publico'` y fallan con "No se puede ocultar/mostrar un mensaje privado." Quedan (2), (3), (4) y (7).
 **Prioridad:** Baja.
 
 ---
 
-## El muro no se actualiza con comentarios de otros visitantes
+## ~~El muro no se actualiza con comentarios de otros visitantes~~ — RESUELTO
+
+Resuelto el 2026-09-30: poll de la página 0 cada 60 s solo con la pestaña visible, fusión pura por id en `lib/comentarios/muro-en-vivo.ts` (con tests), sin poll en la vista previa y parada + `router.refresh()` ante 403 (nota de DT-030).
 
 **Fecha:** 2026-09-30
 **Contexto:** Endurecimiento pre-reto. Se resolvió que quien publica vea su comentario (recarga de la página 0 al enviar) sin añadir polling, por decisión del orquestador.
@@ -103,7 +140,9 @@ Aplicada por el orquestador el 2026-09-30 (`santi-ago` a `true`, el resto a `fal
 
 ---
 
-## Visitante con la web abierta sigue haciendo polling del minuto a minuto tras apagarlo (FP3c)
+## ~~Visitante con la web abierta sigue haciendo polling del minuto a minuto tras apagarlo (FP3c)~~ — RESUELTO
+
+Resuelto el 2026-09-30: el poll del minuto a minuto (y el nuevo del muro) para al recibir 403 y hace `router.refresh()` una vez (`useRefrescoSiSeccionApagada`, notas de DT-031/DT-032). Enviar un comentario con la sección recién apagada sigue mostrando el error genérico hasta ese refresco.
 
 **Fecha:** 2026-09-30
 **Contexto:** Recomendación del Reviewer en FP3c (DT-032). `components/publico/MinutoAMinuto.tsx` (líneas ~83 y ~113) ignora cualquier respuesta no `ok`; `RefrescoAlCambiarFase` solo refresca al cambiar de fase.
@@ -178,7 +217,7 @@ Toda la cabecera es el botón (`aria-expanded`/`aria-controls`): su nombre acces
 **Contexto:** Revisión de FP3a (DT-030).
 **Problema:** (1) `components/publico/MuroComentarios.tsx:27-38`: si el GET falla (`!response.ok`) o la red lanza, el muro no muestra ningún estado de error, y el rechazo del `void cargarPagina(0)` queda sin manejar (anterior a FP3a, más visible ahora que el GET depende de `es_autor`). (2) Offset sobre raíces: si entra una raíz nueva entre dos páginas, la siguiente repite el último hilo y aparece una `key` duplicada en `hilos.map` (anterior a FP3a). (3) `components/publico/HiloComentario.tsx:56,66`: con el hilo plegado, `aria-controls` apunta a un id que no está en el DOM (la `<ul>` no se renderiza). (4) `RespuestaForm.tsx:93` y `MuroComentarios.tsx:68`: "Enviando…"/"Cargando…" en código y no en `textos` (patrón heredado). (5) `lib/comentarios/hilos.ts` `agruparHilosAdmin`: con filtro "Públicos", las respuestas visibles de una raíz oculta aparecen como públicas aunque en la web estén ocultas con su hilo (la raíz sí sale como contexto "oculto (con todo su hilo)"). (6) `FiltroComentarios` recibe `slug` por prop mientras `TabsAdmin`/`EnlacePaginacion` usan `usePathname`: dos patrones para lo mismo.
 **Impacto:** Bajo: UX ante fallos, un caso raro de duplicado, a11y menor, coherencia.
-**Solución propuesta:** (1) Estado `error` en el muro con `mensaje_error_generico` y `catch` en `cargarPagina`. (2) y (3) resueltos antes del commit de FP3a (deduplicación por `id` al concatenar páginas; `<ul hidden>`). (4) Claves de texto al tocar esos componentes. (5) Resuelto el 2026-09-30: con las sub-pestañas Públicos/Privados/Ocultos, un hilo con la raíz oculta ya no aparece en "Públicos" (va entero a "Ocultos"). (6) Unificar en `usePathname`.
+**Solución propuesta:** (1) Estado `error` en el muro con `mensaje_error_generico` y `catch` en `cargarPagina` (el `catch` ya está desde el muro en vivo, 2026-09-30: sin rechazos sin manejar; falta el estado de error visible). (2) y (3) resueltos antes del commit de FP3a (deduplicación por `id` al concatenar páginas; `<ul hidden>`). (4) Claves de texto al tocar esos componentes. (5) Resuelto el 2026-09-30: con las sub-pestañas Públicos/Privados/Ocultos, un hilo con la raíz oculta ya no aparece en "Públicos" (va entero a "Ocultos"). (6) Unificar en `usePathname`.
 **Prioridad:** Baja.
 
 ---
@@ -270,7 +309,9 @@ Las FK dependientes tienen `ON DELETE CASCADE`; `eliminarReto` funciona con reto
 
 ---
 
-## `iniciarReto` permite modo "guiado" en un reto sin ruta
+## ~~`iniciarReto` permite modo "guiado" en un reto sin ruta~~ — RESUELTO
+
+Resuelto el 2026-09-30: `modosDeInicioPermitidos` (`lib/retos/modo-inicio.ts`); `iniciarReto` rechaza "guiado" sin ruta y `ActividadAcciones` no lo ofrece (nota de DT-016, tests en `actions.test.ts`).
 
 **Fecha:** 2026-09-29
 **Contexto:** FP2.5 (DT-028). Un reto de ruta libre (`ruta_id` null) puede iniciarse en modo "guiado" desde el panel (es el default). FP2.5 lo trata en lectura como libre (progreso, web pública, mapa admin, filtro geográfico del tracker), pero no lo impide en la escritura.

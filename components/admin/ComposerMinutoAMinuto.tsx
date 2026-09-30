@@ -21,6 +21,7 @@ import { prepararFotoParaSubida } from "@/lib/imagen/preparar-foto";
 import { ejecutarConReintentos } from "@/lib/envio/reintentar";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
 import { MENSAJE_ENVIO_LENTO, UMBRAL_AVISO_ENVIO_LENTO_MS, avisarSiTarda } from "@/lib/envio/aviso-envio-lento";
+import { generarUuidV4 } from "@/lib/envio/uuid";
 
 const C = { ink: "#1B211D", muted: "#4A5450", verde: "#2F5D50", peligro: "#B03A2E" };
 
@@ -109,7 +110,7 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
   function onSubmit(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const formData = new FormData(evento.currentTarget);
-    claveEnvioRef.current ??= crypto.randomUUID();
+    claveEnvioRef.current ??= generarUuidV4();
     formData.set("clave_envio", claveEnvioRef.current);
 
     startTransition(async () => {

@@ -918,6 +918,17 @@ opcionales sueltos ni `any`.
 campos nuevos de `intentos`, componentes nuevos de modo libre, y la nota de
 que el filtro geográfico de `/api/track` es condicional al modo del intento.
 
+### Nota posterior (2026-09-30) — sin ruta, solo modo libre
+
+Un reto sin ruta (`ruta_id` null, FP2.5) podía iniciarse en modo guiado (el
+default del selector) y quedaba sin destino. `lib/retos/modo-inicio.ts`
+(`modosDeInicioPermitidos`, puro) decide los modos admitidos: sin ruta, solo
+`libre`. `iniciarReto` lanza "Este reto no tiene ruta: solo se puede iniciar en
+modo libre, con un destino." sin escribir, y `ActividadAcciones` no ofrece
+"Guiado" (preselecciona libre y lo explica). Como el resto de transiciones de
+fase, la acción lanza en vez de devolver resultado: en producción Next redacta
+el mensaje, pero la interfaz ya no permite llegar a ese caso.
+
 ---
 
 ## DT-017 — Fotos del minuto a minuto: compresión adaptativa en el navegador + reintento, sin subida directa a Storage
@@ -1925,6 +1936,15 @@ Hasta FP2.5 todos los paneles `/<slug>/admin` compartían la env var `ADMIN_PASS
   - Los privados solo tienen "Eliminar" (`AccionesComentario` con `ocultable={false}`) y nunca "Responder" (`puedeResponder`). Las actions de ocultar y mostrar no lo impiden (registrado en `DEBT.md`).
 - **Web pública:** cada respuesta tiene su botón "Responder" y el formulario se abre al final del hilo con "Respondiendo a {nombre}" (clave `respuesta_form_respondiendo_a`, bloque de respuestas en `lib/textos/bloques.ts`). Sigue habiendo un solo nivel: toda respuesta se guarda con `parent_id` = raíz, y el destinatario es solo texto de interfaz, no se guarda. Con las respuestas desplegadas, el botón de la raíz no se muestra.
 
+### Nota posterior (2026-09-30) — muro en vivo, privados y accesibilidad de la respuesta
+
+- **Muro en vivo:** `MuroComentarios` vuelve a pedir la página 0 cada 60 s, solo con la pestaña visible (`visibilitychange`: para en oculto; al volver sondea en el acto y reanuda). La fusión es pura (`lib/comentarios/muro-en-vivo.ts`): unión por id de raíces (orden de la API, `created_at desc, id desc`, así las nuevas quedan arriba y no se pierden las páginas de "Cargar más") y de respuestas por hilo (cronológico, nunca se quita una ya presente). Si nada cambia devuelve el mismo estado y React no repinta. La paginación es una unión (`sin-cargar | mas | fin`) que solo fija la carga inicial; luego se conserva el offset (las repeticiones por desplazamiento se descartan al fusionar), salvo con todo cargado y una página 0 llena sin raíces conocidas, que reabre "Cargar más" para el hueco. La recarga tras publicar usa el mismo camino (ya no descarta las páginas extra).
+- **Respuestas en el estado del muro:** `HiloComentario` ya no copia `hilo.respuestas` a un estado propio (el poll no le llegaría); la respuesta publicada sube al muro (`aplicarRespuestaPropia`, sin duplicar si el poll ya la trajo). Los hilos conservan su `key`, así que un formulario de respuesta abierto no se desmonta.
+- **Sin poll** en la vista previa (`useVistaPrevia`) y, como con la sección apagada el muro no se monta, tampoco entonces. Si el poll recibe 403 (el admin apagó la sección con la página abierta) se para y se hace `router.refresh()` una vez (`useRefrescoSiSeccionApagada`, ver DT-032).
+- **Deliberado:** una raíz que el admin oculta o borra no desaparece del muro abierto hasta recargar; el poll solo añade.
+- **Ocultar/mostrar solo públicos:** `ocultarComentario`/`mostrarComentario` filtran también `visibilidad = 'publico'` en el propio `update` (con `.select("id")`); sin filas afectadas lanzan "No se puede ocultar/mostrar un mensaje privado." Cierra la salvedad de la nota anterior.
+- **`RespuestaForm`:** el `<p>` "Respondiendo a …" tiene `id` (`useId`) y `aria-live="polite"`, y el `textarea` lo referencia con `aria-describedby`. Al cambiar de destinatario con el formulario abierto (prop `destinatarioId`, para distinguir nombres iguales), el foco va al nombre si está vacío o al texto si no.
+
 ---
 
 ## DT-031 — FP3b: "Minuto a minuto" plegable en la web pública
@@ -1963,6 +1983,10 @@ El botón "Mostrar"/"Ocultar" se sustituye por una cabecera de acordeón:
 - El aviso para lectores de pantalla sale de la cabecera: va en un `aria-live="polite"` aparte, prefijado con el kicker ("Minuto a minuto: 2 nuevas").
 - Se eliminan las claves `minuto_a_minuto_boton_mostrar` y `minuto_a_minuto_boton_ocultar` (punto 6), porque ya no se usan. Si un reto las tenía personalizadas en `textos`, esas filas quedan sin efecto.
 
+### Nota posterior (2026-09-30) — sección apagada en caliente
+
+Si el poll del minuto a minuto recibe 403 (el admin apagó la sección con la web abierta), se para el intervalo y se hace `router.refresh()` una sola vez para que la página deje de pintar la sección (`useRefrescoSiSeccionApagada` + `esRespuestaDeSeccionApagada`, ver DT-032). El poll del minuto a minuto sigue sin pausarse con la pestaña oculta (el del muro sí, DT-030).
+
 ---
 
 ## DT-032 — FP3c: Configuración por reto desde el panel admin
@@ -1999,6 +2023,10 @@ Cada reto necesita decidir qué ve su público sin tocar código: encender/apaga
 - **Interruptor "Respuestas de visitantes"** se atenúa con un aviso cuando los comentarios están apagados (no tiene efecto), pero conserva su valor.
 - **Sin cambios en la RLS de SELECT:** con una sección apagada, comentarios públicos y entradas del minuto a minuto siguen siendo legibles por PostgREST directo (registrado en `DEBT.md`); la decisión aprobada es ocultarlos en la web y en la API.
 
+### Nota posterior (2026-09-30) — la web abierta reacciona al apagado
+
+El 403 de las APIs de sección es ahora también una señal para la web ya abierta: `esRespuestaDeSeccionApagada(estadoHttp)` (`lib/retos/config.ts`) y el hook cliente `components/publico/useRefrescoSiSeccionApagada.ts`, que devuelve si hay que parar y hace `router.refresh()` la primera vez. Lo usan los polls del minuto a minuto y del muro. `/[slug]` es dinámica y `guardarConfiguracion` revalida `/<slug>`, así que el refresco ya llega sin la sección.
+
 ---
 
 ## DT-033 — Idempotencia de `crearMinutoAMinuto` con clave de envío del cliente
@@ -2030,6 +2058,10 @@ El composer del minuto a minuto reintenta automáticamente la Server Action ante
 - **Límite conocido:** si tras un error se edita el texto y se reenvía, la clave es nueva; si el primer envío sí había llegado, quedan dos entradas (con textos distintos). Es la semántica buscada: la clave identifica una entrada concreta, no "lo último que se intentó publicar".
 - **La clave no es secreta:** la policy SELECT de `anon` (0007) la deja leer por PostgREST como el resto de la fila; conocerla no permite escribir (solo el service role inserta). La API pública no la selecciona.
 - **Mismo lote:** `cargarImagen` (`lib/imagen/preparar-foto.ts`) rechaza a los 10 s (`LIMITE_DECODIFICACION_MS`) y la degradación al original lo absorbe; el composer, el modal "Finalizar" y la foto de quién camina muestran "Sigue subiendo, no cierres la página." pasados 15 s de envío, sin abortar (`lib/envio/aviso-envio-lento.ts`: las Server Actions no aceptan `AbortSignal` y abortar agravaría los duplicados).
+
+### Nota posterior (2026-09-30) — UUID sin contexto seguro
+
+`crypto.randomUUID()` (punto 2) solo existe en contextos seguros: con el panel abierto por HTTP en la LAN (`pnpm dev` desde el móvil) el envío lanzaba. El composer usa `generarUuidV4()` (`lib/envio/uuid.ts`): `randomUUID` si existe; si no, un v4 construido con `crypto.getRandomValues` (bits de versión y variante fijados; test de formato y de que pasa el `z.uuid()` del servidor).
 
 ---
 
@@ -2067,3 +2099,7 @@ Cuatro peticiones del usuario: (A) poder ver desde el admin cómo se vería ahor
 - **Llegada de ejemplo al 100 %** (0 km restantes; el plan hablaba de ~42 %, que es el valor de "durante").
 - **`EntradaMinutoAMinutoPublica` pasa a `lib/types.ts`** (derivado de `MinutoAMinuto`) para que `lib/vista-previa/` no importe tipos de un componente; `MinutoAMinuto.tsx` lo reexporta.
 - **El superadmin verifica la sesión en la página**, además del layout y el proxy: según la guía de autenticación de Next 16, un layout no impide que la página se renderice ni que su contenido viaje en el payload RSC, y esta página lleva el token.
+
+### Nota posterior (2026-09-30) — Instagram: dominio a secas, rutas reservadas y web móvil
+
+`instagram.com` o `www.instagram.com` sin usuario cumplían el patrón de usuario (letras y puntos) y se guardaban como `https://instagram.com/instagram.com`. Ahora `esUsuarioValido` rechaza el propio dominio (`(www.|m.)instagram.com`), las rutas reservadas siguen siendo `p`, `reel`, `reels`, `explore`, `stories`, `accounts`, `direct` y `tv` (en URL, con `@` o a secas), y se acepta la web móvil `m.instagram.com/usuario` (normaliza a `https://instagram.com/usuario`; `esUrlPerfilInstagram` también la admite). Siguen sin aplicarse las reglas finas de Instagram sobre puntos (inicial/final o `..`), ver `DEBT.md`.

@@ -45,7 +45,12 @@ camino-santi-ago/
 │   │   ├── VistaPrevia.tsx    # DT-034: VistaPreviaProvider + useVistaPrevia (formularios sin envío, sin polling)
 │   │   ├── MuroComentarios.tsx / HiloComentario.tsx / RespuestaForm.tsx / InsigniaCaminante.tsx
 │   │   │                      # FP3a/DT-030: muro en hilos de un nivel, plegado si > 2 respuestas;
-│   │   │                      # FP3c/DT-032: prop permitirRespuestas (sin "Responder" si el reto las apaga)
+│   │   │                      # FP3c/DT-032: prop permitirRespuestas (sin "Responder" si el reto las apaga);
+│   │   │                      # muro en vivo (nota DT-030): poll de la página 0 cada 60 s con la pestaña
+│   │   │                      # visible, fusión en lib/comentarios/muro-en-vivo.ts; las respuestas viven
+│   │   │                      # en el estado del muro (HiloComentario solo guarda estado de interfaz)
+│   │   ├── useRefrescoSiSeccionApagada.ts  # 403 de una API de sección en un poll ⇒ parar + router.refresh()
+│   │   │                      # una vez (muro y minuto a minuto; notas DT-031/DT-032)
 │   │   ├── ComentariosConMuro.tsx  # ComentarioForm + MuroComentarios en durante/llegada: al enviar un
 │   │   │                           # comentario público pide al muro (ref, useImperativeHandle) recargar la página 0
 │   │   ├── ModoAntes.tsx / ModoDurante*.tsx / ModoLlegada*.tsx
@@ -104,6 +109,9 @@ camino-santi-ago/
 │   │                          # (ModoLlegadaConectado)
 │   ├── comentarios/hilos.ts   # FP3a/DT-030: dominio puro de hilos — motivoRechazoPadre, agruparHilos,
 │   │                          # agruparHilosAdmin
+│   ├── comentarios/muro-en-vivo.ts  # nota DT-030: estado del muro (hilos + paginación) y fusión por id de
+│   │                          # página 0, "Cargar más" y respuesta propia (puro)
+│   ├── retos/modo-inicio.ts   # nota DT-016: modosDeInicioPermitidos (sin ruta ⇒ solo libre), action + UI
 │   ├── retos/config.ts        # FP3c/DT-032: dominio puro de la configuración del reto — configDelReto
 │   │                          # (campo ausente ⇒ encendido, también peregrino_animado DT-034),
 │   │                          # fotoQuienCaminaDelReto, urlInstagramVisible
@@ -134,6 +142,7 @@ camino-santi-ago/
 │   ├── envio/                 # DT-017: envío de formularios del panel a sus Server Actions
 │   │   ├── errores-de-envio.ts   # dominio puro: qué fallo se reintenta y qué se enseña
 │   │   ├── reintentar.ts         # dominio puro: reintento con espera creciente (espera inyectada)
+│   │   ├── uuid.ts               # generarUuidV4: randomUUID o, sin contexto seguro, getRandomValues (DT-033)
 │   │   └── aviso-envio-lento.ts  # avisarSiTarda: aviso "sigue subiendo" a los 15 s, sin abortar (DT-033)
 │   ├── rutas/                    # FP0/DT-025: assets por ruta. Añadir ruta = añadir carpeta.
 │   │   └── portuguesa-110/

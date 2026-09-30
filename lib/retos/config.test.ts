@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { configDelReto, fotoQuienCaminaDelReto, urlInstagramVisible } from "@/lib/retos/config";
+import {
+  configDelReto,
+  esRespuestaDeSeccionApagada,
+  fotoQuienCaminaDelReto,
+  urlInstagramVisible,
+} from "@/lib/retos/config";
 
 describe("configDelReto", () => {
   it("sin columnas de configuración (migraciones 0012/0015 sin aplicar) todo queda encendido", () => {
@@ -90,5 +95,15 @@ describe("urlInstagramVisible", () => {
   it("un valor antiguo que no es un perfil de Instagram no se pinta (DT-034)", () => {
     expect(urlInstagramVisible(encendido, "javascript:alert(1)")).toBeNull();
     expect(urlInstagramVisible(encendido, "https://evil.example/santi")).toBeNull();
+  });
+});
+
+describe("esRespuestaDeSeccionApagada", () => {
+  it("solo el 403 significa sección apagada", () => {
+    expect(esRespuestaDeSeccionApagada(403)).toBe(true);
+  });
+
+  it.each([200, 404, 429, 500])("%i no para el polling", (estado) => {
+    expect(esRespuestaDeSeccionApagada(estado)).toBe(false);
   });
 });

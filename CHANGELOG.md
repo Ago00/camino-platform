@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-09-30 — Muro de comentarios en vivo y pendientes antes del reto
+
+**Tipo:** Mejora + Fix
+
+El muro de comentarios se actualiza solo cada minuto mientras la pestaña está a
+la vista: los comentarios y respuestas nuevos de otros visitantes aparecen en
+su sitio sin perder lo ya cargado ni cerrar la respuesta que estés escribiendo.
+Si el admin apaga los comentarios o el minuto a minuto con la web abierta, la
+página se refresca sola y deja de mostrarlos. En el panel, un reto sin ruta ya
+solo se puede iniciar en modo libre, los mensajes privados no se pueden ocultar
+ni mostrar, y publicar en el minuto a minuto funciona también abriendo el panel
+por HTTP en la red local. El perfil de Instagram rechaza `instagram.com` sin
+usuario y acepta los enlaces de la web móvil (`m.instagram.com/usuario`). El
+formulario de respuesta es más accesible: anuncia a quién respondes y lleva el
+foco al campo que falta al cambiar de destinatario.
+
+---
+
 ## 2026-09-30 — Horas siempre en hora española
 
 **Tipo:** Fix

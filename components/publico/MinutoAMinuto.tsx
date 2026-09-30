@@ -15,6 +15,7 @@ import { construirUrlPolling, fusionarSinDuplicados } from "@/lib/minuto-a-minut
 import type { Textos } from "@/lib/textos/obtener-textos";
 import type { EntradaMinutoAMinutoPublica } from "@/lib/types";
 import { useVistaPrevia } from "@/components/publico/VistaPrevia";
+import { useRefrescoSiSeccionApagada } from "@/components/publico/useRefrescoSiSeccionApagada";
 import { formatearHora } from "@/lib/fechas";
 
 const PAGINA = 20;
@@ -71,6 +72,7 @@ export default function MinutoAMinuto({
   );
   const regionId = useId();
   const vistaPrevia = useVistaPrevia();
+  const pararSiSeccionApagada = useRefrescoSiSeccionApagada();
   const nuevas = plegado ? contarNuevas(entradas, ultimoVistoId) : 0;
 
   const cargarPagina = useCallback(async (offset: number) => {
@@ -97,6 +99,7 @@ export default function MinutoAMinuto({
   // entradas con id mayor que la más reciente ya cargada (todas si el feed
   // está vacío) y las añade arriba. Igual con la sección plegada o no. En la
   // vista previa del admin no hay poll (DT-034): lo que se ve es una foto fija.
+  // Un 403 es que el admin apagó la sección: se para y se refresca la página.
   const masRecienteIdRef = useRef<number | null>(null);
   useEffect(() => {
     masRecienteIdRef.current = entradas.length > 0 ? entradas[0].id : null;
@@ -108,6 +111,10 @@ export default function MinutoAMinuto({
     const id = setInterval(async () => {
       try {
         const response = await fetch(construirUrlPolling(slug, masRecienteIdRef.current));
+        if (pararSiSeccionApagada(response.status)) {
+          clearInterval(id);
+          return;
+        }
         if (!response.ok) return;
         const data: RespuestaFeed = await response.json();
         if (data.entradas.length > 0) {
@@ -120,7 +127,7 @@ export default function MinutoAMinuto({
     }, POLLING_MS);
 
     return () => clearInterval(id);
-  }, [polling, vistaPrevia, slug]);
+  }, [polling, vistaPrevia, slug, pararSiSeccionApagada]);
 
   function alternarPlegado() {
     // Al plegar, lo que hay en pantalla es la referencia del aviso; al

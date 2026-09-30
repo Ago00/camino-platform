@@ -1,7 +1,9 @@
 // Un hilo del muro (FP3a, DT-030): comentario raíz + respuestas de un solo
 // nivel. Con más de UMBRAL_PLEGADO respuestas el hilo arranca plegado tras
 // "Ver N respuestas"; con 1-2 se muestran directamente. "Responder" abre
-// RespuestaForm, y la respuesta enviada se añade aquí sin recargar el muro.
+// RespuestaForm, y la respuesta enviada la añade el muro a este hilo sin
+// recargar (las respuestas viven en el estado del muro, que también fusiona
+// las que trae el poll; aquí solo hay estado de interfaz).
 
 "use client";
 
@@ -21,10 +23,17 @@ interface HiloComentarioProps {
   slug: string;
   /** false si el reto tiene apagadas las respuestas de visitantes (FP3c): sin "Responder"; las existentes se ven igual. */
   permitirRespuestas: boolean;
+  onRespuestaPublicada: (hiloId: number, respuesta: ComentarioPublico) => void;
 }
 
-export default function HiloComentario({ hilo, textos, slug, permitirRespuestas }: HiloComentarioProps) {
-  const [respuestas, setRespuestas] = useState<ComentarioPublico[]>(hilo.respuestas);
+export default function HiloComentario({
+  hilo,
+  textos,
+  slug,
+  permitirRespuestas,
+  onRespuestaPublicada,
+}: HiloComentarioProps) {
+  const respuestas = hilo.respuestas;
   const [desplegado, setDesplegado] = useState(hilo.respuestas.length <= UMBRAL_PLEGADO);
   // Nombre de a quién se contesta (raíz o una respuesta). Un solo nivel: toda
   // respuesta va al hilo, así que el formulario se abre al final, donde aparecerá.
@@ -35,7 +44,7 @@ export default function HiloComentario({ hilo, textos, slug, permitirRespuestas 
   const respuestasVisibles = respuestas.length > 0 && desplegado;
 
   function alResponder(respuesta: ComentarioPublico) {
-    setRespuestas((previas) => [...previas, respuesta]);
+    onRespuestaPublicada(hilo.id, respuesta);
     setDesplegado(true);
     setRespondiendoA(null);
   }
@@ -100,6 +109,7 @@ export default function HiloComentario({ hilo, textos, slug, permitirRespuestas 
           textos={textos}
           slug={slug}
           parentId={hilo.id}
+          destinatarioId={respondiendoA.id}
           destinatario={respondiendoA.nombre}
           onRespondido={alResponder}
         />

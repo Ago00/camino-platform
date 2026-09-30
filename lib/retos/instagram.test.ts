@@ -18,6 +18,9 @@ describe("normalizarPerfilInstagram", () => {
     ["https://www.instagram.com/santi?igsh=MWx0eXZ4", "https://instagram.com/santi"],
     ["HTTPS://WWW.INSTAGRAM.COM/santi", "https://instagram.com/santi"],
     ["a".repeat(30), `https://instagram.com/${"a".repeat(30)}`],
+    ["m.instagram.com/santi", "https://instagram.com/santi"],
+    ["https://m.instagram.com/santi.ago/", "https://instagram.com/santi.ago"],
+    ["instagram.com/tvshow", "https://instagram.com/tvshow"],
   ])("normaliza %j a %j", (entrada, url) => {
     expect(normalizarPerfilInstagram(entrada)).toEqual({ ok: true, url });
   });
@@ -44,9 +47,26 @@ describe("normalizarPerfilInstagram", () => {
     ["dominio sin usuario", "https://instagram.com/"],
     ["esquema ftp", "ftp://instagram.com/santi"],
     ["entrada enorme", `https://instagram.com/santi?${"x".repeat(400)}`],
+    ["dominio a secas", "instagram.com"],
+    ["dominio con www a secas", "www.instagram.com"],
+    ["dominio móvil a secas", "m.instagram.com"],
+    ["dominio a secas con esquema", "https://www.instagram.com"],
+    ["dominio con arroba", "@instagram.com"],
+    ["dominio con mayúsculas", "WWW.Instagram.COM"],
+    ["subdominio distinto de www y m", "https://es.instagram.com/santi"],
+    ["publicación en la web móvil", "https://m.instagram.com/p/C0dE123"],
   ])("rechaza %s", (_motivo, entrada) => {
     expect(normalizarPerfilInstagram(entrada)).toEqual({ ok: false, mensaje: MENSAJE_PERFIL_INSTAGRAM_NO_VALIDO });
   });
+
+  it.each(["p", "reel", "reels", "explore", "stories", "accounts", "direct", "tv"])(
+    "rechaza la ruta reservada %j como usuario, en URL o con arroba",
+    (ruta) => {
+      for (const entrada of [`https://www.instagram.com/${ruta}/`, `instagram.com/${ruta}`, `@${ruta}`, ruta.toUpperCase()]) {
+        expect(normalizarPerfilInstagram(entrada)).toMatchObject({ ok: false });
+      }
+    }
+  );
 });
 
 describe("esUrlPerfilInstagram", () => {
@@ -55,6 +75,7 @@ describe("esUrlPerfilInstagram", () => {
     "https://www.instagram.com/santi/",
     "http://instagram.com/santi",
     "https://www.instagram.com/santi?igsh=abc",
+    "https://m.instagram.com/santi",
   ])("acepta %j (incluidos valores guardados antes de normalizar)", (url) => {
     expect(esUrlPerfilInstagram(url)).toBe(true);
   });
@@ -68,6 +89,9 @@ describe("esUrlPerfilInstagram", () => {
     "https://evil.example/santi",
     "https://www.instagram.com/p/C0dE123/",
     "https://instagram.com/santi/tagged",
+    "https://instagram.com/instagram.com",
+    "https://www.instagram.com/www.instagram.com",
+    "https://www.instagram.com/stories/",
   ])("rechaza %j", (url) => {
     expect(esUrlPerfilInstagram(url)).toBe(false);
   });

@@ -49,6 +49,7 @@ import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import { esClaveGestionadaEnConfiguracion } from "@/lib/textos/bloques";
 import { normalizarPerfilInstagram } from "@/lib/retos/instagram";
+import { MENSAJE_GUIADO_SIN_RUTA, modosDeInicioPermitidos } from "@/lib/retos/modo-inicio";
 import { motivoRechazoPadre, type MotivoRechazoPadre } from "@/lib/comentarios/hilos";
 
 class SesionInvalidaError extends Error {
@@ -157,7 +158,8 @@ const parametrosIniciarReto = z.discriminatedUnion("modo", [
 
 /**
  * antes → durante, sobre el intento activo del reto. En modo libre guarda
- * destino_lat/destino_lon junto con la transición de fase.
+ * destino_lat/destino_lon junto con la transición de fase. Un reto sin ruta
+ * solo se inicia en modo libre (`modosDeInicioPermitidos`).
  */
 export async function iniciarReto(slug: string, params: IniciarRetoParams): Promise<void> {
   const reto = await requerirSesion(slug);
@@ -165,6 +167,9 @@ export async function iniciarReto(slug: string, params: IniciarRetoParams): Prom
   const datos = parametrosIniciarReto.safeParse(params);
   if (!datos.success) {
     throw new Error("El modo libre exige un destino (lat/lon) válido.");
+  }
+  if (!modosDeInicioPermitidos(reto).includes(datos.data.modo)) {
+    throw new Error(MENSAJE_GUIADO_SIN_RUTA);
   }
 
   const supabase = getSupabaseAdmin();
@@ -361,29 +366,40 @@ export async function eliminarIntencion(slug: string, id: number): Promise<void>
 // Comentarios
 // ---------------------------------------------------------------------------
 
+/**
+ * Ocultar/mostrar solo aplica a comentarios públicos: los privados nunca salen
+ * en la web, así que para ellos la única acción es eliminar. El filtro por
+ * `visibilidad` va en la propia escritura (sin lectura previa); si no toca
+ * ninguna fila es que el id no es un público de este reto.
+ */
+async function cambiarOcultoDeComentarioPublico(
+  reto: Reto,
+  id: number,
+  oculto: boolean
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("comentarios")
+    .update({ oculto })
+    .eq("id", id)
+    .eq("reto_id", reto.id)
+    .eq("visibilidad", "publico")
+    .select("id");
+  if (error) throw new Error(oculto ? "No se pudo ocultar el comentario." : "No se pudo mostrar el comentario.");
+  if (!data || data.length === 0) {
+    throw new Error(oculto ? "No se puede ocultar un mensaje privado." : "No se puede mostrar un mensaje privado.");
+  }
+}
+
 export async function ocultarComentario(slug: string, id: number): Promise<void> {
   const reto = await requerirSesion(slug);
-  const supabase = getSupabaseAdmin();
-
-  const { error } = await supabase
-    .from("comentarios")
-    .update({ oculto: true })
-    .eq("id", id)
-    .eq("reto_id", reto.id);
-  if (error) throw new Error("No se pudo ocultar el comentario.");
+  await cambiarOcultoDeComentarioPublico(reto, id, true);
   revalidarAdmin(slug);
 }
 
 export async function mostrarComentario(slug: string, id: number): Promise<void> {
   const reto = await requerirSesion(slug);
-  const supabase = getSupabaseAdmin();
-
-  const { error } = await supabase
-    .from("comentarios")
-    .update({ oculto: false })
-    .eq("id", id)
-    .eq("reto_id", reto.id);
-  if (error) throw new Error("No se pudo mostrar el comentario.");
+  await cambiarOcultoDeComentarioPublico(reto, id, false);
   revalidarAdmin(slug);
 }
 

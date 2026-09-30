@@ -10,6 +10,7 @@ import ActividadAcciones from "@/components/admin/ActividadAcciones";
 import CrearPrimerIntentoBoton from "@/components/admin/CrearPrimerIntentoBoton";
 import type { Fase, Reto } from "@/lib/types";
 import { formatearFechaHora } from "@/lib/fechas";
+import { modosDeInicioPermitidos } from "@/lib/retos/modo-inicio";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
@@ -95,6 +96,7 @@ export default async function SeccionActividad({ reto, slug }: { reto: Reto; slu
         fotoLlegadaUrlActual={intentoActivo.foto_llegada_url}
         llegadaKicker={textos.llegada_kicker}
         llegadaTitulo={textos.llegada_titulo}
+        modosDeInicio={modosDeInicioPermitidos(reto)}
         slug={slug}
       />
     </div>

@@ -2,8 +2,8 @@
  * Perfil de Instagram del reto (DT-034). Dominio puro.
  *
  * El admin lo escribe en la pestaña "Configuración" como le resulte cómodo
- * (`@usuario`, `usuario`, `instagram.com/usuario` o el enlace copiado de la
- * app) y se guarda siempre normalizado a `https://instagram.com/usuario` en el
+ * (`@usuario`, `usuario`, `instagram.com/usuario`, `m.instagram.com/usuario` o
+ * el enlace copiado de la app) y se guarda siempre normalizado a `https://instagram.com/usuario` en el
  * texto `cierre_antes_instagram_url`. La web solo pinta el enlace si pasa
  * `esUrlPerfilInstagram`: así un valor antiguo o manipulado (otro dominio,
  * `javascript:`) nunca llega a un `href`.
@@ -13,14 +13,21 @@
 const PATRON_USUARIO = /^[A-Za-z0-9._]{1,30}$/;
 
 /**
- * Enlace a un perfil: esquema opcional (solo http/https), `www.` opcional, un
- * único segmento de ruta con el usuario, barra final opcional y, como mucho,
- * query o fragmento (los enlaces compartidos desde la app llevan `?igsh=…`).
+ * Enlace a un perfil: esquema opcional (solo http/https), `www.` o `m.`
+ * (versión móvil) opcional, un único segmento de ruta con el usuario, barra
+ * final opcional y, como mucho, query o fragmento (los enlaces compartidos
+ * desde la app llevan `?igsh=…`).
  */
-const PATRON_URL_PERFIL = /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/([A-Za-z0-9._]{1,30})\/?(?:[?#][^\s]*)?$/i;
+const PATRON_URL_PERFIL = /^(?:https?:\/\/)?(?:(?:www|m)\.)?instagram\.com\/([A-Za-z0-9._]{1,30})\/?(?:[?#][^\s]*)?$/i;
 
 /** Igual que el anterior pero con esquema obligatorio: es lo que puede ir a un `href`. */
-const PATRON_URL_PERFIL_ABSOLUTA = /^https?:\/\/(?:www\.)?instagram\.com\/([A-Za-z0-9._]{1,30})\/?(?:[?#][^\s]*)?$/i;
+const PATRON_URL_PERFIL_ABSOLUTA = /^https?:\/\/(?:(?:www|m)\.)?instagram\.com\/([A-Za-z0-9._]{1,30})\/?(?:[?#][^\s]*)?$/i;
+
+/**
+ * El propio dominio cumple el formato de usuario (letras y puntos): sin esta
+ * guarda, `instagram.com` a secas se guardaba como `https://instagram.com/instagram.com`.
+ */
+const PATRON_DOMINIO_INSTAGRAM = /^(?:(?:www|m)\.)?instagram\.com$/i;
 
 /** Primeros segmentos de instagram.com que no son perfiles (publicaciones, explorar…). */
 const RUTAS_QUE_NO_SON_PERFIL: ReadonlySet<string> = new Set([
@@ -43,7 +50,11 @@ export const MENSAJE_PERFIL_INSTAGRAM_NO_VALIDO =
 export type ResultadoPerfilInstagram = { ok: true; url: string } | { ok: false; mensaje: string };
 
 function esUsuarioValido(usuario: string): boolean {
-  return PATRON_USUARIO.test(usuario) && !RUTAS_QUE_NO_SON_PERFIL.has(usuario.toLowerCase());
+  return (
+    PATRON_USUARIO.test(usuario) &&
+    !RUTAS_QUE_NO_SON_PERFIL.has(usuario.toLowerCase()) &&
+    !PATRON_DOMINIO_INSTAGRAM.test(usuario)
+  );
 }
 
 /**

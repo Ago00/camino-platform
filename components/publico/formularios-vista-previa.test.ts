@@ -27,9 +27,29 @@ const FORMULARIOS: [string, () => ReactElement][] = [
   ["ComentarioForm", () => createElement(ComentarioForm, { textos, slug })],
   [
     "RespuestaForm",
-    () => createElement(RespuestaForm, { textos, slug, parentId: 1, destinatario: "Ana", onRespondido: () => undefined }),
+    () =>
+      createElement(RespuestaForm, {
+        textos,
+        slug,
+        parentId: 1,
+        destinatarioId: 1,
+        destinatario: "Ana",
+        onRespondido: () => undefined,
+      }),
   ],
 ];
+
+describe("RespuestaForm — accesibilidad", () => {
+  it("el texto 'Respondiendo a …' describe el campo de la respuesta (aria-describedby)", () => {
+    const [, crearRespuestaForm] = FORMULARIOS[2];
+    const html = renderToString(crearRespuestaForm());
+
+    const idDescripcion = /<textarea[^>]*aria-describedby="([^"]+)"/.exec(html)?.[1];
+    expect(idDescripcion).toBeDefined();
+    const parrafo = new RegExp(`<p[^>]*id="${idDescripcion}"[^>]*>([^<]*)</p>`).exec(html);
+    expect(parrafo?.[1]).toContain("Ana");
+  });
+});
 
 function renderizar(formulario: ReactElement, vistaPrevia: boolean): string {
   return renderToString(createElement(VistaPreviaProvider, { activa: vistaPrevia }, formulario));

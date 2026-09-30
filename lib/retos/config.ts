@@ -39,6 +39,15 @@ export function configDelReto(reto: Partial<Pick<Reto, CampoConfigReto>>): Confi
 }
 
 /**
+ * Las APIs públicas de una sección (comentarios, minuto a minuto) responden 403
+ * cuando el admin la apaga. Para la web abierta es la señal de dejar de
+ * sondear y refrescar la página, que ya no pintará la sección.
+ */
+export function esRespuestaDeSeccionApagada(estadoHttp: number): boolean {
+  return estadoHttp === 403;
+}
+
+/**
  * Foto de "quién camina" del reto, o null (silueta). Mismo criterio de
  * compatibilidad: sin la columna, null.
  */

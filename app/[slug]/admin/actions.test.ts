@@ -40,7 +40,7 @@ interface LlamadaBuilder {
 }
 
 let llamadas: LlamadaBuilder[] = [];
-let intentoActivoMock: { id: number } | null = null;
+let intentoActivoMock: { id: number; fase?: "antes" | "durante" | "llegada" } | null = null;
 let padreMock: { reto_id: number; parent_id: number | null; visibilidad: "publico" | "privado"; oculto: boolean } | null =
   null;
 let nombreCaminanteMock = "Santi";
@@ -48,6 +48,8 @@ let nombreCaminanteMock = "Santi";
 let entradaConClaveMock: { id: number } | null = null;
 /** Error con el que resuelve cualquier consulta awaited (no `maybeSingle`). */
 let errorAlResolverMock: { message: string; code?: string } | null = null;
+/** Filas con las que resuelve cualquier consulta awaited (p. ej. `update(...).select("id")`). */
+let filasAlResolverMock: { id: number }[] | null = null;
 const RETO_B: Reto = { ...RETO, id: 4, slug: "otro-reto" };
 const RETOS_POR_SLUG = new Map([RETO, RETO_B].map((reto) => [reto.slug, reto]));
 // Solo se usa su huella: no hace falta un hash scrypt real.
@@ -79,8 +81,9 @@ function crearConsulta(tabla: string) {
       };
       return Promise.resolve({ data: datosPorTabla[tabla] ?? null, error: null });
     },
-    then: (resolver: (valor: { data: null; error: { message: string; code?: string } | null }) => void) =>
-      resolver({ data: null, error: errorAlResolverMock }),
+    then: (
+      resolver: (valor: { data: { id: number }[] | null; error: { message: string; code?: string } | null }) => void
+    ) => resolver({ data: filasAlResolverMock, error: errorAlResolverMock }),
   };
   function registrar(metodo: string, args: unknown[]) {
     llamadas.push({ tabla, metodo, args });
@@ -153,6 +156,8 @@ const {
   guardarFotoQuienCamina,
   guardarInstagram,
   guardarTexto,
+  iniciarReto,
+  mostrarComentario,
   ocultarComentario,
   resetearContadorTrafico,
   responderComentario,
@@ -174,6 +179,7 @@ beforeEach(() => {
   nombreCaminanteMock = "Santi";
   entradaConClaveMock = null;
   errorAlResolverMock = null;
+  filasAlResolverMock = null;
   hashesMock = new Map([
     [RETO.id, HASH_RETO],
     [RETO_B.id, HASH_RETO_B],
@@ -237,11 +243,41 @@ describe("acciones de comentarios e intenciones — filtran por reto_id", () => 
     ]);
   });
 
-  it("ocultarComentario actualiza filtrando por id y por el reto del slug", async () => {
+  it("ocultarComentario actualiza filtrando por id, por el reto del slug y solo si es público", async () => {
+    filasAlResolverMock = [{ id: 55 }];
+
     await ocultarComentario(RETO.slug, 55);
 
     expect(llamadasA("comentarios", "update")).toEqual([[{ oculto: true }]]);
-    expect(llamadasA("comentarios", "eq")).toContainEqual(["reto_id", RETO.id]);
+    expect(llamadasA("comentarios", "eq")).toEqual([
+      ["id", 55],
+      ["reto_id", RETO.id],
+      ["visibilidad", "publico"],
+    ]);
+    expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}/admin`);
+  });
+
+  it("mostrarComentario actualiza con los mismos filtros", async () => {
+    filasAlResolverMock = [{ id: 55 }];
+
+    await mostrarComentario(RETO.slug, 55);
+
+    expect(llamadasA("comentarios", "update")).toEqual([[{ oculto: false }]]);
+    expect(llamadasA("comentarios", "eq")).toContainEqual(["visibilidad", "publico"]);
+  });
+
+  it("ocultar o mostrar un privado (ninguna fila pública afectada) falla con mensaje claro y no revalida", async () => {
+    filasAlResolverMock = [];
+
+    await expect(ocultarComentario(RETO.slug, 56)).rejects.toThrow("No se puede ocultar un mensaje privado.");
+    await expect(mostrarComentario(RETO.slug, 56)).rejects.toThrow("No se puede mostrar un mensaje privado.");
+    expect(revalidatePathSpy).not.toHaveBeenCalled();
+  });
+
+  it("si falla el update de ocultar, lanza el error de BD y no el de privado", async () => {
+    errorAlResolverMock = { message: "fallo" };
+
+    await expect(ocultarComentario(RETO.slug, 55)).rejects.toThrow("No se pudo ocultar el comentario.");
   });
 
   it("eliminarIntencion borra filtrando por id y por el reto del slug", async () => {
@@ -291,6 +327,45 @@ describe("acciones sobre filas hijas de intento — acotadas al intento activo d
       ["id", 9],
       ["intento_id", 21],
     ]);
+  });
+});
+
+describe("iniciarReto — modo guiado solo con ruta", () => {
+  const RETO_SIN_RUTA: Reto = { ...RETO, ruta_tipo: "libre", ruta_id: null };
+
+  async function conRetoSinRuta(accion: () => Promise<unknown>) {
+    RETOS_POR_SLUG.set(RETO.slug, RETO_SIN_RUTA);
+    try {
+      await accion();
+    } finally {
+      RETOS_POR_SLUG.set(RETO.slug, RETO);
+    }
+  }
+
+  beforeEach(() => {
+    intentoActivoMock = { id: 21, fase: "antes" };
+  });
+
+  it("un reto sin ruta rechaza el modo guiado con mensaje claro, sin escribir", async () => {
+    await conRetoSinRuta(async () => {
+      await expect(iniciarReto(RETO.slug, { modo: "guiado" })).rejects.toThrow(/no tiene ruta.*modo libre/);
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("un reto sin ruta sí se inicia en modo libre con destino", async () => {
+    await conRetoSinRuta(() => iniciarReto(RETO.slug, { modo: "libre", destinoLat: 42.88, destinoLon: -8.54 }));
+
+    const [[cambios]] = llamadasA("intentos", "update");
+    expect(cambios).toMatchObject({ fase: "durante", modo: "libre", destino_lat: 42.88, destino_lon: -8.54 });
+  });
+
+  it("un reto con ruta sigue iniciándose en modo guiado", async () => {
+    await iniciarReto(RETO.slug, { modo: "guiado" });
+
+    const [[cambios]] = llamadasA("intentos", "update");
+    expect(cambios).toMatchObject({ fase: "durante" });
+    expect(cambios).not.toHaveProperty("modo");
   });
 });
 

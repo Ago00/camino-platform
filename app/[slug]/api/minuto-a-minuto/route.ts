@@ -10,7 +10,8 @@
  * intento activo en el reto, el feed está vacío.
  *
  * Con la sección apagada en la configuración del reto (FP3c, DT-032) responde
- * 403; la web tampoco monta el componente, así que no hay polling que cortar.
+ * 403; la web no monta el componente y, si se apaga con la página abierta, el
+ * poll ve el 403, se para y refresca la página (useRefrescoSiSeccionApagada).
  */
 
 import { type NextRequest, NextResponse } from "next/server";
