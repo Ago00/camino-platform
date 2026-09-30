@@ -80,6 +80,21 @@ beforeEach(() => {
   guardarHashAdminSpy.mockResolvedValue(undefined);
 });
 
+describe("crearReto — normalización del slug", () => {
+  it("pasa a minúsculas y recorta espacios antes de validar", async () => {
+    await crearReto(formularioReto({ slug: "  Prueba ", password_admin: "contraseña-valida" }));
+    const [[fila]] = llamadasA("retos", "insert") as [[{ slug: string }]];
+    expect(fila.slug).toBe("prueba");
+  });
+
+  it("sigue rechazando espacios intermedios y no crea el reto", async () => {
+    await expect(
+      crearReto(formularioReto({ slug: "mi reto", password_admin: "contraseña-valida" }))
+    ).rejects.toThrow(/slug/);
+    expect(llamadasA("retos", "insert")).toHaveLength(0);
+  });
+});
+
 describe("crearReto — contraseña de admin obligatoria", () => {
   it("rechaza sin contraseña y no crea el reto", async () => {
     await expect(crearReto(formularioReto({ slug: "reto-nuevo" }))).rejects.toThrow(/al menos 8/);

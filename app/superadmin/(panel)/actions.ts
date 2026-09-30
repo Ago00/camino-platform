@@ -126,7 +126,7 @@ export async function crearReto(formData: FormData): Promise<void> {
   await requerirSesionSuperadmin();
 
   const datos = {
-    slug: formData.get("slug") as string,
+    slug: String(formData.get("slug") ?? "").trim().toLowerCase(),
     nombre: formData.get("nombre") as string,
     descripcion: formData.get("descripcion") as string | undefined,
     ruta_tipo: formData.get("ruta_tipo") as string,

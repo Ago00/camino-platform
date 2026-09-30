@@ -267,7 +267,15 @@ function FormularioCrearReto() {
       className="rounded-xl border p-4 space-y-3"
       style={{ borderColor: "#00000012", background: "white" }}
     >
-      <CampoTexto label="Slug" name="slug" placeholder="mi-reto-2026" required />
+      <CampoTexto
+        label="Slug"
+        name="slug"
+        placeholder="mi-reto-2026"
+        required
+        pattern="\s*[A-Za-z0-9\-]+\s*"
+        maxLength={60}
+        ayuda="Solo letras sin acentos, números y guiones; sin espacios. Será la dirección del reto (/mi-reto-2026)."
+      />
       <CampoTexto label="Nombre" name="nombre" placeholder="Nombre del reto" required />
       <CampoTexto label="Descripción" name="descripcion" placeholder="Descripción opcional" />
       <div>
@@ -356,12 +364,18 @@ function CampoTexto({
   defaultValue,
   placeholder,
   required,
+  pattern,
+  maxLength,
+  ayuda,
 }: {
   label: string;
   name: string;
   defaultValue?: string;
   placeholder?: string;
   required?: boolean;
+  pattern?: string;
+  maxLength?: number;
+  ayuda?: string;
 }) {
   return (
     <div>
@@ -375,9 +389,17 @@ function CampoTexto({
         defaultValue={defaultValue}
         placeholder={placeholder}
         required={required}
+        pattern={pattern}
+        maxLength={maxLength}
+        title={ayuda}
         className="w-full rounded-lg border px-3 py-2 text-[14px] outline-none"
         style={{ borderColor: "#00000015" }}
       />
+      {ayuda && (
+        <p className="mt-1 text-[12px]" style={{ color: C.gris }}>
+          {ayuda}
+        </p>
+      )}
     </div>
   );
 }
