@@ -84,6 +84,8 @@ export default function MinutoAMinuto({
       setEntradas((previas) => (offset === 0 ? data.entradas : fusionarSinDuplicados(previas, data.entradas)));
       setSiguienteOffset(data.siguienteOffset);
       if (offset === 0) setUltimoVistoId(idMasReciente(data.entradas));
+    } catch {
+      // Fallo de red: se mantiene lo cargado y el botón permite reintentar.
     } finally {
       setCargando(false);
     }
@@ -109,6 +111,9 @@ export default function MinutoAMinuto({
     if (!polling || vistaPrevia) return;
 
     const id = setInterval(async () => {
+      // Pestaña en segundo plano: no se consulta; al volver, el siguiente tick
+      // trae todo lo posterior a la última entrada vista.
+      if (document.visibilityState !== "visible") return;
       try {
         const response = await fetch(construirUrlPolling(slug, masRecienteIdRef.current));
         if (pararSiSeccionApagada(response.status)) {

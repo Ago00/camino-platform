@@ -63,13 +63,17 @@ export default function MuroComentarios({ textos, slug, permitirRespuestas, ref 
       if (response.ok) {
         const data: RespuestaMuro = await response.json();
         setMuro((previo) => aplicarPaginaCero(previo, data));
+      } else {
+        // Camino común de carga inicial, recarga tras publicar y poll: un 403
+        // (comentarios apagados) refresca la página en cualquiera de los tres.
+        pararSiSeccionApagada(response.status);
       }
       return response;
     } catch {
       // Fallo puntual de red: se mantiene lo cargado; el próximo poll reintenta.
       return null;
     }
-  }, [urlPagina]);
+  }, [urlPagina, pararSiSeccionApagada]);
 
   const cargarMas = useCallback(
     async (offset: number) => {

@@ -13,7 +13,7 @@
 
 ---
 
-## Muro: el 403 solo se atiende en el poll, no en la carga inicial ni en la recarga tras publicar
+## ~~Muro: el 403 solo se atiende en el poll, no en la carga inicial ni en la recarga tras publicar~~ — RESUELTO (refrescarPaginaCero atiende el 403)
 
 **Fecha:** 2026-09-30
 **Contexto:** Revisión del lote pre-reto (muro en vivo). `MuroComentarios` usa `refrescarPaginaCero` en tres sitios (carga inicial, `recargar()` tras publicar y el poll) pero solo `sondear()` pasa el estado a `useRefrescoSiSeccionApagada`.
@@ -24,7 +24,7 @@
 
 ---
 
-## El poll del minuto a minuto sigue corriendo con la pestaña oculta
+## ~~El poll del minuto a minuto sigue corriendo con la pestaña oculta~~ — RESUELTO (el tick no consulta con la pestaña oculta)
 
 **Fecha:** 2026-09-30
 **Contexto:** Al añadir el poll del muro (60 s, pausado con la pestaña oculta) se mantuvo sin cambios el del minuto a minuto (30 s, siempre activo), que quedaba fuera del alcance.
@@ -171,7 +171,7 @@ Toda la cabecera es el botón (`aria-expanded`/`aria-controls`): su nombre acces
 
 ---
 
-## `MinutoAMinuto.tsx`: `cargarPagina` sin `catch` y respuestas de la API sin validar
+## `MinutoAMinuto.tsx`: respuestas de la API sin validar (el `catch` de `cargarPagina` ya está)
 
 **Fecha:** 2026-09-30
 **Contexto:** Detectado por el Reviewer en FP3b (código previo, no introducido en la tarea).
