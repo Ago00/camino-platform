@@ -9,6 +9,7 @@ import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import ActividadAcciones from "@/components/admin/ActividadAcciones";
 import CrearPrimerIntentoBoton from "@/components/admin/CrearPrimerIntentoBoton";
 import type { Fase, Reto } from "@/lib/types";
+import { formatearFechaHora } from "@/lib/fechas";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
@@ -78,7 +79,7 @@ export default async function SeccionActividad({ reto, slug }: { reto: Reto; slu
         </div>
         {intentoActivo.started_at && (
           <div className="mt-1 text-[13px]" style={{ color: C.muted }}>
-            Iniciado: {new Date(intentoActivo.started_at).toLocaleString("es-ES")}
+            Iniciado: {formatearFechaHora(intentoActivo.started_at)}
           </div>
         )}
         {intentoActivo.fase === "llegada" && intentoActivo.mensaje_llegada && (

@@ -8,6 +8,7 @@
 import { useState, useTransition } from "react";
 import { editarMinutoAMinuto, eliminarMinutoAMinuto } from "@/app/[slug]/admin/actions";
 import BotonConfirmable from "@/components/admin/BotonConfirmable";
+import { formatearFechaHora } from "@/lib/fechas";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
@@ -47,7 +48,7 @@ export default function EntradaMinutoAMinuto({ id, texto, fotoUrl, createdAt, sl
       )}
       <div className="min-w-0 flex-1">
         <div className="text-[12px] font-mono font-medium" style={{ color: C.muted }}>
-          {new Date(createdAt).toLocaleString("es-ES")}
+          {formatearFechaHora(createdAt)}
         </div>
 
         {editando ? (

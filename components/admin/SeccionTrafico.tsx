@@ -32,6 +32,7 @@ import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import type { Reto, VisitaWeb } from "@/lib/types";
 import BotonConfirmable from "@/components/admin/BotonConfirmable";
 import GraficoTraficoScroll from "@/components/admin/GraficoTraficoScroll";
+import { formatearHora, minutosDelDiaEnEspana } from "@/lib/fechas";
 
 const C = { ink: "#1B211D", muted: "#4A5450", eucalipto: "#2F5D50" };
 
@@ -370,9 +371,9 @@ function GraficoTrafico({ tramos }: { tramos: TramoTrafico[] }) {
 
       {puntos.map(
         (p, i) =>
-          (p.tramo.inicio.getMinutes() === 0 || i === 0) && (
+          (minutosDelDiaEnEspana(p.tramo.inicio) % 60 === 0 || i === 0) && (
             <text key={i} x={p.x} y={lineaBaseY + 16} textAnchor="middle" fontSize={11} fill={C.muted}>
-              {p.tramo.inicio.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+              {formatearHora(p.tramo.inicio)}
             </text>
           )
       )}

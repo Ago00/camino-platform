@@ -8,6 +8,7 @@ import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import type { Posicion, Reto } from "@/lib/types";
 import DescartarPosicionBoton from "@/components/admin/DescartarPosicionBoton";
 import EnlacePaginacion from "@/components/admin/EnlacePaginacion";
+import { formatearFechaHora } from "@/lib/fechas";
 
 const TAMANO_PAGINA = 20;
 const C = { ink: "#1B211D", muted: "#4A5450" };
@@ -65,7 +66,7 @@ export default async function SeccionPosicion({
         {ultimaPosicion ? (
           <div className="mt-1 text-[14px]" style={{ color: C.ink }}>
             {ultimaPosicion.lat.toFixed(5)}, {ultimaPosicion.lon.toFixed(5)} —{" "}
-            {new Date(ultimaPosicion.ts).toLocaleString("es-ES")}
+            {formatearFechaHora(ultimaPosicion.ts)}
             {ultimaPosicion.batt !== null && ` · batería ${ultimaPosicion.batt}%`}
             {ultimaPosicion.acc !== null && ` · precisión ${ultimaPosicion.acc.toFixed(0)} m`}
           </div>
@@ -99,7 +100,7 @@ function FilaPosicion({ posicion, slug }: { posicion: Posicion; slug: string }) 
       style={{ borderColor: "#00000010", background: posicion.descartado ? "#00000006" : "white" }}
     >
       <div className="text-[13px]" style={{ color: posicion.descartado ? "#9AA29C" : "#1B211D" }}>
-        <span className="font-medium">{new Date(posicion.ts).toLocaleString("es-ES")}</span>
+        <span className="font-medium">{formatearFechaHora(posicion.ts)}</span>
         {" — "}
         {posicion.lat.toFixed(5)}, {posicion.lon.toFixed(5)}
         {posicion.descartado && " (descartada)"}

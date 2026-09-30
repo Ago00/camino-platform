@@ -19,6 +19,7 @@ import type { Comentario, Reto } from "@/lib/types";
 import FiltroComentarios from "@/components/admin/FiltroComentarios";
 import AccionesComentario from "@/components/admin/AccionesComentario";
 import FormRespuestaAdmin from "@/components/admin/FormRespuestaAdmin";
+import { formatearFechaHora } from "@/lib/fechas";
 
 const C = { ink: "#1B211D", muted: "#4A5450", eucalipto: "#2F5D50" };
 
@@ -154,7 +155,7 @@ function FilaComentario({
           {ocultable &&
             comentario.oculto &&
             (comentario.parent_id === null ? " · oculto (con todo su hilo)" : " · oculto")}{" "}
-          · {new Date(comentario.created_at).toLocaleString("es-ES")}
+          · {formatearFechaHora(comentario.created_at)}
           {atenuado && " · (contexto)"}
         </div>
         <div className="mt-0.5 text-[14px]" style={{ color: C.ink }}>

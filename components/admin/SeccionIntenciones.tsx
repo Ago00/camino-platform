@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { Reto } from "@/lib/types";
 import EliminarIntencionBoton from "@/components/admin/EliminarIntencionBoton";
 import EnlacePaginacion from "@/components/admin/EnlacePaginacion";
+import { formatearFechaHora } from "@/lib/fechas";
 
 const TAMANO_PAGINA = 20;
 const C = { ink: "#1B211D", muted: "#4A5450" };
@@ -48,7 +49,7 @@ export default async function SeccionIntenciones({
         >
           <div>
             <div className="text-[12.5px] font-medium" style={{ color: C.muted }}>
-              {intencion.nombre ?? "Anónima"} · {new Date(intencion.created_at).toLocaleString("es-ES")}
+              {intencion.nombre ?? "Anónima"} · {formatearFechaHora(intencion.created_at)}
             </div>
             <div className="mt-0.5 text-[14px]" style={{ color: C.ink }}>
               {intencion.texto}

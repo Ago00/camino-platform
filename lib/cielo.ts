@@ -10,6 +10,8 @@
  *   amanecer  06:00–08:00
  */
 
+import { minutosDelDiaEnEspana } from "@/lib/fechas";
+
 export type BandaHoraria = "dia" | "atardecer" | "noche" | "amanecer";
 
 const MINUTOS_INICIO_DIA = 8 * 60;
@@ -17,9 +19,9 @@ const MINUTOS_INICIO_ATARDECER = 20 * 60;
 const MINUTOS_INICIO_NOCHE = 21 * 60 + 30;
 const MINUTOS_INICIO_AMANECER = 6 * 60;
 
-/** Devuelve la banda horaria cosmética correspondiente a la hora local de `fecha`. */
+/** Banda horaria cosmética según la hora española de `fecha` (igual en servidor y navegador). */
 export function bandaHoraria(fecha: Date): BandaHoraria {
-  const minutos = fecha.getHours() * 60 + fecha.getMinutes();
+  const minutos = minutosDelDiaEnEspana(fecha);
 
   if (minutos >= MINUTOS_INICIO_DIA && minutos < MINUTOS_INICIO_ATARDECER) {
     return "dia";

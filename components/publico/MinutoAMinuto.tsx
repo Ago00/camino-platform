@@ -15,6 +15,7 @@ import { construirUrlPolling, fusionarSinDuplicados } from "@/lib/minuto-a-minut
 import type { Textos } from "@/lib/textos/obtener-textos";
 import type { EntradaMinutoAMinutoPublica } from "@/lib/types";
 import { useVistaPrevia } from "@/components/publico/VistaPrevia";
+import { formatearHora } from "@/lib/fechas";
 
 const PAGINA = 20;
 const POLLING_MS = 30_000;
@@ -311,6 +312,3 @@ function idMasReciente(entradas: readonly EntradaMinutoAMinutoPublica[]): number
   return entradas[0]?.id ?? 0;
 }
 
-function formatearHora(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-}

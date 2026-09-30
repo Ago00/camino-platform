@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-09-30 — Horas siempre en hora española
+
+**Tipo:** Fix
+
+Las horas del minuto a minuto y de los listados del admin (comentarios,
+intenciones, posiciones, actividad, tráfico) se pintaban en la zona del
+servidor (UTC en Vercel): en el admin salían 2 h por detrás y en la web
+pública provocaban un error de hidratación de React (#418) porque el
+navegador pintaba otra hora. Ahora todo se formatea en `Europe/Madrid`
+(`lib/fechas.ts`), también la franja del "cielo-reloj" del mapa.
+
+---
+
 ## 2026-09-30 — Panel admin: vista previa de la web, peregrino opcional e Instagram en Configuración
 
 **Tipo:** Feature + Mejora

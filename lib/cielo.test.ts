@@ -6,8 +6,11 @@
 import { describe, it, expect } from "vitest";
 import { bandaHoraria } from "./cielo";
 
+// Hora española (31 de julio: CEST, UTC+2), independiente de la zona del proceso.
 function fechaAlas(horas: number, minutos: number): Date {
-  return new Date(2026, 6, 31, horas, minutos, 0);
+  const hh = String(horas).padStart(2, "0");
+  const mm = String(minutos).padStart(2, "0");
+  return new Date(`2026-07-31T${hh}:${mm}:00+02:00`);
 }
 
 describe("bandaHoraria", () => {
