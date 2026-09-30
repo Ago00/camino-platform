@@ -32,6 +32,7 @@ import type { Textos } from "@/lib/textos/obtener-textos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { calcularRitmoMedioIntento } from "@/lib/ritmo";
 import { fotoQuienCaminaDelReto, type ConfigReto } from "@/lib/retos/config";
+import { huellaContenidoPublico } from "@/lib/retos/huella-publica";
 import type { DatosEjemplo } from "@/lib/vista-previa/datos-ejemplo";
 import type {
   EntradaMinutoAMinutoPublica,
@@ -90,7 +91,13 @@ export default function WebReto({ reto, config, textos, trazaCoords, fase, fuent
   return (
     <VistaPreviaProvider activa={vistaPrevia}>
       <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
-        {!vistaPrevia && <RefrescoAlCambiarFase faseActual={fase} slug={slug} />}
+        {!vistaPrevia && (
+          <RefrescoAlCambiarFase
+            faseActual={fase}
+            huellaActual={huellaContenidoPublico({ config, fotoQuienCamina: fotoQuienCaminaDelReto(reto), textos })}
+            slug={slug}
+          />
+        )}
         {config.peregrino_animado && <PeregrinoLibre />}
         <div className="mx-auto w-full max-w-[480px] px-5 pb-28">
           {fase === "antes" && (

@@ -10,7 +10,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { obtenerFaseActual } from "@/lib/fase-actual";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
+import { configDelReto, fotoQuienCaminaDelReto } from "@/lib/retos/config";
+import { huellaContenidoPublico } from "@/lib/retos/huella-publica";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
+import { obtenerTextos } from "@/lib/textos/obtener-textos";
 
 export const runtime = "nodejs";
 
@@ -31,7 +34,12 @@ export async function GET(
     return NextResponse.json({ error: "reto no encontrado" }, { status: 404 });
   }
 
-  const fase = await obtenerFaseActual(reto.id);
+  const [fase, textos] = await Promise.all([obtenerFaseActual(reto.id), obtenerTextos(reto.id)]);
+  const huella = huellaContenidoPublico({
+    config: configDelReto(reto),
+    fotoQuienCamina: fotoQuienCaminaDelReto(reto),
+    textos,
+  });
 
-  return NextResponse.json({ fase });
+  return NextResponse.json({ fase, huella });
 }
