@@ -41,6 +41,8 @@ camino-santi-ago/
 │   │   ├── MuroComentarios.tsx / HiloComentario.tsx / RespuestaForm.tsx / InsigniaCaminante.tsx
 │   │   │                      # FP3a/DT-030: muro en hilos de un nivel, plegado si > 2 respuestas;
 │   │   │                      # FP3c/DT-032: prop permitirRespuestas (sin "Responder" si el reto las apaga)
+│   │   ├── ComentariosConMuro.tsx  # ComentarioForm + MuroComentarios en durante/llegada: al enviar un
+│   │   │                           # comentario público pide al muro (ref, useImperativeHandle) recargar la página 0
 │   │   ├── ModoAntes.tsx / ModoDurante*.tsx / ModoLlegada*.tsx
 │   │   │                      # FP3c/DT-032: reciben `config` del reto y no montan las secciones apagadas;
 │   │   │                      # ModoAntes pinta la foto de "quién camina" del reto (o silueta)
@@ -69,7 +71,8 @@ camino-santi-ago/
 │       │                              # onSubmit propio (no <form action={fn}>: React 19
 │       │                              # resetearía el input de fichero al fallar), comprime
 │       │                              # la foto antes de enviar, reintenta y muestra el
-│       │                              # error sin perder texto ni foto
+│       │                              # error sin perder texto ni foto; DT-033: clave_envio
+│       │                              # (UUID estable entre reintentos) para no duplicar
 │       ├── EntradaMinutoAMinuto.tsx   # DT-013: fila con editar inline (solo texto) + eliminar
 │       ├── SeccionMinutoAMinuto.tsx   # DT-013: lista del intento activo (Server Component)
 │       ├── ActividadAcciones.tsx      # DT-016: selector de modo (guiado/libre) + destino antes de Iniciar;
@@ -113,9 +116,11 @@ camino-santi-ago/
 │   │   │                          # del primero que cabe (la codificación entra como parámetro)
 │   │   └── preparar-foto.ts      # solo cliente: decodifica con <img> (orientación EXIF),
 │   │                             # recodifica a JPEG en canvas, degrada al original si falla
+│   │                             # o si la decodificación pasa de 10 s (DT-033)
 │   ├── envio/                 # DT-017: envío de formularios del panel a sus Server Actions
 │   │   ├── errores-de-envio.ts   # dominio puro: qué fallo se reintenta y qué se enseña
-│   │   └── reintentar.ts         # dominio puro: reintento con espera creciente (espera inyectada)
+│   │   ├── reintentar.ts         # dominio puro: reintento con espera creciente (espera inyectada)
+│   │   └── aviso-envio-lento.ts  # avisarSiTarda: aviso "sigue subiendo" a los 15 s, sin abortar (DT-033)
 │   ├── rutas/                    # FP0/DT-025: assets por ruta. Añadir ruta = añadir carpeta.
 │   │   └── portuguesa-110/
 │   │       ├── traza.geojson     # traza de CÁLCULO (7.951 puntos, sin simplificar, DT-015)

@@ -11,6 +11,11 @@ interface AccionesComentarioProps {
   slug: string;
   /** Respuestas que se borran en cascada con este comentario (0 en una respuesta). */
   numRespuestas: number;
+  /**
+   * false en los privados: no se ven en la web, así que Ocultar/Mostrar no
+   * tiene efecto y solo se ofrece Eliminar.
+   */
+  ocultable: boolean;
 }
 
 function mensajeConfirmacionBorrado(numRespuestas: number): string {
@@ -20,25 +25,26 @@ function mensajeConfirmacionBorrado(numRespuestas: number): string {
   return `${base} Se borrarán también ${respuestas}.`;
 }
 
-export default function AccionesComentario({ id, oculto, slug, numRespuestas }: AccionesComentarioProps) {
+export default function AccionesComentario({ id, oculto, slug, numRespuestas, ocultable }: AccionesComentarioProps) {
   return (
     <div className="flex shrink-0 gap-1.5">
-      {oculto ? (
-        <BotonConfirmable
-          etiqueta="Mostrar"
-          etiquetaPendiente="Mostrando…"
-          accion={() => mostrarComentario(slug, id)}
-          className={CLASE_BOTON}
-        />
-      ) : (
-        <BotonConfirmable
-          etiqueta="Ocultar"
-          etiquetaPendiente="Ocultando…"
-          accion={() => ocultarComentario(slug, id)}
-          variante="peligro"
-          className={CLASE_BOTON}
-        />
-      )}
+      {ocultable &&
+        (oculto ? (
+          <BotonConfirmable
+            etiqueta="Mostrar"
+            etiquetaPendiente="Mostrando…"
+            accion={() => mostrarComentario(slug, id)}
+            className={CLASE_BOTON}
+          />
+        ) : (
+          <BotonConfirmable
+            etiqueta="Ocultar"
+            etiquetaPendiente="Ocultando…"
+            accion={() => ocultarComentario(slug, id)}
+            variante="peligro"
+            className={CLASE_BOTON}
+          />
+        ))}
       <BotonConfirmable
         etiqueta="Eliminar"
         etiquetaPendiente="Eliminando…"

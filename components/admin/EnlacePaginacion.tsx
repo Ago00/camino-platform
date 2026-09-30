@@ -1,7 +1,8 @@
 // "Cargar más" para las listas paginadas del panel admin (Posición,
-// Intenciones). En vez de fetch de cliente, es un Link que actualiza un
-// parámetro de offset propio en la URL — el Server Component de la sección
-// vuelve a pedir sus datos con el nuevo offset (mismo patrón que ?tab=).
+// Intenciones). En vez de fetch de cliente, es un botón que con
+// `router.push()` actualiza un parámetro de offset propio en la URL — el
+// Server Component de la sección vuelve a pedir sus datos con el nuevo offset
+// (mismo patrón que ?tab=).
 
 "use client";
 

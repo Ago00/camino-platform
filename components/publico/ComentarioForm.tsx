@@ -9,12 +9,15 @@ import type { Textos } from "@/lib/textos/obtener-textos";
 const C = { eucalipto: "#2F5D50" };
 
 type Estado = "idle" | "enviando" | "enviado" | "error";
-type Visibilidad = "publico" | "privado";
+export type Visibilidad = "publico" | "privado";
 
 interface ComentarioFormProps {
   textos: Textos;
-  /** Se llama al enviar con éxito, para que el muro pueda refrescarse. */
-  onEnviado?: () => void;
+  /**
+   * Se llama al enviar con éxito, con la visibilidad enviada: solo un
+   * comentario público aparece en el muro y justifica refrescarlo.
+   */
+  onEnviado?: (visibilidad: Visibilidad) => void;
   slug: string;
 }
 
@@ -27,6 +30,7 @@ export default function ComentarioForm({ textos, onEnviado, slug }: ComentarioFo
   async function enviar() {
     if (nombre.trim().length === 0 || texto.trim().length === 0 || estado === "enviando") return;
     setEstado("enviando");
+    const visibilidad = tipo;
     try {
       const response = await fetch(`/${slug}/api/comentarios`, {
         method: "POST",
@@ -34,13 +38,13 @@ export default function ComentarioForm({ textos, onEnviado, slug }: ComentarioFo
         body: JSON.stringify({
           nombre: nombre.trim(),
           texto: texto.trim(),
-          visibilidad: tipo,
+          visibilidad,
         }),
       });
       if (!response.ok) throw new Error("respuesta no ok");
       setEstado("enviado");
       setTexto("");
-      onEnviado?.();
+      onEnviado?.(visibilidad);
     } catch {
       setEstado("error");
     }

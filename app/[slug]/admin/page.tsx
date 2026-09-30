@@ -6,10 +6,11 @@
 // Desde FP2.6 (DT-029) la sesión se verifica contra ESTE reto (id, slug y
 // huella de su contraseña actual), no solo su firma.
 
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   esFaseTraficoValida,
-  esFiltroComentarioValido,
+  filtroComentarioDesdeQuery,
   esGranularidadValida,
   esTabValida,
   type TabAdmin,
@@ -51,9 +52,7 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
   const tab: TabAdmin = esTabValida(sp.tab ?? null) ? (sp.tab as TabAdmin) : "actividad";
   const posOffset = numeroDesdeQuery(sp.posOffset);
   const intOffset = numeroDesdeQuery(sp.intOffset);
-  const filtroComentarios = esFiltroComentarioValido(sp.filtroComentarios)
-    ? sp.filtroComentarios
-    : "todos";
+  const filtroComentarios = filtroComentarioDesdeQuery(sp.filtroComentarios);
   const granularidad = esGranularidadValida(sp.gran) ? sp.gran : "30m";
   const faseTraficoQuery = esFaseTraficoValida(sp.fase) ? sp.fase : undefined;
 
@@ -62,7 +61,19 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
       <div className="mx-auto w-full max-w-[720px] px-5 py-6">
         <header className="mb-5 flex items-center justify-between">
           <h1 className="[font-family:var(--font-fraunces)] text-[24px] font-semibold">Panel admin</h1>
-          <BotonCerrarSesion slug={slug} />
+          <div className="flex items-center gap-2">
+            {/* Pestaña nueva: el panel conserva su estado (pestaña, borradores) mientras se mira la web. */}
+            <Link
+              href={`/${reto.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full border px-4 py-2 text-[13px] font-medium"
+              style={{ borderColor: "#00000018" }}
+            >
+              Ver web
+            </Link>
+            <BotonCerrarSesion slug={slug} />
+          </div>
         </header>
 
         <TabsAdmin activa={tab} />

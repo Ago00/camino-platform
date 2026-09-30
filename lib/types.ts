@@ -181,6 +181,11 @@ export interface MinutoAMinuto {
   foto_url: string | null; // URL pública de Supabase Storage; null = sin foto
   lat: number | null; // snapshot al publicar; null si aún no había posición
   lon: number | null;
+  /**
+   * Clave de idempotencia (UUID) generada por el composer y estable entre sus
+   * reintentos automáticos (DT-033). Única en BD; null en entradas anteriores.
+   */
+  clave_envio: string | null;
   created_at: string; // ISO 8601
   updated_at: string; // ISO 8601
 }

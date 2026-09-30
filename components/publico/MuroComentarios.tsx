@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import HiloComentario from "@/components/publico/HiloComentario";
 import type { Textos } from "@/lib/textos/obtener-textos";
@@ -18,9 +18,19 @@ interface MuroComentariosProps {
   slug: string;
   /** Respuestas de visitantes encendidas en la configuración del reto (FP3c, DT-032). */
   permitirRespuestas: boolean;
+  /** Para que el padre pida recargar el muro tras publicar un comentario público. */
+  ref?: Ref<ControlMuroComentarios>;
 }
 
-export default function MuroComentarios({ textos, slug, permitirRespuestas }: MuroComentariosProps) {
+export interface ControlMuroComentarios {
+  /**
+   * Recarga la página 0. Descarta las páginas extra ya cargadas: con una raíz
+   * nueva el offset se desplaza y quedarían desalineadas. Sin polling.
+   */
+  recargar: () => void;
+}
+
+export default function MuroComentarios({ textos, slug, permitirRespuestas, ref }: MuroComentariosProps) {
   const [hilos, setHilos] = useState<HiloPublico[]>([]);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(0);
   const [cargando, setCargando] = useState(false);
@@ -49,6 +59,8 @@ export default function MuroComentarios({ textos, slug, permitirRespuestas }: Mu
     cargadoInicial.current = true;
     void cargarPagina(0);
   }, [cargarPagina]);
+
+  useImperativeHandle(ref, () => ({ recargar: () => void cargarPagina(0) }), [cargarPagina]);
 
   return (
     <div className="space-y-2.5">

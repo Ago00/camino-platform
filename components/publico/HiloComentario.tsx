@@ -26,15 +26,36 @@ interface HiloComentarioProps {
 export default function HiloComentario({ hilo, textos, slug, permitirRespuestas }: HiloComentarioProps) {
   const [respuestas, setRespuestas] = useState<ComentarioPublico[]>(hilo.respuestas);
   const [desplegado, setDesplegado] = useState(hilo.respuestas.length <= UMBRAL_PLEGADO);
-  const [respondiendo, setRespondiendo] = useState(false);
+  // Nombre de a quién se contesta (raíz o una respuesta). Un solo nivel: toda
+  // respuesta va al hilo, así que el formulario se abre al final, donde aparecerá.
+  const [respondiendoA, setRespondiendoA] = useState<{ id: number; nombre: string } | null>(null);
   const idRespuestas = useId();
 
   const plegable = respuestas.length > UMBRAL_PLEGADO;
+  const respuestasVisibles = respuestas.length > 0 && desplegado;
 
   function alResponder(respuesta: ComentarioPublico) {
     setRespuestas((previas) => [...previas, respuesta]);
     setDesplegado(true);
-    setRespondiendo(false);
+    setRespondiendoA(null);
+  }
+
+  function botonResponder(comentario: ComentarioPublico) {
+    if (!permitirRespuestas) return null;
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          setRespondiendoA((actual) =>
+            actual?.id === comentario.id ? null : { id: comentario.id, nombre: comentario.nombre }
+          )
+        }
+        aria-expanded={respondiendoA?.id === comentario.id}
+        style={{ color: C.eucalipto }}
+      >
+        {textos.muro_boton_responder}
+      </button>
+    );
   }
 
   return (
@@ -42,16 +63,7 @@ export default function HiloComentario({ hilo, textos, slug, permitirRespuestas 
       <CuerpoComentario comentario={hilo} textos={textos} />
 
       <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] font-medium">
-        {permitirRespuestas && (
-          <button
-            type="button"
-            onClick={() => setRespondiendo((abierto) => !abierto)}
-            aria-expanded={respondiendo}
-            style={{ color: C.eucalipto }}
-          >
-            {textos.muro_boton_responder}
-          </button>
-        )}
+        {!respuestasVisibles && botonResponder(hilo)}
         {plegable && (
           <button
             type="button"
@@ -77,13 +89,20 @@ export default function HiloComentario({ hilo, textos, slug, permitirRespuestas 
           {respuestas.map((respuesta) => (
             <li key={respuesta.id}>
               <CuerpoComentario comentario={respuesta} textos={textos} />
+              <div className="mt-0.5 text-[12px] font-medium">{botonResponder(respuesta)}</div>
             </li>
           ))}
         </ul>
       )}
 
-      {permitirRespuestas && respondiendo && (
-        <RespuestaForm textos={textos} slug={slug} parentId={hilo.id} onRespondido={alResponder} />
+      {permitirRespuestas && respondiendoA !== null && (
+        <RespuestaForm
+          textos={textos}
+          slug={slug}
+          parentId={hilo.id}
+          destinatario={respondiendoA.nombre}
+          onRespondido={alResponder}
+        />
       )}
     </div>
   );

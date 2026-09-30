@@ -84,8 +84,7 @@ export interface BaseDeDatos {
       };
       intenciones: {
         Row: Pick<Intencion, keyof Intencion>;
-        // reto_id es requerido (NOT NULL en BD). FP1 lo inyectará desde el contexto
-        // del reto activo; en FP0 los callers usan reto_id: 1 (portuguesa-110).
+        // reto_id requerido (NOT NULL); lo aporta el reto resuelto desde el slug.
         Insert: Omit<Pick<Intencion, keyof Intencion>, "id" | "created_at">;
         Update: Partial<Pick<Intencion, keyof Intencion>>;
         Relationships: [];
@@ -107,13 +106,15 @@ export interface BaseDeDatos {
       };
       minuto_a_minuto: {
         Row: Pick<MinutoAMinuto, keyof MinutoAMinuto>;
-        Insert: Omit<Pick<MinutoAMinuto, keyof MinutoAMinuto>, "id" | "created_at" | "updated_at">;
+        // clave_envio es nullable y sin default (DT-033): opcional al insertar.
+        Insert: Omit<Pick<MinutoAMinuto, keyof MinutoAMinuto>, "id" | "created_at" | "updated_at" | "clave_envio"> &
+          Partial<Pick<Pick<MinutoAMinuto, keyof MinutoAMinuto>, "clave_envio">>;
         Update: Partial<Pick<MinutoAMinuto, keyof MinutoAMinuto>>;
         Relationships: [];
       };
       visitas_web: {
         Row: Pick<VisitaWeb, keyof VisitaWeb>;
-        // reto_id requerido (NOT NULL en BD). FP1 lo inyectará dinámicamente.
+        // reto_id requerido (NOT NULL); lo aporta el reto resuelto desde el slug.
         Insert: Omit<Pick<VisitaWeb, keyof VisitaWeb>, "id" | "created_at">;
         Update: Partial<Pick<VisitaWeb, keyof VisitaWeb>>;
         Relationships: [];

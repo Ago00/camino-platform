@@ -21,6 +21,7 @@ import { finalizarReto } from "@/app/[slug]/admin/actions";
 import { prepararFotoParaSubida } from "@/lib/imagen/preparar-foto";
 import { ejecutarConReintentos } from "@/lib/envio/reintentar";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
+import { MENSAJE_ENVIO_LENTO, UMBRAL_AVISO_ENVIO_LENTO_MS, avisarSiTarda } from "@/lib/envio/aviso-envio-lento";
 import RecuadroLlegada from "@/components/publico/RecuadroLlegada";
 import FotoLlegada from "@/components/publico/FotoLlegada";
 
@@ -71,6 +72,7 @@ export default function ModalFinalizar({
     fotoLlegadaUrlActual ? { tipo: "existente", url: fotoLlegadaUrlActual } : { tipo: "ninguna" }
   );
   const [estado, setEstado] = useState<EstadoEnvio>({ fase: "inactivo" });
+  const [envioLento, setEnvioLento] = useState(false);
   const [pendiente, startTransition] = useTransition();
 
   function liberarPreviewAnterior() {
@@ -115,9 +117,13 @@ export default function ModalFinalizar({
         }
 
         setEstado({ fase: "publicando" });
-        const resultado = await ejecutarConReintentos(() => finalizarReto(slug, formData), {
-          alReintentar: (intento) => setEstado({ fase: "reintentando", intento }),
-        });
+        const resultado = await avisarSiTarda(
+          ejecutarConReintentos(() => finalizarReto(slug, formData), {
+            alReintentar: (intento) => setEstado({ fase: "reintentando", intento }),
+          }),
+          UMBRAL_AVISO_ENVIO_LENTO_MS,
+          () => setEnvioLento(true)
+        );
 
         if (!resultado.ok) {
           setEstado({ fase: "error", mensaje: resultado.mensaje });
@@ -127,6 +133,8 @@ export default function ModalFinalizar({
       } catch (error) {
         if (esControlDeFlujoDeNext(error)) throw error;
         setEstado({ fase: "error", mensaje: describirFalloDeEnvio(error) });
+      } finally {
+        setEnvioLento(false);
       }
     });
   }
@@ -237,6 +245,12 @@ export default function ModalFinalizar({
           {estado.fase === "reintentando" && (
             <p aria-live="polite" className="text-[12.5px]" style={{ color: C.muted }}>
               No salió a la primera. Reintentando… (intento {estado.intento})
+            </p>
+          )}
+
+          {pendiente && envioLento && (
+            <p aria-live="polite" className="text-[12.5px]" style={{ color: C.muted }}>
+              {MENSAJE_ENVIO_LENTO}
             </p>
           )}
 

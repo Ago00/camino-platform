@@ -19,8 +19,7 @@ import { useState } from "react";
 import Mapa from "@/components/mapa/Mapa";
 import DistanciaRestante from "@/components/publico/DistanciaRestante";
 import Stats from "@/components/publico/Stats";
-import ComentarioForm from "@/components/publico/ComentarioForm";
-import MuroComentarios from "@/components/publico/MuroComentarios";
+import ComentariosConMuro from "@/components/publico/ComentariosConMuro";
 import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
@@ -120,10 +119,7 @@ export default function ModoLlegadaLibre({
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
       {config.seccion_comentarios && (
-        <>
-          <ComentarioForm textos={textos} slug={slug} />
-          <MuroComentarios textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
-        </>
+        <ComentariosConMuro textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
       )}
     </section>
   );

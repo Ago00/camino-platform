@@ -18,8 +18,7 @@
 import { useState } from "react";
 import Mapa from "@/components/mapa/Mapa";
 import Stats from "@/components/publico/Stats";
-import ComentarioForm from "@/components/publico/ComentarioForm";
-import MuroComentarios from "@/components/publico/MuroComentarios";
+import ComentariosConMuro from "@/components/publico/ComentariosConMuro";
 import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import RecuadroLlegada from "@/components/publico/RecuadroLlegada";
 import FotoLlegada from "@/components/publico/FotoLlegada";
@@ -110,10 +109,7 @@ export default function ModoLlegada({
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
       {config.seccion_comentarios && (
-        <>
-          <ComentarioForm textos={textos} slug={slug} />
-          <MuroComentarios textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
-        </>
+        <ComentariosConMuro textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
       )}
     </section>
   );

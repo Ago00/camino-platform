@@ -648,6 +648,14 @@ imperceptible para audiencia familiar/amigos mirando el móvil de vez en
 cuando). En "llegada" el feed se carga una vez, sin polling (modo ya
 diseñado para quedar congelado, ver `ModoLlegada.tsx`).
 
+**Nota (2026-09-30, plataforma).** El bucket `minuto-a-minuto` se creaba en
+`0002_minuto_a_minuto.sql`, que pertenece al proyecto Supabase original; el
+schema de la plataforma (`0007`) no lo incluía, así que en el proyecto de la
+plataforma no existía y toda subida de foto (feed, llegada, quién camina)
+fallaba. Lo crea `supabase/migrations/0013_bucket_fotos.sql` (público, 4 MB,
+jpeg/png/webp), aplicada y verificada. La columna `clave_envio` de la tabla
+la añade `0014` (DT-033).
+
 ---
 
 ## DT-014 — Snapshot de posición de `crearMinutoAMinuto` desde la caché compartida de `/api/progreso`, no de una lectura fresca de `posiciones`
@@ -1794,6 +1802,15 @@ Se crea `lib/auth/superadmin-session.ts` que espeja `lib/auth/admin-session.ts` 
 
 **`listarTodosLosRetos` usa cliente admin:** La especificación decía "cliente público". Se cambió a cliente admin porque la política RLS de la tabla `retos` filtra retos inactivos para el rol `anon` — un cliente público solo vería los activos, haciendo imposible que el superadmin gestione retos inactivos. El cliente admin bypasea RLS y devuelve todos los retos.
 
+### Nota posterior (2026-09-30) — acciones con resultado en vez de `throw`
+
+En producción Next redacta el mensaje de los errores lanzados desde una Server Action. Por eso `crearReto`, `editarReto` y `eliminarReto` devuelven ahora un resultado (`app/superadmin/(panel)/resultado-accion.ts`: `ResultadoAccionSuperadmin`, y `ResultadoCrearReto` con `slug` para enlazar al reto nuevo). No se reutiliza `ResultadoPublicacion` porque aquí el éxito también lleva mensaje.
+- Con la sesión caducada no se ejecuta nada y se devuelve un mensaje pidiendo volver a entrar.
+- Firmas: `crearReto(estadoPrevio, formData)`, `editarReto(id, estadoPrevio, formData)` y `eliminarReto(id)`. En `page.tsx`, `editarReto` y `eliminarReto` se enlazan con `.bind(null, reto.id)`.
+- Los formularios son componentes cliente con `useActionState`. `FormularioCrearReto` y `FormularioEditarReto` envían con `onSubmit` + `startTransition`, porque React resetea el formulario tras un envío por `action` y un error haría perder lo escrito; crear solo resetea tras un éxito. `BotonEliminarReto` usa `action` con `confirm()` en `onSubmit`.
+- Editar y eliminar terminan con `redirect()` al panel limpio y el aviso viaja en la query (`?guardado=<id>` / `?eliminado=<slug>`). Al eliminar, la tarjeta desaparece en la misma respuesta y un mensaje guardado en su estado no llegaría a verse. `leerAvisoPanel` solo acepta ids enteros y slugs válidos, así que nunca muestra texto arbitrario de la URL.
+- Enlaces "Ver web" / "Panel admin" en cada tarjeta y tras crear (`EnlacesReto`), "Ver portada" en la cabecera y "Ver web" en la cabecera del panel admin del reto, todos en una pestaña nueva.
+
 ---
 
 ## DT-028 — FP2.5: Aislamiento de datos por reto
@@ -1861,6 +1878,7 @@ Hasta FP2.5 todos los paneles `/<slug>/admin` compartían la env var `ADMIN_PASS
 - **Mensaje ante 429 en el login:** además del mensaje de error pedido, la UI muestra "Demasiados intentos…" si la API responde 429, para no hacer creer al usuario que la contraseña es incorrecta.
 - **Server Actions que devuelven `ResultadoPublicacion`** (`finalizarReto`, `crearMinutoAMinuto`) usan `resolverRetoConSesion` directamente y devuelven "sesión caducada" si es null (antes distinguían "reto no encontrado"; ahora ambos casos son sesión inválida).
 - **`editarReto`** guarda la contraseña nueva tras actualizar el reto y revalidar; si falla ese guardado, lanza "No se pudo guardar la contraseña de admin del reto." con el resto de cambios ya aplicados.
+  > **Actualizado (2026-09-30):** ya no lanza; devuelve `{ok:false}` con "Los cambios del reto se guardaron, pero no se pudo cambiar la contraseña". Ver nota de DT-027.
 - **Despliegue:** hasta aplicar `0010` y fijar la contraseña de cada reto desde el superadmin, ningún panel admin es accesible (fallar cerrado). Las cookies antiguas `{exp}` dejan de ser válidas al desplegar.
 - **Separación de firmas admin / superadmin (hallazgo de Seguridad):** ambas cookies se firmaban con `ADMIN_SESSION_SECRET` y la misma construcción `HMAC(payload)`, y `verificarSesionSuperadmin` solo exigía un `exp` numérico. Una cookie `admin_session` de cualquier reto (y desde FP2, la antigua `{exp}` del admin único) valía como `superadmin_session`. Corregido con una etiqueta de propósito en la firma (`HMAC(secreto, "admin.v2." + payload)` y `"superadmin.v2." + payload`) y validación zod `.strict()` del payload en ambas. Al desplegar se invalidan también las sesiones de superadmin.
 
@@ -1898,6 +1916,15 @@ Hasta FP2.5 todos los paneles `/<slug>/admin` compartían la env var `ADMIN_PASS
 - **`FiltroComentarios`** navegaba a `/admin?…` (ruta inexistente desde FP1); corregido a `/${slug}/admin?…`. El mismo fallo en pestañas (`TabsAdmin`), paginación (`EnlacePaginacion`, ambos con `usePathname`) y tráfico (`SeccionTrafico`) se corrigió en la misma tarea.
 - **Cliente sin zod:** `RespuestaForm` tipa la respuesta de la API como el resto de componentes públicos, sin añadir zod al bundle del navegador.
 
+### Nota posterior (2026-09-30) — sub-pestañas del admin y "Responder" bajo cada respuesta
+
+- **Admin:** el filtro Todos/Públicos/Ocultos pasa a ser **Públicos / Privados / Ocultos** (`FILTROS_COMENTARIO` en `lib/admin/navegacion.ts`, default "publicos"; `filtroComentarioDesdeQuery` lleva las URLs antiguas con "todos" al default). En `lib/comentarios/hilos.ts`, `agruparHilosAdmin(filas, "publicos" | "ocultos")` excluye siempre los privados.
+  - "publicos": raíces no ocultas con sus respuestas no ocultas. Un hilo con la raíz oculta ya no aparece aquí.
+  - "ocultos": raíces ocultas con todo su hilo, más respuestas ocultas sueltas con su raíz como contexto.
+  - `listarPrivadosAdmin` da los privados en una lista plana; `contarComentariosAdmin` da el número de cada pestaña.
+  - Los privados solo tienen "Eliminar" (`AccionesComentario` con `ocultable={false}`) y nunca "Responder" (`puedeResponder`). Las actions de ocultar y mostrar no lo impiden (registrado en `DEBT.md`).
+- **Web pública:** cada respuesta tiene su botón "Responder" y el formulario se abre al final del hilo con "Respondiendo a {nombre}" (clave `respuesta_form_respondiendo_a`, bloque de respuestas en `lib/textos/bloques.ts`). Sigue habiendo un solo nivel: toda respuesta se guarda con `parent_id` = raíz, y el destinatario es solo texto de interfaz, no se guarda. Con las respuestas desplegadas, el botón de la raíz no se muestra.
+
 ---
 
 ## DT-031 — FP3b: "Minuto a minuto" plegable en la web pública
@@ -1928,6 +1955,13 @@ Producto decidió (cerrado): la sección "minuto a minuto" entera se puede plega
 - **Referencia 0 con el feed vacío:** al plegar con la lista vacía, `ultimoVistoId` es 0 (no null) para que la primera entrada que llegue sí genere el aviso. null solo antes de la primera carga.
 - **Fusión sin duplicados también en "Cargar más":** la paginación es por offset; si el poll ha añadido N entradas arriba, la página siguiente repite N filas ya pintadas (claves duplicadas en React). Se deduplica por id al añadir la página. También en el poll, por si se solapa con la carga inicial.
 - **Fila extraída a `FilaEntrada`** (mismo fichero) para que el anidamiento de la región plegable no hiciera ilegible el JSX.
+
+### Nota posterior (2026-09-30) — cabecera en acordeón
+
+El botón "Mostrar"/"Ocultar" se sustituye por una cabecera de acordeón:
+- Toda la fila es un `<button>` con `aria-expanded`/`aria-controls` y foco visible. Contiene el punto "en directo", el kicker, la insignia de nuevas (`aria-hidden`) y un chevron que rota 180° (motion, respeta `reducedMotion="user"`). El estado lo anuncia solo `aria-expanded`: no hay texto Mostrar/Ocultar.
+- El aviso para lectores de pantalla sale de la cabecera: va en un `aria-live="polite"` aparte, prefijado con el kicker ("Minuto a minuto: 2 nuevas").
+- Se eliminan las claves `minuto_a_minuto_boton_mostrar` y `minuto_a_minuto_boton_ocultar` (punto 6), porque ya no se usan. Si un reto las tenía personalizadas en `textos`, esas filas quedan sin efecto.
 
 ---
 
@@ -1964,3 +1998,35 @@ Cada reto necesita decidir qué ve su público sin tocar código: encender/apaga
 - **Bloque "Instagram" propio:** la URL de Instagram vive en un bloque de una sola clave para poder marcarlo como "sección apagada"; en total 11 bloques.
 - **Interruptor "Respuestas de visitantes"** se atenúa con un aviso cuando los comentarios están apagados (no tiene efecto), pero conserva su valor.
 - **Sin cambios en la RLS de SELECT:** con una sección apagada, comentarios públicos y entradas del minuto a minuto siguen siendo legibles por PostgREST directo (registrado en `DEBT.md`); la decisión aprobada es ocultarlos en la web y en la API.
+
+---
+
+## DT-033 — Idempotencia de `crearMinutoAMinuto` con clave de envío del cliente
+
+**Fecha:** 2026-09-30 · **Tarea:** Endurecimiento pre-reto
+
+### Contexto
+
+El composer del minuto a minuto reintenta automáticamente la Server Action ante un corte de red (DT-017, `ejecutarConReintentos`). Si el servidor completaba la subida y el `INSERT` y lo que se perdía era la respuesta (túnel, cambio de celda), el reintento publicaba la entrada dos veces, con dos fotos en Storage. Deuda registrada desde la revisión de DT-017.
+
+### Decisión
+
+1. **Migración `0014_mam_clave_envio.sql`:** columna `minuto_a_minuto.clave_envio uuid` (nullable) + índice único parcial `minuto_a_minuto_clave_envio_idx (clave_envio) where clave_envio is not null`.
+2. **Cliente (`ComposerMinutoAMinuto.tsx`):** `crypto.randomUUID()` por entrada, guardado en un ref y enviado en el `FormData` como `clave_envio`. Se conserva entre los reintentos automáticos y también si se vuelve a pulsar "Publicar" tras un error sin tocar nada; se descarta al publicar con éxito o al cambiar el texto o la foto (ya es otra entrada).
+3. **Servidor (`crearMinutoAMinuto`):** `clave_envio` validada con zod como UUID opcional (vacía ⇒ sin clave; no UUID ⇒ error sin subir nada). Tras resolver el intento activo del reto (DT-028) y **antes de subir la foto**, si ya existe una fila con esa clave en ese intento ⇒ `{ ok: true }` sin subir ni insertar. Al insertar, un error `23505` con clave ⇒ `{ ok: true }` (dos envíos cruzados: el índice rechaza el segundo). La sesión sigue verificándose con `resolverRetoConSesion` como primera operación (DT-029).
+4. **Foto sin fila:** si el `INSERT` falla (23505 o fallo real) se borra la foto recién subida con `borrarObjeto`, localizada con `rutaObjetoMinutoAMinuto(url)` (pura, solo reconoce el nombre generado en la raíz del bucket).
+
+### Alternativas valoradas
+
+**No reintentar automáticamente cuando ya se envió el cuerpo.** Descartada: el navegador no puede saberlo, y quitar el reintento contradice DT-017.
+**Pedir confirmación antes de reintentar.** Descartada: el reintento debe ser invisible para quien camina.
+**Deduplicar por contenido (texto + ventana de tiempo).** Descartada: frágil y puede fusionar dos entradas legítimas iguales ("¡Descanso!").
+**`upsert` con `onConflict: clave_envio`.** Descartada: PostgREST no admite `on conflict` sobre un índice parcial sin repetir su predicado, y además no evita la segunda subida de la foto; la comprobación previa + 23505 sí.
+
+### Notas de cierre (implementación)
+
+- **Orden cambiado:** el intento activo se resuelve ahora antes de subir la foto (antes se subía primero). Sin intento activo ya no queda una foto huérfana.
+- **Borrado también en fallo real del insert:** lo aprobado pedía borrar la foto solo en el 23505; se borra en cualquier fallo del `INSERT` porque ninguna fila la referencia y el reintento sube la suya.
+- **Límite conocido:** si tras un error se edita el texto y se reenvía, la clave es nueva; si el primer envío sí había llegado, quedan dos entradas (con textos distintos). Es la semántica buscada: la clave identifica una entrada concreta, no "lo último que se intentó publicar".
+- **La clave no es secreta:** la policy SELECT de `anon` (0007) la deja leer por PostgREST como el resto de la fila; conocerla no permite escribir (solo el service role inserta). La API pública no la selecciona.
+- **Mismo lote:** `cargarImagen` (`lib/imagen/preparar-foto.ts`) rechaza a los 10 s (`LIMITE_DECODIFICACION_MS`) y la degradación al original lo absorbe; el composer, el modal "Finalizar" y la foto de quién camina muestran "Sigue subiendo, no cierres la página." pasados 15 s de envío, sin abortar (`lib/envio/aviso-envio-lento.ts`: las Server Actions no aceptan `AbortSignal` y abortar agravaría los duplicados).

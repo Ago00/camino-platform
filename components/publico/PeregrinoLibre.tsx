@@ -293,6 +293,10 @@ function PeregrinoAndando({ size = 48, angry = false }: { size?: number; angry?:
         cy="12"
         fill={angry ? "#E0483C" : "#E9C9A8"}
         stroke="#00000022"
+        // Sin `initial`, el <circle> se monta sin `r` y motion toma como origen
+        // de la animación `getAttribute("r")` (null): el navegador recibe
+        // r="undefined" y lo avisa en consola.
+        initial={{ r: 6.5 }}
         animate={angry ? { r: [6.5, 7.6, 6.5] } : { r: 6.5 }}
         transition={angry ? { repeat: Infinity, duration: 0.45 } : { duration: 0.2 }}
       />

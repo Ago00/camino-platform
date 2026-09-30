@@ -8,6 +8,10 @@
 // edge con un 413 mudo, que es lo que dejó a Santi 2 h 30 min sin poder
 // publicar fotos el 2026-08-07. Si el envío falla, se muestra el motivo y
 // **no se limpia el formulario**: el texto y la foto siguen ahí para reintentar.
+//
+// Cada entrada viaja con una `clave_envio` (DT-033) para que un reintento de
+// una publicación que sí llegó no la duplique, y si el envío pasa de 15 s se
+// avisa de que sigue subiendo (sin abortar: ver lib/envio/aviso-envio-lento.ts).
 
 "use client";
 
@@ -16,6 +20,7 @@ import { crearMinutoAMinuto } from "@/app/[slug]/admin/actions";
 import { prepararFotoParaSubida } from "@/lib/imagen/preparar-foto";
 import { ejecutarConReintentos } from "@/lib/envio/reintentar";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
+import { MENSAJE_ENVIO_LENTO, UMBRAL_AVISO_ENVIO_LENTO_MS, avisarSiTarda } from "@/lib/envio/aviso-envio-lento";
 
 const C = { ink: "#1B211D", muted: "#4A5450", verde: "#2F5D50", peligro: "#B03A2E" };
 
@@ -49,7 +54,20 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState<EstadoEnvio>({ fase: "inactivo" });
+  const [envioLento, setEnvioLento] = useState(false);
   const [pendiente, startTransition] = useTransition();
+  /**
+   * Clave de idempotencia de la entrada en curso (DT-033). Se conserva entre
+   * los reintentos automáticos y también si Santi vuelve a pulsar "Publicar"
+   * tras un error sin cambiar nada: si el primer envío sí llegó, el servidor
+   * lo reconoce y no duplica. Se descarta al publicar con éxito o al tocar el
+   * texto o la foto, porque entonces ya es otra entrada.
+   */
+  const claveEnvioRef = useRef<string | null>(null);
+
+  function descartarClaveEnvio() {
+    claveEnvioRef.current = null;
+  }
 
   /**
    * Cambia la miniatura liberando siempre la URL de blob anterior: cada una
@@ -58,6 +76,7 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
    * pestaña por presión de memoria — con lo que estuviera escrito dentro.
    */
   function mostrarPreviewDe(archivo: File | null) {
+    descartarClaveEnvio();
     if (urlPreviewRef.current !== null) URL.revokeObjectURL(urlPreviewRef.current);
     urlPreviewRef.current = archivo ? URL.createObjectURL(archivo) : null;
     setFotoPreview(urlPreviewRef.current);
@@ -72,6 +91,7 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
     formRef.current?.reset();
     setTexto("");
     mostrarPreviewDe(null);
+    descartarClaveEnvio();
     setEstado({ fase: "inactivo" });
   }
 
@@ -89,6 +109,8 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
   function onSubmit(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const formData = new FormData(evento.currentTarget);
+    claveEnvioRef.current ??= crypto.randomUUID();
+    formData.set("clave_envio", claveEnvioRef.current);
 
     startTransition(async () => {
       try {
@@ -106,9 +128,13 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
         }
 
         setEstado({ fase: "publicando" });
-        const resultado = await ejecutarConReintentos(() => crearMinutoAMinuto(slug, formData), {
-          alReintentar: (intento) => setEstado({ fase: "reintentando", intento }),
-        });
+        const resultado = await avisarSiTarda(
+          ejecutarConReintentos(() => crearMinutoAMinuto(slug, formData), {
+            alReintentar: (intento) => setEstado({ fase: "reintentando", intento }),
+          }),
+          UMBRAL_AVISO_ENVIO_LENTO_MS,
+          () => setEnvioLento(true)
+        );
 
         if (!resultado.ok) {
           setEstado({ fase: "error", mensaje: resultado.mensaje });
@@ -118,6 +144,8 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
       } catch (error) {
         if (esControlDeFlujoDeNext(error)) throw error;
         setEstado({ fase: "error", mensaje: describirFalloDeEnvio(error) });
+      } finally {
+        setEnvioLento(false);
       }
     });
   }
@@ -132,7 +160,10 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
       <textarea
         name="texto"
         value={texto}
-        onChange={(e) => setTexto(e.target.value)}
+        onChange={(e) => {
+          descartarClaveEnvio();
+          setTexto(e.target.value);
+        }}
         placeholder="¿Qué está pasando ahora mismo?"
         rows={3}
         maxLength={500}
@@ -183,6 +214,12 @@ export default function ComposerMinutoAMinuto({ slug }: ComposerMinutoAMinutoPro
           style={{ color: C.muted }}
         >
           No salió a la primera. Reintentando… (intento {estado.intento})
+        </p>
+      )}
+
+      {pendiente && envioLento && (
+        <p aria-live="polite" className="mt-3 text-[12.5px]" style={{ color: C.muted }}>
+          {MENSAJE_ENVIO_LENTO}
         </p>
       )}
 

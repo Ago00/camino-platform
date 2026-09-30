@@ -1,17 +1,18 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import type { FiltroComentario } from "@/lib/admin/navegacion";
-
-const OPCIONES: { valor: FiltroComentario; etiqueta: string }[] = [
-  { valor: "todos", etiqueta: "Todos" },
-  { valor: "publicos", etiqueta: "Públicos" },
-  { valor: "ocultos", etiqueta: "Ocultos" },
-];
+import { FILTROS_COMENTARIO, type FiltroComentario } from "@/lib/admin/navegacion";
+import type { ContadoresComentariosAdmin } from "@/lib/comentarios/hilos";
 
 const C = { eucalipto: "#2F5D50", ink: "#1B211D" };
 
-export default function FiltroComentarios({ activo, slug }: { activo: FiltroComentario; slug: string }) {
+interface FiltroComentariosProps {
+  activo: FiltroComentario;
+  slug: string;
+  contadores: ContadoresComentariosAdmin;
+}
+
+export default function FiltroComentarios({ activo, slug, contadores }: FiltroComentariosProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -22,17 +23,27 @@ export default function FiltroComentarios({ activo, slug }: { activo: FiltroCome
   }
 
   return (
-    <div className="inline-flex rounded-full border p-0.5 text-[12.5px]" style={{ borderColor: "#00000015" }}>
-      {OPCIONES.map((opcion) => (
-        <button
-          key={opcion.valor}
-          onClick={() => elegir(opcion.valor)}
-          className="rounded-full px-3 py-1 font-medium transition-colors"
-          style={activo === opcion.valor ? { background: C.eucalipto, color: "white" } : { color: C.ink }}
-        >
-          {opcion.etiqueta}
-        </button>
-      ))}
+    <div
+      role="group"
+      aria-label="Tipo de comentarios"
+      className="inline-flex rounded-full border p-0.5 text-[12.5px]"
+      style={{ borderColor: "#00000015" }}
+    >
+      {FILTROS_COMENTARIO.map((opcion) => {
+        const esActivo = activo === opcion.valor;
+        return (
+          <button
+            key={opcion.valor}
+            type="button"
+            aria-pressed={esActivo}
+            onClick={() => elegir(opcion.valor)}
+            className="rounded-full px-3 py-1 font-medium transition-colors"
+            style={esActivo ? { background: C.eucalipto, color: "white" } : { color: C.ink }}
+          >
+            {opcion.etiqueta} ({contadores[opcion.valor]})
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -153,9 +153,17 @@ export default function MinutoAMinuto({
   return (
     <MotionConfig reducedMotion="user">
       <div className="space-y-2.5">
-        <div className="flex items-center gap-2 px-1">
+        {/* Cabecera de acordeón: toda la fila pliega/despliega; el chevron indica el estado. */}
+        <button
+          type="button"
+          onClick={alternarPlegado}
+          aria-expanded={!plegado}
+          aria-controls={regionId}
+          className="flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-black/[0.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          style={{ outlineColor: "#2F5D50" }}
+        >
           {polling && (
-            <span className="relative flex h-2 w-2">
+            <span className="relative flex h-2 w-2" aria-hidden="true">
               <span
                 className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
                 style={{ background: C.ember }}
@@ -163,23 +171,38 @@ export default function MinutoAMinuto({
               <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: C.ember }} />
             </span>
           )}
-          <div className="font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
+          <span className="font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
             {textos.minuto_a_minuto_kicker}
-          </div>
-          <span aria-live="polite" className="font-mono text-[11px] font-medium" style={{ color: C.ember }}>
-            {textoAviso}
           </span>
-          <button
-            type="button"
-            onClick={alternarPlegado}
-            aria-expanded={!plegado}
-            aria-controls={regionId}
-            className="ml-auto rounded-full border px-3 py-1 text-[12px] font-medium"
-            style={{ borderColor: "#00000015", color: "#2F5D50", background: "#FBFAF7" }}
+          {textoAviso && (
+            <span
+              className="rounded-full px-2 py-0.5 font-mono text-[10.5px] font-medium text-white"
+              style={{ background: C.ember }}
+              aria-hidden="true"
+            >
+              {textoAviso}
+            </span>
+          )}
+          <motion.svg
+            aria-hidden="true"
+            className="ml-auto shrink-0"
+            width={18}
+            height={18}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={C.muted}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            animate={{ rotate: plegado ? 0 : 180 }}
+            transition={{ duration: 0.25 }}
           >
-            {plegado ? textos.minuto_a_minuto_boton_mostrar : textos.minuto_a_minuto_boton_ocultar}
-          </button>
-        </div>
+            <path d="m6 9 6 6 6-6" />
+          </motion.svg>
+        </button>
+        <span aria-live="polite" className="sr-only">
+          {textoAviso && `${textos.minuto_a_minuto_kicker}: ${textoAviso}`}
+        </span>
 
         <div id={regionId}>
           <AnimatePresence initial={false}>

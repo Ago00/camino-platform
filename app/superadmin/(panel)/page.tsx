@@ -1,10 +1,12 @@
 // Panel superadmin: CRUD de retos. Server Component.
 // Listado de todos los retos (activos e inactivos) + formulario de creación.
 // Edición inline: pasar ?edit=<id> en la URL muestra el formulario de edición
-// para ese reto; el servidor renderiza el estado sin necesidad de JS de cliente.
-// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028) y si
-// tiene contraseña de admin configurada (FP2.6, DT-029); crear exige la
-// contraseña y editar permite cambiarla (vacío = no cambiar).
+// para ese reto. Los formularios son componentes cliente con `useActionState`
+// (estado pendiente y resultado visibles); editar y eliminar redirigen aquí
+// con el aviso en la query (?guardado=<id> / ?eliminado=<slug>).
+// Cada tarjeta muestra la URL del tracker GPS del reto (FP2.5, DT-028), si
+// tiene contraseña de admin configurada (FP2.6, DT-029) y enlaces a su web y
+// a su panel admin.
 
 import Link from "next/link";
 import { headers } from "next/headers";
@@ -12,13 +14,15 @@ import { redirect } from "next/navigation";
 import { RUTAS_PREDEFINIDAS } from "@/lib/rutas/catalogo";
 import { listarRetosConCredencial } from "@/lib/supabase/credenciales-admin";
 import { listarTodosLosRetos } from "@/lib/supabase/retos";
-import { crearReto, editarReto, cerrarSesionSuperadmin } from "./actions";
+import { editarReto, eliminarReto, cerrarSesionSuperadmin } from "./actions";
 import BotonEliminarReto from "./BotonEliminarReto";
+import { COLORES_SUPERADMIN as C, EnlacesReto, MensajeResultado } from "./CamposReto";
+import FormularioCrearReto from "./FormularioCrearReto";
+import FormularioEditarReto from "./FormularioEditarReto";
+import { leerAvisoPanel } from "./resultado-accion";
 import type { Reto } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-const C = { paper: "#F4F3EF", ink: "#1B211D", eucalipto: "#2F5D50", rojo: "#B03A2E", gris: "#6B7280" };
 
 interface SuperadminPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -27,6 +31,7 @@ interface SuperadminPageProps {
 export default async function SuperadminPage({ searchParams }: SuperadminPageProps) {
   const sp = await searchParams;
   const editarId = sp.edit ? Number(sp.edit) : null;
+  const aviso = leerAvisoPanel(sp);
 
   const [retos, origen, retosConCredencial] = await Promise.all([
     listarTodosLosRetos(),
@@ -44,22 +49,40 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
   return (
     <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
       <div className="mx-auto w-full max-w-[720px] px-5 py-6">
-        <header className="mb-6 flex items-center justify-between">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-2">
           <h1 className="[font-family:var(--font-fraunces)] text-[24px] font-semibold">Panel superadmin</h1>
-          <form action={logout}>
-            <button
-              type="submit"
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="rounded-full border px-4 py-2 text-[13px] font-medium"
               style={{ borderColor: "#00000018" }}
             >
-              Cerrar sesión
-            </button>
-          </form>
+              Ver portada
+            </Link>
+            <form action={logout}>
+              <button
+                type="submit"
+                className="rounded-full border px-4 py-2 text-[13px] font-medium"
+                style={{ borderColor: "#00000018" }}
+              >
+                Cerrar sesión
+              </button>
+            </form>
+          </div>
         </header>
 
         {/* Lista de retos */}
         <section className="mb-8">
           <h2 className="mb-3 text-[16px] font-semibold">Retos</h2>
+          {aviso?.tipo === "eliminado" && (
+            <div className="mb-3">
+              <MensajeResultado ok>
+                Reto <span className="font-mono">/{aviso.slug}</span> eliminado.
+              </MensajeResultado>
+            </div>
+          )}
           {retos.length === 0 ? (
             <p className="text-[14px]" style={{ color: C.gris }}>
               No hay retos todavía.
@@ -71,6 +94,7 @@ export default async function SuperadminPage({ searchParams }: SuperadminPagePro
                   key={reto.id}
                   reto={reto}
                   modoEdicion={editarId === reto.id}
+                  recienGuardado={aviso?.tipo === "guardado" && aviso.retoId === reto.id}
                   urlTracker={urlTrackerDelReto(origen, reto.slug)}
                   tieneCredencial={retosConCredencial.has(reto.id)}
                 />
@@ -123,20 +147,20 @@ function urlTrackerDelReto(origen: string | null, slug: string): string {
 function RetoCard({
   reto,
   modoEdicion,
+  recienGuardado,
   urlTracker,
   tieneCredencial,
 }: {
   reto: Reto;
   modoEdicion: boolean;
+  recienGuardado: boolean;
   urlTracker: string;
   tieneCredencial: boolean;
 }) {
-  const editarConId = editarReto.bind(null, reto.id);
-
   return (
     <div
       className="rounded-xl border p-4"
-      style={{ borderColor: "#00000012", background: "white" }}
+      style={{ borderColor: recienGuardado ? `${C.eucalipto}60` : "#00000012", background: "white" }}
     >
       {/* Cabecera del reto */}
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
@@ -160,6 +184,12 @@ function RetoCard({
           </span>
         </div>
       </div>
+
+      {recienGuardado && !modoEdicion && (
+        <div className="my-2">
+          <MensajeResultado ok>Cambios guardados.</MensajeResultado>
+        </div>
+      )}
 
       {/* URL del GPS para OwnTracks (solo lectura) */}
       <div className="mt-2">
@@ -190,7 +220,8 @@ function RetoCard({
 
       {/* Acciones */}
       {!modoEdicion && (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
+          <EnlacesReto slug={reto.slug} />
           <Link
             href={`/superadmin?edit=${reto.id}`}
             className="rounded-lg border px-3 py-1.5 text-[13px] font-medium"
@@ -198,208 +229,12 @@ function RetoCard({
           >
             Editar
           </Link>
-          <BotonEliminarReto id={reto.id} nombre={reto.nombre} />
+          <BotonEliminarReto nombre={reto.nombre} accion={eliminarReto.bind(null, reto.id)} />
         </div>
       )}
 
       {/* Formulario de edición inline */}
-      {modoEdicion && (
-        <form action={editarConId} className="mt-4 space-y-3 border-t pt-4" style={{ borderColor: "#00000010" }}>
-          <CampoTexto label="Nombre" name="nombre" defaultValue={reto.nombre} required />
-          <CampoTexto label="Descripción" name="descripcion" defaultValue={reto.descripcion ?? ""} />
-          <div>
-            <label className="mb-1 block text-[13px] font-medium">Tipo de ruta</label>
-            <select
-              name="ruta_tipo"
-              defaultValue={reto.ruta_tipo}
-              className="w-full rounded-lg border px-3 py-2 text-[14px]"
-              style={{ borderColor: "#00000015" }}
-            >
-              <option value="predefinida">Predefinida</option>
-              <option value="libre">Libre</option>
-            </select>
-          </div>
-          <SelectorRuta defaultValue={reto.ruta_id ?? undefined} />
-          <div>
-            <label className="mb-1 block text-[13px] font-medium">Estado</label>
-            <select
-              name="activo"
-              defaultValue={String(reto.activo)}
-              className="w-full rounded-lg border px-3 py-2 text-[14px]"
-              style={{ borderColor: "#00000015" }}
-            >
-              <option value="true">Activo</option>
-              <option value="false">Inactivo</option>
-            </select>
-          </div>
-          <CampoPasswordAdmin placeholder="Dejar vacío para no cambiar" />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded-full px-4 py-2 text-[13px] font-medium text-white"
-              style={{ background: C.eucalipto }}
-            >
-              Guardar cambios
-            </button>
-            <Link
-              href="/superadmin"
-              className="rounded-full border px-4 py-2 text-[13px] font-medium"
-              style={{ borderColor: "#00000018" }}
-            >
-              Cancelar
-            </Link>
-          </div>
-        </form>
-      )}
-    </div>
-  );
-}
-
-
-// ---------------------------------------------------------------------------
-// Formulario de creación
-// ---------------------------------------------------------------------------
-
-function FormularioCrearReto() {
-  return (
-    <form
-      action={crearReto}
-      className="rounded-xl border p-4 space-y-3"
-      style={{ borderColor: "#00000012", background: "white" }}
-    >
-      <CampoTexto
-        label="Slug"
-        name="slug"
-        placeholder="mi-reto-2026"
-        required
-        pattern="\s*[A-Za-z0-9\-]+\s*"
-        maxLength={60}
-        ayuda="Solo letras sin acentos, números y guiones; sin espacios. Será la dirección del reto (/mi-reto-2026)."
-      />
-      <CampoTexto label="Nombre" name="nombre" placeholder="Nombre del reto" required />
-      <CampoTexto label="Descripción" name="descripcion" placeholder="Descripción opcional" />
-      <div>
-        <label className="mb-1 block text-[13px] font-medium">Tipo de ruta</label>
-        <select
-          name="ruta_tipo"
-          defaultValue="predefinida"
-          className="w-full rounded-lg border px-3 py-2 text-[14px]"
-          style={{ borderColor: "#00000015" }}
-        >
-          <option value="predefinida">Predefinida</option>
-          <option value="libre">Libre</option>
-        </select>
-      </div>
-      <SelectorRuta />
-      <CampoPasswordAdmin required />
-      <button
-        type="submit"
-        className="rounded-full px-4 py-2 text-[13px] font-medium text-white"
-        style={{ background: C.eucalipto }}
-      >
-        Crear reto
-      </button>
-    </form>
-  );
-}
-
-// Solo se tiene en cuenta si el tipo de ruta es "predefinida".
-function SelectorRuta({ defaultValue }: { defaultValue?: string }) {
-  return (
-    <div>
-      <label className="mb-1 block text-[13px] font-medium">Ruta predefinida</label>
-      <select
-        name="ruta_id"
-        defaultValue={defaultValue ?? RUTAS_PREDEFINIDAS[0]?.id}
-        className="w-full rounded-lg border px-3 py-2 text-[14px]"
-        style={{ borderColor: "#00000015" }}
-      >
-        {RUTAS_PREDEFINIDAS.map((ruta) => (
-          <option key={ruta.id} value={ruta.id}>
-            {ruta.nombre}
-          </option>
-        ))}
-      </select>
-      <p className="mt-1 text-[12px]" style={{ color: C.gris }}>
-        Se ignora si el tipo de ruta es libre.
-      </p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Contraseña del panel admin del reto (FP2.6, DT-029)
-// ---------------------------------------------------------------------------
-
-// Sin defaultValue nunca: la contraseña no se puede leer (solo se guarda su hash).
-function CampoPasswordAdmin({ required, placeholder }: { required?: boolean; placeholder?: string }) {
-  return (
-    <div>
-      <label className="mb-1 block text-[13px] font-medium">
-        Contraseña del panel admin
-        {required && <span style={{ color: C.rojo }}> *</span>}
-      </label>
-      <input
-        type="password"
-        name="password_admin"
-        autoComplete="new-password"
-        minLength={8}
-        maxLength={200}
-        required={required}
-        placeholder={placeholder ?? "Mínimo 8 caracteres"}
-        className="w-full rounded-lg border px-3 py-2 text-[14px] outline-none"
-        style={{ borderColor: "#00000015" }}
-      />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Campo de texto reutilizable
-// ---------------------------------------------------------------------------
-
-function CampoTexto({
-  label,
-  name,
-  defaultValue,
-  placeholder,
-  required,
-  pattern,
-  maxLength,
-  ayuda,
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  required?: boolean;
-  pattern?: string;
-  maxLength?: number;
-  ayuda?: string;
-}) {
-  return (
-    <div>
-      <label className="mb-1 block text-[13px] font-medium">
-        {label}
-        {required && <span style={{ color: C.rojo }}> *</span>}
-      </label>
-      <input
-        type="text"
-        name={name}
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        required={required}
-        pattern={pattern}
-        maxLength={maxLength}
-        title={ayuda}
-        className="w-full rounded-lg border px-3 py-2 text-[14px] outline-none"
-        style={{ borderColor: "#00000015" }}
-      />
-      {ayuda && (
-        <p className="mt-1 text-[12px]" style={{ color: C.gris }}>
-          {ayuda}
-        </p>
-      )}
+      {modoEdicion && <FormularioEditarReto reto={reto} accion={editarReto.bind(null, reto.id)} />}
     </div>
   );
 }

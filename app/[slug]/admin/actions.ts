@@ -32,6 +32,7 @@ import {
   borrarObjeto,
   ErrorDeSubidaDeFoto,
   rutaObjetoDelReto,
+  rutaObjetoMinutoAMinuto,
   subirFotoLlegada,
   subirFotoMinutoAMinuto,
   subirFotoQuienCamina,
@@ -573,9 +574,39 @@ export async function guardarFotoQuienCamina(slug: string, formData: FormData): 
 // Minuto a minuto (DT-013)
 // ---------------------------------------------------------------------------
 
+/** Violación de unicidad de Postgres: aquí, del índice de `clave_envio`. */
+const CODIGO_VIOLACION_UNICIDAD = "23505";
+
+// Ausente o vacía = publicación sin clave (clientes anteriores a DT-033).
+const esquemaClaveEnvio = z.preprocess(
+  (valor) => (valor === null || valor === "" ? undefined : valor),
+  z.uuid().optional()
+);
+
+/**
+ * ¿Existe ya en el intento una entrada publicada con esta clave? Un fallo de
+ * la consulta cuenta como "no": el índice único sigue impidiendo el duplicado.
+ */
+async function existeEntradaConClave(intentoId: number, claveEnvio: string): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("minuto_a_minuto")
+    .select("id")
+    .eq("intento_id", intentoId)
+    .eq("clave_envio", claveEnvio)
+    .maybeSingle();
+  return !error && data !== null;
+}
+
 /**
  * Crea una entrada del feed "minuto a minuto" sobre el intento activo del
  * reto. Devuelve el fallo en vez de lanzarlo (DT-017).
+ *
+ * Idempotente por `clave_envio` (DT-033): el composer la mantiene entre sus
+ * reintentos automáticos, así que si ya hay una entrada con esa clave el
+ * reintento es de una publicación que sí llegó (se perdió la respuesta) y se
+ * devuelve éxito sin subir la foto otra vez. Si dos envíos con la misma clave
+ * se cruzan, el índice único rechaza el segundo (23505): también es éxito, y
+ * se borra la foto que ese segundo envío acababa de subir.
  */
 export async function crearMinutoAMinuto(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
   const reto = await resolverRetoConSesion(slug);
@@ -587,6 +618,22 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
   }
   if (texto.length > 500) {
     return { ok: false, mensaje: "El texto no puede superar 500 caracteres." };
+  }
+
+  const claveValidada = esquemaClaveEnvio.safeParse(formData.get("clave_envio"));
+  if (!claveValidada.success) {
+    return { ok: false, mensaje: "No se pudo publicar la entrada. Recarga la página y vuelve a intentarlo." };
+  }
+  const claveEnvio = claveValidada.data ?? null;
+
+  // Antes de subir la foto: sin intento no hay dónde publicar, y un reintento
+  // ya publicado no debe gastar otra subida por 4G.
+  const intentoId = await obtenerIdIntentoActivo(reto.id);
+  if (intentoId === null) {
+    return { ok: false, mensaje: "No hay ningún intento activo sobre el que publicar." };
+  }
+  if (claveEnvio !== null && (await existeEntradaConClave(intentoId, claveEnvio))) {
+    return { ok: true };
   }
 
   const foto = formData.get("foto");
@@ -605,11 +652,6 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
 
   const supabase = getSupabaseAdmin();
 
-  const intentoId = await obtenerIdIntentoActivo(reto.id);
-  if (intentoId === null) {
-    return { ok: false, mensaje: "No hay ningún intento activo sobre el que publicar." };
-  }
-
   const cacheProgreso = obtenerCacheProgreso(reto.id);
   let ultimaPosicion = cacheProgreso?.valor.ultimaPosicion ?? null;
   if (!cacheProgreso) {
@@ -624,9 +666,20 @@ export async function crearMinutoAMinuto(slug: string, formData: FormData): Prom
     foto_url: fotoUrl,
     lat: ultimaPosicion?.lat ?? null,
     lon: ultimaPosicion?.lon ?? null,
+    clave_envio: claveEnvio,
   });
 
   if (errorInsercion) {
+    // Duplicado o fallo real, ninguna fila referencia la foto recién subida:
+    // se borra para no dejarla huérfana (el reintento subirá la suya).
+    const rutaFotoSubida = fotoUrl === null ? null : rutaObjetoMinutoAMinuto(fotoUrl);
+    if (rutaFotoSubida !== null) await borrarObjeto(rutaFotoSubida);
+
+    const esDuplicado = claveEnvio !== null && errorInsercion.code === CODIGO_VIOLACION_UNICIDAD;
+    if (esDuplicado) {
+      revalidarAdmin(slug);
+      return { ok: true };
+    }
     return { ok: false, mensaje: "No se pudo publicar la entrada. Vuelve a intentarlo." };
   }
   revalidarAdmin(slug);

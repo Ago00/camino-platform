@@ -3,8 +3,8 @@
  * (`subirFotoMinutoAMinuto`), la foto opcional de la pantalla de llegada
  * (`subirFotoLlegada`, DT-024) y la foto de "quién camina" de cada reto
  * (`subirFotoQuienCamina`, FP3c/DT-032) — todas al mismo bucket público
- * `minuto-a-minuto` (ver supabase/migrations/0002_minuto_a_minuto.sql), con
- * un prefijo distinto en el nombre del objeto para no colisionar.
+ * `minuto-a-minuto` (en la plataforma lo crea supabase/migrations/0013_bucket_fotos.sql),
+ * con un prefijo distinto en el nombre del objeto para no colisionar.
  *
  * Solo se llama desde Server Actions (app/admin/actions.ts) con el cliente
  * service role, que bypassa RLS de Storage igual que bypassa RLS de BD — no
@@ -99,20 +99,37 @@ const NOMBRE_GENERADO = /^\d+-[0-9a-f-]+\.(jpg|png|webp)$/;
  * ni `..`), así una URL manipulada no puede apuntar fuera de la carpeta.
  */
 export function rutaObjetoDelReto(url: string, retoId: number): string | null {
-  const inicio = url.indexOf(MARCA_URL_PUBLICA_BUCKET);
-  if (inicio === -1) return null;
-
-  const rutaCodificada = url.slice(inicio + MARCA_URL_PUBLICA_BUCKET.length).split(/[?#]/)[0];
-  let ruta: string;
-  try {
-    ruta = decodeURIComponent(rutaCodificada);
-  } catch {
-    return null;
-  }
+  const ruta = rutaDecodificadaEnElBucket(url);
+  if (ruta === null) return null;
 
   const prefijo = prefijoQuienCamina(retoId);
   if (!ruta.startsWith(prefijo)) return null;
   return NOMBRE_GENERADO.test(ruta.slice(prefijo.length)) ? ruta : null;
+}
+
+/**
+ * Ruta del objeto si `url` es una foto del feed "minuto a minuto" (sin
+ * prefijo, en la raíz del bucket, con el nombre que genera
+ * `subirFotoAlBucket`); null en cualquier otro caso. La usa
+ * `crearMinutoAMinuto` para borrar la foto que acaba de subir cuando la
+ * entrada resulta ser un reintento duplicado (DT-033).
+ */
+export function rutaObjetoMinutoAMinuto(url: string): string | null {
+  const ruta = rutaDecodificadaEnElBucket(url);
+  if (ruta === null) return null;
+  return NOMBRE_GENERADO.test(ruta) ? ruta : null;
+}
+
+function rutaDecodificadaEnElBucket(url: string): string | null {
+  const inicio = url.indexOf(MARCA_URL_PUBLICA_BUCKET);
+  if (inicio === -1) return null;
+
+  const rutaCodificada = url.slice(inicio + MARCA_URL_PUBLICA_BUCKET.length).split(/[?#]/)[0];
+  try {
+    return decodeURIComponent(rutaCodificada);
+  } catch {
+    return null;
+  }
 }
 
 /**

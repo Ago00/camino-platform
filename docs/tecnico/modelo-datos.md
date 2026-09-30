@@ -170,8 +170,13 @@ opcional, publicada solo por el admin, con snapshot de posición.
 | `foto_url` | text | URL pública de Supabase Storage (bucket `minuto-a-minuto`); null = sin foto |
 | `lat` | double precision | Snapshot de la última posición conocida al publicar; null si aún no había ninguna |
 | `lon` | double precision | Ídem |
+| `clave_envio` | uuid | Clave de idempotencia generada por el composer, estable entre reintentos (DT-033, `0014`). Única (índice parcial `where clave_envio is not null`); null en entradas anteriores o sin clave |
 | `created_at` | timestamptz | Automático |
 | `updated_at` | timestamptz | Se actualiza al editar el texto |
+
+**Invariante de idempotencia (DT-033):** no pueden existir dos entradas con
+la misma `clave_envio`; `crearMinutoAMinuto` trata una clave ya publicada (o
+el 23505 del índice) como éxito, sin volver a subir ni insertar.
 
 **Invariante de diseño:** `lat`/`lon` son un snapshot fijado en el momento de
 publicar, nunca recalculado después — no reflejan la posición actual de
@@ -185,7 +190,8 @@ hard delete, igual que `intenciones`. El objeto de Storage asociado a una
 entrada eliminada no se borra (deuda aceptada explícitamente, ver `DEBT.md`).
 
 **Storage:** las fotos viven en el bucket público `minuto-a-minuto` de
-Supabase Storage. Todas las subidas pasan por `lib/supabase/storage.ts` con
+Supabase Storage (en el proyecto de la plataforma lo crea `0013_bucket_fotos.sql`:
+4 MB, jpeg/png/webp). Todas las subidas pasan por `lib/supabase/storage.ts` con
 el cliente `service role` (bypassa RLS de Storage), nunca desde el cliente
 directamente.
 
@@ -280,8 +286,11 @@ iniciales), `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
 `supabase/migrations/0004_visitas_web.sql` (tabla `visitas_web`, DT-022) y
 `supabase/migrations/0006_foto_llegada.sql` (columna `foto_llegada_url` de
 `intentos`, DT-024). Desde FP0 el esquema de plataforma está en `0007` y las
-posteriores; la última es `0012_config_reto.sql` (configuración por reto en
-`retos` y RLS de INSERT de `comentarios`, DT-032).
+posteriores: `0012_config_reto.sql` (configuración por reto en `retos` y RLS
+de INSERT de `comentarios`, DT-032), `0013_bucket_fotos.sql` (bucket de
+Storage `minuto-a-minuto`, que 0007 no creaba) y la última,
+`0014_mam_clave_envio.sql` (`minuto_a_minuto.clave_envio` + índice único
+parcial, DT-033).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase

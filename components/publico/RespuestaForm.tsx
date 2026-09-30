@@ -25,10 +25,12 @@ interface RespuestaFormProps {
   textos: Textos;
   slug: string;
   parentId: number;
+  /** Nombre de a quién se contesta (el comentario raíz o una de sus respuestas). */
+  destinatario: string;
   onRespondido: (respuesta: ComentarioPublico) => void;
 }
 
-export default function RespuestaForm({ textos, slug, parentId, onRespondido }: RespuestaFormProps) {
+export default function RespuestaForm({ textos, slug, parentId, destinatario, onRespondido }: RespuestaFormProps) {
   const [nombre, setNombre] = useState("");
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState<Estado>("idle");
@@ -56,7 +58,11 @@ export default function RespuestaForm({ textos, slug, parentId, onRespondido }: 
 
   return (
     <div className="mt-2 rounded-lg border p-3" style={{ borderColor: "#00000012", background: "#FBFAF7" }}>
+      <p className="mb-2 text-[12px] font-medium" style={{ color: C.eucalipto }}>
+        {textos.respuesta_form_respondiendo_a.replaceAll("{nombre}", destinatario)}
+      </p>
       <input
+        autoFocus
         value={nombre}
         onChange={(e) => setNombre(e.target.value)}
         maxLength={80}

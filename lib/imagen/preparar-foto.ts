@@ -11,8 +11,9 @@
  * Dos invariantes que no son evidentes:
  *
  * - **Nunca bloquea por no poder comprimir.** Si el navegador no sabe
- *   decodificar la imagen o el canvas falla, se sigue adelante con el fichero
- *   original: publicar es más importante que publicar ligero.
+ *   decodificar la imagen, tarda más de `LIMITE_DECODIFICACION_MS` o el canvas
+ *   falla, se sigue adelante con el fichero original: publicar es más
+ *   importante que publicar ligero.
  * - **El error de "demasiado grande" se da aquí, antes de subir nada.** Gastar
  *   40 s de 4G rural en una petición que el edge de Vercel va a cortar con un
  *   413 mudo es el fallo que originó DT-017.
@@ -29,6 +30,19 @@ import {
   type Codificador,
   type Dimensiones,
 } from "@/lib/imagen/escalera-compresion";
+
+/**
+ * Tiempo máximo para que el navegador decodifique la foto. Pasado, se envía
+ * el original (la degradación de siempre) en vez de esperar indefinidamente.
+ */
+export const LIMITE_DECODIFICACION_MS = 10_000;
+
+export class ErrorDecodificacionAgotada extends Error {
+  constructor(limiteMs: number) {
+    super(`El navegador no terminó de decodificar la imagen en ${limiteMs / 1000} s.`);
+    this.name = "ErrorDecodificacionAgotada";
+  }
+}
 
 export type FotoPreparada =
   | { readonly estado: "lista"; readonly foto: File }
@@ -130,18 +144,36 @@ async function recodificarAJpeg(original: File): Promise<File> {
  * tumbada, porque el canvas descarta los metadatos EXIF del original.
  */
 function cargarImagen(archivo: File): Promise<{ imagen: HTMLImageElement; liberar: () => void }> {
-  return new Promise((resolver, rechazar) => {
-    const url = URL.createObjectURL(archivo);
-    const imagen = new Image();
-    const liberar = () => URL.revokeObjectURL(url);
+  const url = URL.createObjectURL(archivo);
+  const imagen = new Image();
+  const liberar = () => URL.revokeObjectURL(url);
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
 
-    imagen.onload = () => resolver({ imagen, liberar });
-    imagen.onerror = () => {
-      liberar();
-      rechazar(new Error("El navegador no pudo decodificar la imagen."));
-    };
-    imagen.src = url;
+  const decodificada = new Promise<void>((resolver, rechazar) => {
+    imagen.onload = () => resolver();
+    imagen.onerror = () => rechazar(new Error("El navegador no pudo decodificar la imagen."));
   });
+  // Con presión de memoria (iOS, foto enorme) el navegador puede no disparar
+  // ni `onload` ni `onerror`: sin este límite, "Preparando foto…" no acabaría.
+  const agotada = new Promise<never>((_, rechazar) => {
+    temporizador = setTimeout(
+      () => rechazar(new ErrorDecodificacionAgotada(LIMITE_DECODIFICACION_MS)),
+      LIMITE_DECODIFICACION_MS
+    );
+  });
+  imagen.src = url;
+
+  return Promise.race([decodificada, agotada])
+    .then(
+      () => ({ imagen, liberar }),
+      (error: unknown) => {
+        imagen.onload = null;
+        imagen.onerror = null;
+        liberar();
+        throw error;
+      }
+    )
+    .finally(() => clearTimeout(temporizador));
 }
 
 /**

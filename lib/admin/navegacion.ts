@@ -28,10 +28,28 @@ export function esTabValida(valor: string | null): valor is TabAdmin {
   return TABS_ADMIN.some((tab) => tab.valor === valor);
 }
 
-export type FiltroComentario = "todos" | "publicos" | "ocultos";
+/**
+ * Sub-pestañas de la pestaña "Comentarios". "Privados" son los mensajes que
+ * el visitante escribió solo para quien camina (visibilidad 'privado'): no se
+ * publican ni admiten respuesta. "Ocultos" son públicos que el admin ocultó.
+ */
+export const FILTROS_COMENTARIO = [
+  { valor: "publicos", etiqueta: "Públicos" },
+  { valor: "privados", etiqueta: "Privados" },
+  { valor: "ocultos", etiqueta: "Ocultos" },
+] as const;
+
+export type FiltroComentario = (typeof FILTROS_COMENTARIO)[number]["valor"];
+
+export const FILTRO_COMENTARIO_POR_DEFECTO: FiltroComentario = "publicos";
 
 export function esFiltroComentarioValido(valor: string | undefined): valor is FiltroComentario {
-  return valor === "todos" || valor === "publicos" || valor === "ocultos";
+  return FILTROS_COMENTARIO.some((filtro) => filtro.valor === valor);
+}
+
+/** Filtro de la URL o el default si falta o no es válido (p. ej. el antiguo "todos"). */
+export function filtroComentarioDesdeQuery(valor: string | undefined): FiltroComentario {
+  return esFiltroComentarioValido(valor) ? valor : FILTRO_COMENTARIO_POR_DEFECTO;
 }
 
 /** Granularidad del gráfico de la pestaña "Tráfico" (DT-022). Default "30m". */

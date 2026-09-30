@@ -1,5 +1,6 @@
 overrides:
   js-yaml: ">=4.3.2"
+  "brace-expansion@>=4.0.0 <5.0.12": "^5.0.12"
 
 allowBuilds:
   esbuild: true

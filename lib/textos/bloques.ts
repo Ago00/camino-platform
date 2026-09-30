@@ -88,6 +88,7 @@ export const BLOQUES_TEXTOS = [
       "muro_insignia_caminante",
       "respuesta_form_placeholder_texto",
       "respuesta_form_boton_enviar",
+      "respuesta_form_respondiendo_a",
     ],
   },
   {
@@ -125,8 +126,6 @@ export const BLOQUES_TEXTOS = [
       "minuto_a_minuto_kicker",
       "minuto_a_minuto_boton_cargar_mas",
       "minuto_a_minuto_mensaje_vacio",
-      "minuto_a_minuto_boton_mostrar",
-      "minuto_a_minuto_boton_ocultar",
       "minuto_a_minuto_aviso_nueva",
       "minuto_a_minuto_aviso_nuevas",
     ],

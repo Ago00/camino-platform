@@ -2,6 +2,46 @@
 
 ---
 
+## `vitest` 3.x con avisos moderados (GHSA-82fw-gwwq-j7x9)
+
+**Fecha:** 2026-09-30
+**Contexto:** `pnpm audit` reporta `vitest` y `@vitest/mocker` < 4.1.11 (moderado). Los avisos altos de `brace-expansion` 4.x/5.x (vía `minimatch` en eslint y coverage) se cerraron con un override acotado en `pnpm-workspace.yaml` (`"brace-expansion@>=4.0.0 <5.0.12": "^5.0.12"`).
+**Problema:** El arreglo de vitest exige subir de major (3 → 4).
+**Impacto:** Solo herramientas de desarrollo; nada llega a producción.
+**Solución propuesta:** Subir `vitest` y `@vitest/coverage-v8` a ≥ 4.1.11 revisando la guía de migración y ejecutando la suite completa.
+**Prioridad:** Baja.
+
+---
+
+## Recomendaciones de la revisión del lote pre-reto (superadmin, comentarios admin, respuestas y acordeón)
+
+**Fecha:** 2026-09-30
+**Contexto:** Revisión conjunta de: endurecimiento pre-reto (DT-033), superadmin con `useActionState`, sub-pestañas de comentarios del admin y "Responder" bajo cada respuesta + acordeón del minuto a minuto.
+**Problema:**
+(1) `components/publico/RespuestaForm.tsx`: (el `autoFocus` ya va al campo "nombre"; queda lo siguiente) al cambiar de destinatario con el formulario ya abierto, el foco no se mueve y el cambio de "Respondiendo a …" no se anuncia. El `<p>` "Respondiendo a …" tampoco está asociado al campo.
+(2) `components/publico/HiloComentario.tsx:62`: con las respuestas desplegadas, la raíz no tiene "Responder". Para contestar al autor del comentario principal hay que pulsar bajo una respuesta, y el formulario dice "Respondiendo a <autor de la respuesta>". Además, la respuesta publicada no guarda a quién se contestaba: el "Respondiendo a" solo existe en la interfaz.
+(3) `components/publico/MinutoAMinuto.tsx`: (el texto `sr-only` Mostrar/Ocultar ya se quitó; queda esto) la cabecera del acordeón no está dentro de un encabezado (patrón acordeón de la APG).
+(4) `app/[slug]/admin/page.tsx:55` y `components/admin/SeccionComentarios.tsx:35`: el filtro se normaliza dos veces (inocuo, pero el prop podría tiparse ya como `FiltroComentario`).
+(5) `components/admin/ComposerMinutoAMinuto.tsx:112`: `crypto.randomUUID()` solo existe en contextos seguros; si se abre el panel por HTTP en la LAN (pruebas desde el móvil con `pnpm dev`), el envío lanza.
+(6) Las Server Actions `ocultarComentario`/`mostrarComentario` siguen aceptando comentarios privados (la interfaz ya no lo ofrece). Es inocuo, pero no coincide con la regla "privados: solo eliminar".
+(7) Sin tests de componente para los formularios del superadmin, `HiloComentario` ni el acordeón. La lógica está en funciones puras testeadas; el cableado depende de la verificación manual.
+**Impacto:** Bajo: UX/a11y menores y coherencia.
+**Solución propuesta:** (1) Mover el foco al formulario en cada cambio de destinatario y enlazar el `<p>` con `aria-describedby`. (2) Confirmar con Producto. Si se quiere contestar a la raíz con respuestas visibles, mostrar también su botón. (3) Envolver el botón en un `<h3>`. (4) Tipar el prop. (5) Si se necesita, usar un fallback con `crypto.getRandomValues`. (6) Rechazar en la action si `visibilidad = 'privado'`. (7) Valorar tests con Testing Library si se añade jsdom.
+**Prioridad:** Baja.
+
+---
+
+## El muro no se actualiza con comentarios de otros visitantes
+
+**Fecha:** 2026-09-30
+**Contexto:** Endurecimiento pre-reto. Se resolvió que quien publica vea su comentario (recarga de la página 0 al enviar) sin añadir polling, por decisión del orquestador.
+**Problema:** Los comentarios y respuestas de otros visitantes no aparecen en `MuroComentarios` hasta recargar la página.
+**Impacto:** Bajo-medio durante el reto: el muro parece menos vivo que el minuto a minuto.
+**Solución propuesta:** Un poll ligero de la página 0 (patrón de `MinutoAMinuto.tsx`, solo con la pestaña visible), fusionando por `id` sin perder las páginas ya cargadas.
+**Prioridad:** Baja.
+
+---
+
 ## Visitante con la web abierta sigue haciendo polling del minuto a minuto tras apagarlo (FP3c)
 
 **Fecha:** 2026-09-30
@@ -35,14 +75,10 @@
 
 ---
 
-## "Minuto a minuto" plegable: botón y aviso sin contexto para lector de pantalla (FP3b)
+## ~~"Minuto a minuto" plegable: botón y aviso sin contexto para lector de pantalla (FP3b)~~ — RESUELTO
 
-**Fecha:** 2026-09-30
-**Contexto:** Recomendación del Reviewer en FP3b (DT-031), `components/publico/MinutoAMinuto.tsx`.
-**Problema:** El botón se anuncia solo como "Mostrar"/"Ocultar" (con `aria-expanded`, pero sin decir qué muestra) y el `aria-live` anuncia "2 nuevas" sin mencionar el minuto a minuto. Con varias secciones plegables en la página (muro con "Ocultar respuestas"), el contexto se pierde.
-**Impacto:** Accesibilidad mejorable; no bloquea el uso.
-**Solución propuesta:** Dar un `id` al kicker y usar `aria-describedby` en el botón (o `aria-labelledby` botón+kicker), y añadir un prefijo `sr-only` al aviso ("Minuto a minuto:").
-**Prioridad:** Baja.
+**Fecha:** 2026-09-30 → Resuelto 2026-09-30 (cabecera en acordeón)
+Toda la cabecera es el botón (`aria-expanded`/`aria-controls`): su nombre accesible incluye el kicker "Minuto a minuto" y el aviso `aria-live` va prefijado con él.
 
 ---
 
@@ -79,14 +115,10 @@
 
 ---
 
-## El muro no muestra un comentario raíz nuevo hasta recargar
+## ~~El muro no muestra un comentario raíz nuevo hasta recargar~~ — RESUELTO
 
-**Fecha:** 2026-09-29
-**Contexto:** Hallazgo previo a FP3a, confirmado al implementarla. `ComentarioForm` expone `onEnviado` pero ningún caller lo cablea, y `MuroComentarios` no tiene polling. Las respuestas (FP3a) sí se añaden en local al hilo.
-**Problema:** Quien publica un comentario raíz público no lo ve en el muro hasta recargar; tampoco aparecen comentarios o respuestas de otros visitantes.
-**Impacto:** Sensación de que el comentario no se ha publicado; menor interacción.
-**Solución propuesta:** Cablear `onEnviado` para recargar la página 0 del muro (o insertar la raíz en local si la API la devolviera) y valorar un poll ligero como el de `MinutoAMinuto.tsx`.
-**Prioridad:** Media.
+**Fecha:** 2026-09-29 → Resuelto 2026-09-30 (endurecimiento pre-reto)
+`ComentariosConMuro.tsx` cablea `onEnviado` de `ComentarioForm`: tras enviar un comentario público, el muro recarga su página 0 (handle imperativo, sin efecto ni polling). Los de otros visitantes siguen apareciendo al recargar; el poll ligero queda como entrada aparte ("El muro no se actualiza con comentarios de otros visitantes").
 
 ---
 
@@ -118,7 +150,7 @@
 **Contexto:** Revisión de FP3a (DT-030).
 **Problema:** (1) `components/publico/MuroComentarios.tsx:27-38`: si el GET falla (`!response.ok`) o la red lanza, el muro no muestra ningún estado de error, y el rechazo del `void cargarPagina(0)` queda sin manejar (anterior a FP3a, más visible ahora que el GET depende de `es_autor`). (2) Offset sobre raíces: si entra una raíz nueva entre dos páginas, la siguiente repite el último hilo y aparece una `key` duplicada en `hilos.map` (anterior a FP3a). (3) `components/publico/HiloComentario.tsx:56,66`: con el hilo plegado, `aria-controls` apunta a un id que no está en el DOM (la `<ul>` no se renderiza). (4) `RespuestaForm.tsx:93` y `MuroComentarios.tsx:68`: "Enviando…"/"Cargando…" en código y no en `textos` (patrón heredado). (5) `lib/comentarios/hilos.ts` `agruparHilosAdmin`: con filtro "Públicos", las respuestas visibles de una raíz oculta aparecen como públicas aunque en la web estén ocultas con su hilo (la raíz sí sale como contexto "oculto (con todo su hilo)"). (6) `FiltroComentarios` recibe `slug` por prop mientras `TabsAdmin`/`EnlacePaginacion` usan `usePathname`: dos patrones para lo mismo.
 **Impacto:** Bajo: UX ante fallos, un caso raro de duplicado, a11y menor, coherencia.
-**Solución propuesta:** (1) Estado `error` en el muro con `mensaje_error_generico` y `catch` en `cargarPagina`. (2) y (3) resueltos antes del commit de FP3a (deduplicación por `id` al concatenar páginas; `<ul hidden>`). (4) Claves de texto al tocar esos componentes. (5) En "Públicos", no contar como cumplidoras las respuestas de una raíz oculta (o marcarlas "oculta por su raíz"). (6) Unificar en `usePathname`.
+**Solución propuesta:** (1) Estado `error` en el muro con `mensaje_error_generico` y `catch` en `cargarPagina`. (2) y (3) resueltos antes del commit de FP3a (deduplicación por `id` al concatenar páginas; `<ul hidden>`). (4) Claves de texto al tocar esos componentes. (5) Resuelto el 2026-09-30: con las sub-pestañas Públicos/Privados/Ocultos, un hilo con la raíz oculta ya no aparece en "Públicos" (va entero a "Ocultos"). (6) Unificar en `usePathname`.
 **Prioridad:** Baja.
 
 ---
@@ -145,14 +177,10 @@
 
 ---
 
-## Mensajes de error de la contraseña de admin en el superadmin llegan redactados
+## ~~Mensajes de error de la contraseña de admin en el superadmin llegan redactados~~ — RESUELTO
 
-**Fecha:** 2026-09-29
-**Contexto:** FP2.6 (DT-029). `crearReto`/`editarReto` lanzan `Error` con mensajes como "La contraseña de admin debe tener al menos 8 caracteres." o "Reto creado; fija la contraseña editándolo.". Es el mismo patrón ya registrado en "Panel superadmin: mensajes de error de server actions no llegan al usuario".
-**Problema:** En producción Next redacta el mensaje; el superadmin no ve por qué falló. Los atributos `minLength`/`required` del formulario cubren el caso común en el navegador, pero no el fallo de guardado del hash tras crear el reto.
-**Impacto:** Bajo: el estado "sin configurar" de la tarjeta delata el caso "reto creado sin contraseña".
-**Solución propuesta:** Resolverlo junto con la deuda general del superadmin (devolver `ResultadoOperacion` y mostrarlo inline).
-**Prioridad:** Baja.
+**Fecha:** 2026-09-29 → Resuelto 2026-09-30 (superadmin con `useActionState`)
+Las acciones devuelven `ResultadoAccionSuperadmin`/`ResultadoCrearReto` (`app/superadmin/(panel)/resultado-accion.ts`) con el motivo, incluido "el reto se creó, pero no se pudo guardar la contraseña".
 
 ---
 
@@ -178,14 +206,10 @@
 
 ---
 
-## Migración `0008_cascade_delete.sql` pendiente de aplicar en Supabase de producción
+## ~~Migración `0008_cascade_delete.sql` pendiente de aplicar en Supabase de producción~~ — RESUELTO
 
-**Fecha:** 2026-09-29
-**Contexto:** FP2 — Panel superadmin y gestión de retos. La acción `eliminarReto` hace un `DELETE` en la tabla `retos`. Sin `ON DELETE CASCADE` en las FK dependientes, Supabase rechaza el DELETE con violación de FK cuando el reto tiene datos asociados (intentos, intenciones, comentarios, etc.).
-**Problema:** Con el código de FP2 desplegado y la migración sin aplicar, `eliminarReto` falla con un error de Postgres para cualquier reto que ya tenga datos. La creación y edición de retos no se ven afectadas.
-**Impacto:** El botón "Eliminar" del panel superadmin no funciona para retos con datos hasta que la migración esté aplicada. Sin datos asociados (reto recién creado), la eliminación sí funciona.
-**Solución propuesta:** Aplicar `supabase/migrations/0008_cascade_delete.sql` en el editor SQL del proyecto Supabase de la plataforma. Una vez aplicada, la eliminación en cascada funciona sin ningún cambio de código adicional.
-**Prioridad:** Alta — sin esto, eliminar retos con datos falla en producción.
+**Fecha:** 2026-09-29 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
+Las FK dependientes tienen `ON DELETE CASCADE`; `eliminarReto` funciona con retos con datos.
 
 ---
 
@@ -200,14 +224,10 @@
 
 ---
 
-## Panel superadmin: mensajes de error de server actions no llegan al usuario
+## ~~Panel superadmin: mensajes de error de server actions no llegan al usuario~~ — RESUELTO
 
-**Fecha:** 2026-09-29
-**Contexto:** FP2 — Las server actions de `app/superadmin/(panel)/actions.ts` lanzan `Error` cuando algo falla (validación Zod, error de BD). En Next.js 16 en producción, el mensaje de cualquier error lanzado desde un Server Action se redacta a un texto genérico con digest — el usuario ve un error opaco en lugar del mensaje descriptivo.
-**Problema:** El patrón correcto (seguido por `app/[slug]/admin/actions.ts` para `crearMinutoAMinuto` y `finalizarReto`) es devolver un tipo resultado `{ ok: true } | { ok: false; mensaje: string }` en lugar de lanzar. Las actions del superadmin usan `throw` porque son operaciones menos críticas (es el superadmin quien las ejecuta, no Santi en mitad del reto).
-**Impacto:** Si `crearReto`, `editarReto` o `eliminarReto` fallan en producción, el superadmin ve un error genérico sin saber el motivo. Para un usuario técnico, los logs de Vercel son suficientes.
-**Solución propuesta:** Migrar las actions a devolver `ResultadoOperacion` y mostrar el error inline en el formulario del panel superadmin. Requiere convertir parte del panel a "use client".
-**Prioridad:** Baja — el superadmin es el usuario más técnico y puede consultar logs.
+**Fecha:** 2026-09-29 → Resuelto 2026-09-30
+`crearReto`/`editarReto`/`eliminarReto` devuelven un resultado con mensaje (sesión caducada incluida) y los formularios cliente (`FormularioCrearReto`, `FormularioEditarReto`, `BotonEliminarReto`) lo muestran con `useActionState`; editar y eliminar redirigen al panel con el aviso en la query (`?guardado=`/`?eliminado=`, validada en `leerAvisoPanel`).
 
 ---
 
@@ -266,14 +286,10 @@
 
 ---
 
-## Comentario obsoleto en `lib/supabase/admin.ts:75-76`
+## ~~Comentario obsoleto en `lib/supabase/admin.ts:75-76`~~ — RESUELTO
 
-**Fecha:** 2026-09-29
-**Contexto:** Revisión de FP2.5. El comentario del tipo `intenciones.Insert` dice "FP1 lo inyectará… en FP0 los callers usan reto_id: 1 (portuguesa-110)"; desde FP1/FP2.5 el `reto_id` sale siempre del slug.
-**Problema:** Documentación en código desactualizada (pre-existente, no introducida por FP2.5).
-**Impacto:** Puramente documental.
-**Solución propuesta:** Sustituir por "reto_id requerido (NOT NULL); lo aporta el reto resuelto desde el slug".
-**Prioridad:** Baja.
+**Fecha:** 2026-09-29 → Resuelto 2026-09-30 (endurecimiento pre-reto)
+Los comentarios de `intenciones.Insert` y `visitas_web.Insert` dicen ahora "reto_id requerido (NOT NULL); lo aporta el reto resuelto desde el slug".
 
 ---
 
@@ -327,25 +343,17 @@ Upsert por `reto_id` (`onConflict: "reto_id"`); `SeccionTrafico` lee `config_tra
 
 ---
 
-## `intentos.Insert` y `config_trafico.Insert` en `BaseDeDatos` no exigen `reto_id`
+## ~~`intentos.Insert` y `config_trafico.Insert` en `BaseDeDatos` no exigen `reto_id`~~ — RESUELTO
 
-**Fecha:** 2026-09-28
-**Contexto:** FP0 — Se usó `Partial<Intento>` / `Partial<ConfigTrafico>` para los tipos Insert de estas dos tablas en `lib/supabase/admin.ts`. Comentado explícitamente como "FP1 refinará". El tipo permisivo permitió que dos inserts en `intentos` (líneas 84 y 323 de `actions.ts`) olvidaran `reto_id` sin error de compilación — detectado en revisión de FP0 como bloqueante.
-**Problema:** TypeScript no garantiza en tiempo de compilación que `reto_id` esté presente en inserts a estas tablas.
-**Impacto:** Riesgo de error en runtime (NOT NULL violation en BD) si un caller olvida `reto_id`. Bajo en v1 con un solo desarrollador; aumenta al escalar.
-**Solución propuesta:** FP1: cambiar `intentos.Insert` a `Omit<Intento, "id" | "created_at">` (reto_id requerido) y `config_trafico.Insert` a `Omit<ConfigTrafico, "id" | "created_at">` una vez todos los callers lo inyecten dinámicamente.
-**Prioridad:** Media — resolver en FP1 junto con el routing multi-tenant.
+**Fecha:** 2026-09-28 → Resuelto antes del 2026-09-30 (comprobado en el endurecimiento pre-reto)
+Ambos `Insert` de `lib/supabase/admin.ts` son `Pick<…, "reto_id"> & Partial<…>`: `reto_id` es obligatorio en compilación.
 
 ---
 
-## Aplicar `supabase/migrations/0007_schema_plataforma.sql` contra el proyecto Supabase de producción
+## ~~Aplicar `supabase/migrations/0007_schema_plataforma.sql` contra el proyecto Supabase de producción~~ — RESUELTO
 
-**Fecha:** 2026-09-28
-**Contexto:** FP0 — Schema plataforma multi-tenant (DT-025). La migración `0007_schema_plataforma.sql` crea el schema completo del nuevo proyecto Supabase de la plataforma. No se aplica automáticamente — Santi la aplica manualmente en el editor SQL del proyecto (o `supabase db push`).
-**Problema:** Hasta que se aplique, los endpoints de API funcionan solo en local con el schema antiguo del proyecto original. El nuevo proyecto Supabase (plataforma) está vacío y sin schema.
-**Impacto:** La plataforma no tiene base de datos operativa. Cualquier endpoint que escriba o lea de Supabase falla contra el proyecto nuevo hasta que el schema exista.
-**Solución propuesta:** Aplicar `supabase/migrations/0007_schema_plataforma.sql` en el editor SQL del nuevo proyecto Supabase de la plataforma.
-**Prioridad:** Alta — sin esto la plataforma no funciona contra BD real.
+**Fecha:** 2026-09-28 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
+El schema de la plataforma está aplicado. El bucket de Storage que 0007 no creaba lo añade `0013_bucket_fotos.sql` (aplicada).
 
 ---
 
@@ -367,14 +375,10 @@ Todos los endpoints y server actions bajo `app/[slug]/` resuelven `reto_id` din�
 
 ---
 
-## Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql` contra producción
+## ~~Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql` contra producción~~ — RESUELTO
 
-**Fecha:** 2026-08-12
-**Contexto:** Tarea "Modal Finalizar con preview real y foto de llegada opcional" (DT-024, `docs/tecnico/decisiones-tecnicas.md`). Igual que `0003_modo_intento.sql` y `0004_visitas_web.sql` (ver entradas de este mismo fichero), la migración `0006_foto_llegada.sql` (columna `intentos.foto_llegada_url`) no se aplica sola contra Supabase — hace falta pegarla a mano en el editor SQL del proyecto (o `supabase db push`) antes de que exista la columna en la base de datos real.
-**Problema:** Con el código de esta tarea desplegado y la migración sin aplicar, cualquier `UPDATE` que incluya `foto_llegada_url` desde `finalizarReto` (al adjuntar o quitar una foto) falla contra la BD real con un error de Postgres de "columna no existe" (`column intentos.foto_llegada_url does not exist`, código `42703`); del mismo modo, las consultas dedicadas (`obtenerFotoLlegadaUrl` en `app/page.tsx`, `obtenerIntentoActividad` en `components/admin/SeccionActividad.tsx`) fallan con el mismo tipo de error.
-**Impacto (mientras la migración no esté aplicada):** Acotado por diseño, no por parche posterior: las dos consultas de lectura degradan a `foto_llegada_url: null` sin romper la carga de la pantalla de llegada ni del panel admin (ver DT-024, punto 5, y sus tests en `app/page.test.ts`/`components/admin/SeccionActividad.test.ts`). `finalizarReto` sí puede fallar de verdad si se intenta adjuntar o quitar una foto — devuelve `{ ok: false, mensaje: "No se pudo finalizar el reto." }` (visible en `ModalFinalizar.tsx`) en vez de completar la transición de fase; finalizar SIN tocar la foto (caso más común) no se ve afectado, porque ese caso ni siquiera incluye `foto_llegada_url` en el `UPDATE`.
-**Solución propuesta:** Aplicar `supabase/migrations/0006_foto_llegada.sql` contra el proyecto Supabase de producción. Una vez aplicada, tanto la lectura como la escritura de la foto de llegada funcionan sin ningún cambio de código adicional.
-**Prioridad:** Alta — hasta que se aplique, "Finalizar" con foto (adjuntar o quitar) falla; finalizar sin tocar la foto funciona con normalidad.
+**Fecha:** 2026-08-12 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
+La columna `intentos.foto_llegada_url` existe en el proyecto de la plataforma.
 
 ---
 
@@ -389,78 +393,17 @@ Todos los endpoints y server actions bajo `app/[slug]/` resuelven `reto_id` din�
 
 ---
 
-## Recordatorio: aplicar `supabase/migrations/0005_config_trafico.sql` contra producción
+## ~~Recordatorio: aplicar `supabase/migrations/0005_config_trafico.sql` contra producción~~ — RESUELTO
 
-**Fecha:** 2026-08-12
-**Contexto:** Tarea "Fases de tráfico (antes/durante/después) + reset del
-contador" (DT-023, `docs/tecnico/decisiones-tecnicas.md`). Igual que
-`0003_modo_intento.sql` y `0004_visitas_web.sql` (ver entradas de deuda de
-este mismo fichero), la migración `0005_config_trafico.sql` (tabla
-`config_trafico`, fila única con `cuenta_desde`, sin política RLS para
-`anon`) no se aplica sola contra Supabase — hace falta pegarla a mano en el
-editor SQL del proyecto (o `supabase db push`) antes de que exista la tabla
-en la base de datos real.
-**Problema:** Con el código de esta tarea desplegado y la migración sin
-aplicar, cualquier `SELECT`/`UPDATE` contra `config_trafico` (lectura de
-`cuenta_desde` en `SeccionTrafico.tsx`, botón "Reset" →
-`resetearContadorTrafico` en `app/admin/actions.ts`) falla contra la BD real
-con un error de Postgres de "tabla no existe" (`relation "config_trafico"
-does not exist`, código `42P01`).
-**Impacto (mientras la migración no esté aplicada):** El botón "Reset" falla
-de forma visible: la Server Action lanza
-`Error("No se pudo resetear el contador de tráfico.")`, que Next.js redacta
-en producción — Santi vería un error genérico al pulsar "Reset" hasta que la
-migración esté aplicada. La lectura ya no arriesga el timeout de la función
-serverless que sí llegó a darse en producción justo por la ausencia de esta
-migración (ver la nota de cierre de DT-023 y la lección nueva en
-`docs/LESSONS.md`): `obtenerCuentaDesde()` ya no cae a "sin cutoff" cuando
-`config_trafico` no existe, sino al mismo límite acotado que ya tenía DT-022
-(inicio del intento relevante, o un tope fijo de 3 días si tampoco hay
-ningún intento) — bug real ya corregido, no solo una degradación teórica.
-**Solución propuesta:** Aplicar `supabase/migrations/0005_config_trafico.sql`
-contra el proyecto Supabase de producción. Una vez aplicada, tanto la lectura
-de fases como el botón "Reset" funcionan sin ningún cambio de código
-adicional.
-**Prioridad:** Alta — hasta que se aplique, el botón "Reset" no funciona
-(el resto de la pestaña "Tráfico" y del admin ya no se ven afectados, tras
-el fix del timeout).
+**Fecha:** 2026-08-12 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
+La tabla `config_trafico` existe en el proyecto de la plataforma.
 
 ---
 
-## Recordatorio: aplicar `supabase/migrations/0004_visitas_web.sql` contra producción
+## ~~Recordatorio: aplicar `supabase/migrations/0004_visitas_web.sql` contra producción~~ — RESUELTO
 
-**Fecha:** 2026-08-12
-**Contexto:** Tarea "Pestaña Tráfico en el panel admin" (DT-022,
-`docs/tecnico/decisiones-tecnicas.md`). Igual que `0003_modo_intento.sql`
-(ver entrada de deuda "Recordatorio: aplicar `supabase/migrations/0003_modo_intento.sql`
-contra producción" más abajo en este mismo fichero), la migración
-`0004_visitas_web.sql` (tabla `visitas_web`, sin política RLS para `anon`)
-no se aplica sola contra Supabase — hace falta pegarla a mano en el editor
-SQL del proyecto (o `supabase db push`) antes de que exista la tabla en la
-base de datos real.
-**Problema:** Con el código de esta tarea desplegado y la migración sin
-aplicar, cualquier `INSERT` en `visitas_web` desde `proxy.ts` (captura de
-visitas a `/`) falla contra la BD real con un error de Postgres de "tabla no
-existe" (`relation "visitas_web" does not exist`, código `42P01`). Del mismo
-modo, cualquier `SELECT` desde `SeccionTrafico.tsx` (pestaña "Tráfico" del
-admin) falla con el mismo tipo de error.
-**Impacto (mientras la migración no esté aplicada):** Sin regresión visible.
-`proxy.ts` ignora en silencio cualquier fallo del insert (ver comentario de
-cabecera y tests de `proxy.test.ts`) — la web pública se sigue sirviendo con
-normalidad, solo que sin capturar visitas todavía. `SeccionTrafico.tsx`
-recibirá `data: null` de Supabase para el `SELECT` de `visitas_web` (el
-mismo patrón de degradación silenciosa que usa el resto del proyecto:
-`obtenerTodasLasFilas` ya trata cualquier error de página como "sin más
-filas que las ya obtenidas", devolviendo un array vacío) — la pestaña
-mostrará "Sin visitas todavía en este rango" en vez de datos reales, nunca
-un error visible para Santi.
-**Solución propuesta:** Aplicar `supabase/migrations/0004_visitas_web.sql`
-contra el proyecto Supabase de producción. Una vez aplicada, la pestaña
-"Tráfico" empieza a mostrar datos reales sin necesidad de ningún cambio de
-código adicional.
-**Prioridad:** Alta — hasta que se aplique, la pestaña "Tráfico" no tiene
-ningún dato que mostrar, aunque el resto de la web y del admin no se ven
-afectados.
+**Fecha:** 2026-08-12 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
+La tabla `visitas_web` existe en el proyecto de la plataforma.
 
 ---
 
@@ -761,73 +704,17 @@ alguien exige `pnpm test` con exit code 0 sin mirar el detalle.
 
 ---
 
-## El reintento automático de `crearMinutoAMinuto` no es idempotente: puede publicar la misma entrada dos veces
+## ~~El reintento automático de `crearMinutoAMinuto` no es idempotente: puede publicar la misma entrada dos veces~~ — RESUELTO
 
-**Fecha:** 2026-08-09
-**Contexto:** Detectado por el Reviewer en la revisión de DT-017 (compresión
-adaptativa + reintento de la subida de fotos del "minuto a minuto").
-`components/admin/ComposerMinutoAMinuto.tsx` envuelve la llamada a la Server
-Action en `ejecutarConReintentos` (`lib/envio/reintentar.ts`, 3 intentos), y
-`esErrorReintentable` (`lib/envio/errores-de-envio.ts`) reintenta por defecto
-todo fallo que no sea `ErrorNoReintentable`, control de flujo de Next o acción
-desaparecida — incluido el corte de red, que es justo el caso que motivó el
-reintento.
-**Problema:** `crearMinutoAMinuto` no es idempotente: sube la foto a Storage e
-inserta una fila en `minuto_a_minuto` sin ninguna clave de deduplicación. Si el
-cuerpo llega entero al servidor, este completa la subida y el `INSERT`, y la
-**respuesta** se pierde por el camino (escenario perfectamente normal con 4G
-irregular: túnel, cambio de celda, pantalla bloqueada), el cliente ve un
-`TypeError: Load failed`, lo clasifica como reintentable y vuelve a enviar todo
-— publicando la entrada dos veces, con dos objetos distintos en Storage.
-**Impacto:** Entrada duplicada visible en el feed público en directo, con su
-foto duplicada en el bucket. No hay pérdida de datos ni riesgo de seguridad, y
-Santi puede borrar el duplicado desde el panel (`eliminarMinutoAMinuto`), pero
-es una operación manual en mitad del reto y el objeto de Storage queda huérfano
-(deuda ya aceptada en DT-013). La ventana es estrecha (solo entre el fin del
-proceso en servidor y la llegada de la respuesta) pero se repite en cada
-publicación de 30 h de evento.
-**Solución propuesta:** Clave de idempotencia generada en el cliente
-(`crypto.randomUUID()` por envío, estable entre reintentos) enviada en el
-`FormData`, con columna + índice único en `minuto_a_minuto` y un `INSERT` que
-trate la violación de unicidad como éxito. Exige migración de BD, explícitamente
-fuera del alcance de DT-017 ("no tocar el esquema"), por eso queda registrado y
-no se corrigió en la tarea. Alternativa sin migración, más débil: no reintentar
-automáticamente cuando ya se envió el cuerpo completo (no es detectable desde el
-navegador) o pedir confirmación antes del reintento, lo que contradice el
-objetivo de DT-017 de que el reintento sea invisible.
-**Prioridad:** Media — conviene decidirlo antes del reto; el coste de no
-hacerlo es una entrada duplicada ocasional, borrable a mano.
+**Fecha:** 2026-08-09 → Resuelto 2026-09-30 (endurecimiento pre-reto, DT-033)
+Clave de idempotencia `clave_envio` (UUID del composer, estable entre reintentos) con índice único parcial (`0014_mam_clave_envio.sql`). La acción devuelve éxito sin subir ni insertar si la clave ya existe en el intento activo, y trata el 23505 como éxito borrando la foto recién subida.
 
 ---
 
-## Nada acota en el tiempo la preparación de la foto ni el envío: el composer puede quedarse en "Preparando foto…" o "Publicando…" indefinidamente
+## ~~Nada acota en el tiempo la preparación de la foto ni el envío~~ — RESUELTO
 
-**Fecha:** 2026-08-09
-**Contexto:** Detectado por el Reviewer en la revisión de DT-017. El requisito
-nº 3 del prompt clarificado prohíbe explícitamente "un botón que se queda
-colgado". DT-017 lo resuelve para el caso de fallo (se captura, se muestra el
-motivo), pero no para el caso de "nunca termina".
-**Problema:** Dos promesas del flujo no tienen cota temporal: (a)
-`cargarImagen()` en `lib/imagen/preparar-foto.ts` resuelve en `img.onload` y
-rechaza en `img.onerror`; si el navegador no dispara ninguno de los dos (presión
-de memoria en iOS con una imagen muy grande), la promesa queda pendiente para
-siempre y el composer se queda en "Preparando foto…" con el botón deshabilitado;
-(b) la llamada a la Server Action no lleva ningún límite de tiempo, así que una
-conexión "colgada" (TCP abierto sin datos, típico al perder cobertura dentro de
-un túnel) puede tardar minutos en rechazar, y hasta entonces no se dispara
-ningún reintento ni ningún mensaje.
-**Impacto:** El único remedio para Santi sería recargar la página — perdiendo
-justo el texto y la foto que DT-017 se compromete a conservar. Probabilidad baja
-en el caso (a) y media en el (b), pero el coste de ocurrir en mitad del reto es
-alto porque no se puede depurar sobre la marcha.
-**Solución propuesta:** Para (a), un `Promise.race` con un temporizador (5-10 s)
-en `cargarImagen` que rechace con un error propio — la degradación al fichero
-original ya existe y lo absorbe sin bloquear. Para (b) no hay solución limpia:
-la invocación de una Server Action no acepta `AbortSignal`, así que abandonar la
-espera no cancela la petición en curso y agravaría la deuda de duplicados
-(entrada anterior); la vía real sería mostrar un aviso pasados N segundos
-("sigue subiendo, no cierres la página") sin abortar nada.
-**Prioridad:** Media para (a) — barato y sin efectos colaterales. Baja para (b).
+**Fecha:** 2026-08-09 → Resuelto 2026-09-30 (endurecimiento pre-reto, DT-033)
+(a) `cargarImagen` rechaza a los 10 s (`LIMITE_DECODIFICACION_MS`) y la degradación al original lo absorbe. (b) Sin abortar (las Server Actions no aceptan `AbortSignal`): pasados 15 s de envío, el composer, el modal "Finalizar" y la foto de quién camina muestran "Sigue subiendo, no cierres la página." (`lib/envio/aviso-envio-lento.ts`).
 
 ---
 
@@ -978,44 +865,10 @@ repetida, tanto en aislamiento como dentro de `pnpm test` completo.
 
 ---
 
-## Recordatorio: aplicar `supabase/migrations/0003_modo_intento.sql` contra producción
+## ~~Recordatorio: aplicar `supabase/migrations/0003_modo_intento.sql` contra producción~~ — RESUELTO
 
-**Fecha:** 2026-08-07
-**Contexto:** Detectado por el Orquestador verificando en vivo esta rama
-(`feature/modo-libre-guiado`) contra el Supabase real de producción, no por
-un agente del pipeline. La migración `0003_modo_intento.sql` (columnas
-`modo`/`destino_lat`/`destino_lon` de `intentos`, DT-016) todavía no está
-aplicada en producción — se aplicará más adelante, por separado. Mientras
-tanto, con el código de esta rama desplegado, las consultas que seleccionan
-esas columnas fallan contra la BD real con `column intentos.modo does not
-exist (code 42703)`.
-**Problema:** Sin salvaguarda, ese error de columna se interpretaba (en
-`app/page.tsx`, `app/api/progreso/route.ts`) como "sin intento activo",
-ocultando la fase real (`durante`/`llegada`) de un intento realmente en
-marcha tras la pantalla "antes del reto" — una regresión visible para
-cualquier visitante. En `app/api/track/route.ts` el mismo error hacía que se
-descartara en silencio cada punto GPS recibido, sin insertarlo — corte real
-de la ingesta, no solo cosmético.
-**Impacto (mientras la migración no esté aplicada):** Aplicado el fix de
-compatibilidad de esta tarea (fallback al select mínimo, tratando el intento
-como modo guiado en los tres puntos de lectura, y omitiendo `modo` del
-`UPDATE` de `iniciarReto` en modo guiado), el comportamiento público vuelve a
-ser idéntico al de antes de introducir el modo de intento — sin pérdida de
-datos ni de seguimiento en directo. La única limitación que queda: el modo
-**libre** no se puede iniciar desde el panel admin hasta que la migración
-esté aplicada (falla con el mensaje de error ya existente "No se pudo
-iniciar el reto."), aceptado explícitamente porque solo afecta al admin, no
-al público.
-**Solución propuesta:** Aplicar `supabase/migrations/0003_modo_intento.sql`
-contra el proyecto Supabase de producción. Una vez aplicada y verificada
-(columnas `modo`/`destino_lat`/`destino_lon` presentes en `intentos`), el
-código de fallback de esta tarea queda inactivo por sí solo (las consultas
-completas ya no fallan) — no hace falta revertir nada, pero conviene
-revisar si merece la pena simplificar/eliminar el fallback una vez pase
-tiempo suficiente sin que nadie dependa de él.
-**Prioridad:** Alta — hasta que se aplique, el modo libre no está disponible
-en producción y el sistema depende de este fallback para no romper la web
-pública ni la ingesta de posiciones.
+**Fecha:** 2026-08-07 → Resuelto (verificado en BD por el orquestador el 2026-09-30)
+Las columnas `intentos.modo`, `destino_lat` y `destino_lon` existen en el proyecto de la plataforma.
 
 ---
 
@@ -1279,14 +1132,10 @@ compartido (Upstash u otro).
 
 ---
 
-## Comentario desactualizado en `EnlacePaginacion.tsx`: dice "Link", implementa `<button>` + `router.push`
+## ~~Comentario desactualizado en `EnlacePaginacion.tsx`: dice "Link", implementa `<button>` + `router.push`~~ — RESUELTO
 
-**Fecha:** 2026-08-01
-**Contexto:** Detectado por el Reviewer en la revisión de F4 — Panel admin. El comentario de cabecera de `components/admin/EnlacePaginacion.tsx` dice "en vez de fetch de cliente, es un Link que actualiza un parámetro de offset propio en la URL", pero el componente no usa `next/link`: renderiza un `<button onClick={...}>` que llama a `router.push()`.
-**Problema:** El comentario no describe la implementación real. No es incorrecto en el efecto (navega actualizando la query string) pero induce a pensar que hay un `<Link>` de Next debajo, lo que puede confundir a quien lo lea para depurar o extender el patrón de paginación en otra sección.
-**Impacto:** Puramente documental — cero efecto en comportamiento.
-**Solución propuesta:** Ajustar el comentario para reflejar que es un botón con `router.push()`, no un `<Link>`.
-**Prioridad:** Baja.
+**Fecha:** 2026-08-01 → Resuelto 2026-09-30 (endurecimiento pre-reto)
+El comentario de cabecera describe ahora el botón con `router.push()`.
 
 ---
 

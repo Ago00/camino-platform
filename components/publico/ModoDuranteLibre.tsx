@@ -24,8 +24,7 @@ import Mapa from "@/components/mapa/Mapa";
 import DistanciaRestante from "@/components/publico/DistanciaRestante";
 import Stats from "@/components/publico/Stats";
 import IntencionForm from "@/components/publico/IntencionForm";
-import ComentarioForm from "@/components/publico/ComentarioForm";
-import MuroComentarios from "@/components/publico/MuroComentarios";
+import ComentariosConMuro from "@/components/publico/ComentariosConMuro";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import EnlaceInstagram from "@/components/publico/EnlaceInstagram";
 import { bandaHoraria } from "@/lib/cielo";
@@ -140,10 +139,7 @@ export default function ModoDuranteLibre({
 
       {config.seccion_intenciones && <IntencionForm textos={textos} slug={slug} />}
       {config.seccion_comentarios && (
-        <>
-          <ComentarioForm textos={textos} slug={slug} />
-          <MuroComentarios textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
-        </>
+        <ComentariosConMuro textos={textos} slug={slug} permitirRespuestas={config.respuestas_visitantes} />
       )}
     </section>
   );

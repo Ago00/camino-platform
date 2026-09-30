@@ -1,18 +1,86 @@
 /**
- * Tests de la única decisión pura de `preparar-foto.ts` (DT-017): con qué
- * fichero se acaba yendo la subida.
+ * Tests de `preparar-foto.ts` (DT-017): la decisión pura de con qué fichero
+ * se va la subida, y el límite de tiempo de la decodificación con un `<img>`
+ * falso y temporizadores simulados.
  *
- * El resto del módulo (decodificar en un `<img>`, dibujar en un `<canvas>`,
- * `toBlob`) es API de navegador y no existe en el entorno `node` de Vitest;
- * importar el módulo sí es seguro porque nada toca el DOM en su carga.
+ * El dibujo en `<canvas>` y `toBlob` son API de navegador que no existe en el
+ * entorno `node` de Vitest; importar el módulo sí es seguro porque nada toca
+ * el DOM en su carga.
  */
 
-import { describe, expect, it } from "vitest";
-import { elegirFotoAEnviar } from "@/lib/imagen/preparar-foto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  LIMITE_DECODIFICACION_MS,
+  elegirFotoAEnviar,
+  prepararFotoParaSubida,
+} from "@/lib/imagen/preparar-foto";
 
 function ficheroDe(bytes: number, tipo: string, nombre = "foto"): File {
   return new File([new Uint8Array(bytes)], nombre, { type: tipo });
 }
+
+/**
+ * `<img>` falso: asignar `src` no dispara nada salvo que el test lo pida con
+ * `dispararAlAsignarSrc`. Así se simula el navegador que, bajo presión de
+ * memoria, nunca llama a `onload` ni a `onerror`.
+ */
+class ImagenFalsa {
+  static dispararAlAsignarSrc: "nada" | "error" = "nada";
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  set src(_url: string) {
+    if (ImagenFalsa.dispararAlAsignarSrc === "error") queueMicrotask(() => this.onerror?.());
+  }
+}
+
+describe("prepararFotoParaSubida — límite de tiempo de la decodificación", () => {
+  const revokeObjectURL = vi.fn();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    ImagenFalsa.dispararAlAsignarSrc = "nada";
+    vi.stubGlobal("Image", ImagenFalsa);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:foto-de-prueba");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(revokeObjectURL);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    revokeObjectURL.mockReset();
+  });
+
+  it("si el navegador nunca termina de decodificar, a los 10 s envía el original en vez de quedarse colgada", async () => {
+    const original = ficheroDe(200_000, "image/jpeg");
+    let resultado: Awaited<ReturnType<typeof prepararFotoParaSubida>> | null = null;
+    void prepararFotoParaSubida(original).then((r) => {
+      resultado = r;
+    });
+
+    await vi.advanceTimersByTimeAsync(LIMITE_DECODIFICACION_MS - 1);
+    expect(resultado).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(resultado).toEqual({ estado: "lista", foto: original });
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:foto-de-prueba");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("el límite es de 10 s", () => {
+    expect(LIMITE_DECODIFICACION_MS).toBe(10_000);
+  });
+
+  it("si la decodificación falla antes del límite, degrada al original sin esperar y limpia el temporizador", async () => {
+    ImagenFalsa.dispararAlAsignarSrc = "error";
+    const original = ficheroDe(200_000, "image/png");
+
+    await expect(prepararFotoParaSubida(original)).resolves.toEqual({ estado: "lista", foto: original });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:foto-de-prueba");
+  });
+});
 
 describe("elegirFotoAEnviar", () => {
   it("envía el original cuando el navegador no pudo recodificar", () => {

@@ -2,6 +2,76 @@
 
 ---
 
+## 2026-09-30 — Web pública: responder a cualquier respuesta y cabecera del minuto a minuto más clara
+
+**Tipo:** Mejora
+
+En el muro, cada respuesta tiene ahora su propio botón "Responder". El
+formulario se abre al final del hilo, que es donde aparecerá la respuesta, e
+indica a quién se contesta ("Respondiendo a Ana"). Las respuestas siguen
+teniendo un solo nivel: todas van al mismo hilo. La cabecera del minuto a
+minuto funciona como un acordeón: se pulsa en cualquier punto de la fila y una
+flecha que gira indica si está abierta. El aviso de entradas nuevas aparece
+como una insignia y los lectores de pantalla lo anuncian junto con el nombre
+de la sección.
+
+---
+
+## 2026-09-30 — Panel admin: comentarios separados en Públicos, Privados y Ocultos
+
+**Tipo:** Mejora
+
+La pestaña Comentarios del panel del reto tiene tres apartados, cada uno con
+su número: Públicos (lo que se ve en la web, en hilos), Privados (los mensajes
+escritos solo para quien camina) y Ocultos. Los privados no se publican ni se
+pueden contestar, así que solo se pueden eliminar. Un hilo cuyo comentario
+principal está oculto ya no aparece entre los públicos. Los enlaces antiguos
+con el filtro "Todos" abren Públicos. La cabecera del panel admin tiene un
+enlace "Ver web" que abre la web del reto en otra pestaña.
+
+---
+
+## 2026-09-30 — Superadmin: cada acción dice qué ha pasado
+
+**Tipo:** Mejora + Fix
+
+Crear, editar y eliminar un reto muestran ahora el resultado real en el
+panel: "Creando…"/"Guardando…"/"Eliminando…" mientras esperan, un mensaje de
+éxito ("Reto creado", "Cambios guardados", "Reto eliminado") o el motivo
+concreto del error (slug repetido, contraseña demasiado corta, sesión
+caducada…). Si algo falla, lo escrito en el formulario se conserva. Antes, en
+producción, cualquier error se veía como un fallo genérico sin explicación.
+Tras crear un reto aparecen enlaces a su web y a su panel admin. Cada tarjeta
+tiene los enlaces "Ver web" y "Panel admin", y la cabecera tiene "Ver portada".
+
+---
+
+## 2026-09-30 — Endurecimiento pre-reto: sin entradas duplicadas ni esperas mudas
+
+**Tipo:** Mejora
+
+Si se corta la cobertura justo al publicar en el minuto a minuto, el reintento
+automático ya no duplica la entrada ni sube la foto dos veces. Preparar una
+foto nunca se queda colgado (a los 10 s se envía la original) y, si publicar,
+finalizar o guardar la foto de quién camina tarda más de 15 s, el panel avisa
+de que sigue subiendo y no hay que cerrar la página. En la web, el comentario
+público recién enviado aparece en el muro sin recargar. Se corrige un aviso
+de consola del peregrino animado. Requiere aplicar la migración
+`0014_mam_clave_envio.sql`.
+
+---
+
+## 2026-09-30 — Fix: las fotos no se podían subir en la plataforma
+
+**Tipo:** Fix
+
+En la plataforma no existía el espacio de almacenamiento de las fotos, así
+que fallaba cualquier subida: minuto a minuto, foto de llegada y foto de
+quién camina. Se ha creado (migración `0013_bucket_fotos.sql`, ya aplicada)
+con los mismos límites que valida la web: 4 MB y JPEG, PNG o WebP.
+
+---
+
 ## 2026-09-30 — FP3c: Configuración de cada reto desde su panel admin
 
 **Tipo:** Feature

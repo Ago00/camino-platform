@@ -3,9 +3,16 @@
 /**
  * Server Actions del panel superadmin: CRUD de retos.
  *
- * Cada acción verifica la sesión con `requerirSesionSuperadmin()` por sí
- * misma, sin confiar en que el layout o el proxy ya lo hicieron (DT-010:
- * las Server Actions se sirven como POST a su propia ruta).
+ * Cada acción verifica la sesión por sí misma, sin confiar en que el layout o
+ * el proxy ya lo hicieron (DT-010: las Server Actions se sirven como POST a su
+ * propia ruta).
+ *
+ * Las acciones de CRUD se usan con `useActionState` y devuelven un resultado
+ * en vez de lanzar (ver `resultado-accion.ts`): en producción Next redacta el
+ * mensaje de los errores lanzados y el superadmin no sabría qué ha pasado.
+ * Eso incluye la sesión caducada: no se ejecuta nada y se le pide volver a
+ * entrar, en vez de mostrarle un error genérico. Editar y eliminar redirigen
+ * al panel limpio cuando terminan bien.
  *
  * `crearReto` inserta el intento inicial en fase "antes" justo después de
  * crear el reto, de modo que el panel admin del reto tenga algo con lo que
@@ -13,11 +20,13 @@
  *
  * Contraseña de admin por reto (FP2.6, DT-029): obligatoria al crear,
  * opcional al editar (vacía = no cambiar). Se guarda solo su hash scrypt en
- * `retos_admin`; el texto plano no se guarda ni se registra nunca.
+ * `retos_admin`; el texto plano no se guarda, no se registra ni aparece nunca
+ * en un resultado.
  */
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { limpiarCacheHistorico } from "@/lib/historico-cache";
 import { limpiarCacheProgreso } from "@/lib/progreso-cache";
@@ -26,19 +35,29 @@ import { hashearPassword } from "@/lib/auth/password";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { guardarHashAdmin } from "@/lib/supabase/credenciales-admin";
 import { verificarSesionSuperadmin, NOMBRE_COOKIE_SUPERADMIN_SESION } from "@/lib/auth/superadmin-session";
+import {
+  urlPanelTrasEliminar,
+  urlPanelTrasGuardar,
+  type ResultadoAccionSuperadmin,
+  type ResultadoCrearReto,
+} from "./resultado-accion";
 
-class SesionSuperadminInvalidaError extends Error {
-  constructor() {
-    super("Sesión de superadmin inválida o expirada.");
-  }
-}
+const CODIGO_VIOLACION_UNICIDAD = "23505";
 
-async function requerirSesionSuperadmin(): Promise<void> {
+const RESULTADO_SESION_CADUCADA = {
+  ok: false,
+  mensaje: "Tu sesión de superadmin ha caducado. Vuelve a iniciar sesión.",
+} as const satisfies ResultadoAccionSuperadmin;
+
+const RESULTADO_RETO_INEXISTENTE = {
+  ok: false,
+  mensaje: "Ese reto ya no existe. Recarga el panel.",
+} as const satisfies ResultadoAccionSuperadmin;
+
+async function haySesionSuperadminValida(): Promise<boolean> {
   const almacenCookies = await cookies();
   const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SUPERADMIN_SESION)?.value;
-  if (!verificarSesionSuperadmin(cookieSesion)) {
-    throw new SesionSuperadminInvalidaError();
-  }
+  return verificarSesionSuperadmin(cookieSesion);
 }
 
 function revalidarPaneles(): void {
@@ -47,8 +66,18 @@ function revalidarPaneles(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Esquemas Zod
+// Lectura y validación del formulario
 // ---------------------------------------------------------------------------
+
+/** Valor de texto de un campo; undefined si no viene o no es texto (un fichero). */
+function leerTexto(formData: FormData, campo: string): string | undefined {
+  const valor = formData.get(campo);
+  return typeof valor === "string" ? valor : undefined;
+}
+
+function primerMensaje(error: z.ZodError, porDefecto: string): string {
+  return error.issues[0]?.message ?? porDefecto;
+}
 
 const esquemaSlug = z
   .string()
@@ -61,29 +90,19 @@ const esquemaNombre = z
   .min(1, "El nombre es obligatorio.")
   .max(100, "El nombre no puede superar 100 caracteres.");
 
+const esquemaTipoRuta = z.enum(["predefinida", "libre"], { error: "Elige un tipo de ruta válido." });
+
 const esquemaPasswordAdmin = z
   .string()
   .min(8, "La contraseña de admin debe tener al menos 8 caracteres.")
   .max(200, "La contraseña de admin no puede superar 200 caracteres.");
 
-/** Valor del campo `password_admin` del formulario; "" si no viene o no es texto. */
-function leerPasswordAdmin(formData: FormData): string {
-  const valor = formData.get("password_admin");
-  return typeof valor === "string" ? valor : "";
-}
-
-function validarPasswordAdmin(password: string): string {
-  const resultado = esquemaPasswordAdmin.safeParse(password);
-  if (!resultado.success) {
-    throw new Error(resultado.error.issues[0]?.message ?? "Contraseña de admin inválida.");
-  }
-  return resultado.data;
-}
+const esquemaIdReto = z.number().int().positive();
 
 function validarRuta(data: { ruta_tipo: "predefinida" | "libre"; ruta_id?: string }, ctx: z.RefinementCtx): void {
   if (data.ruta_tipo === "predefinida" && !(data.ruta_id && esRutaPredefinida(data.ruta_id))) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Elige una ruta predefinida válida.",
       path: ["ruta_id"],
     });
@@ -95,7 +114,7 @@ const esquemaCrearReto = z
     slug: esquemaSlug,
     nombre: esquemaNombre,
     descripcion: z.string().optional(),
-    ruta_tipo: z.enum(["predefinida", "libre"]),
+    ruta_tipo: esquemaTipoRuta,
     ruta_id: z.string().optional(),
   })
   .superRefine(validarRuta);
@@ -104,7 +123,7 @@ const esquemaEditarReto = z
   .object({
     nombre: esquemaNombre,
     descripcion: z.string().optional(),
-    ruta_tipo: z.enum(["predefinida", "libre"]),
+    ruta_tipo: esquemaTipoRuta,
     ruta_id: z.string().optional(),
     activo: z.boolean(),
   })
@@ -114,40 +133,51 @@ function rutaIdAGuardar(data: { ruta_tipo: "predefinida" | "libre"; ruta_id?: st
   return data.ruta_tipo === "predefinida" ? (data.ruta_id ?? null) : null;
 }
 
+/** Hashea y guarda la contraseña del reto. False si falla: el llamante decide cómo avisar. */
+async function guardarPasswordAdmin(retoId: number, password: string): Promise<boolean> {
+  try {
+    await guardarHashAdmin(retoId, await hashearPassword(password));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
 /**
- * Crea un nuevo reto con sus datos básicos y siembra el primer intento en
- * fase "antes" para que el panel admin funcione desde el primer momento.
+ * Crea un nuevo reto con sus datos básicos, siembra el primer intento en fase
+ * "antes" y guarda el hash de su contraseña de admin.
  */
-export async function crearReto(formData: FormData): Promise<void> {
-  await requerirSesionSuperadmin();
+export async function crearReto(_estadoPrevio: ResultadoCrearReto | null, formData: FormData): Promise<ResultadoCrearReto> {
+  if (!(await haySesionSuperadminValida())) return RESULTADO_SESION_CADUCADA;
 
-  const datos = {
-    slug: String(formData.get("slug") ?? "").trim().toLowerCase(),
-    nombre: formData.get("nombre") as string,
-    descripcion: formData.get("descripcion") as string | undefined,
-    ruta_tipo: formData.get("ruta_tipo") as string,
-    ruta_id: (formData.get("ruta_id") as string) || undefined,
-  };
-
-  const resultado = esquemaCrearReto.safeParse(datos);
+  const resultado = esquemaCrearReto.safeParse({
+    slug: (leerTexto(formData, "slug") ?? "").trim().toLowerCase(),
+    nombre: leerTexto(formData, "nombre") ?? "",
+    descripcion: leerTexto(formData, "descripcion"),
+    ruta_tipo: leerTexto(formData, "ruta_tipo"),
+    ruta_id: leerTexto(formData, "ruta_id") || undefined,
+  });
   if (!resultado.success) {
-    const primer = resultado.error.issues[0];
-    throw new Error(primer?.message ?? "Datos del reto inválidos.");
+    return { ok: false, mensaje: primerMensaje(resultado.error, "Datos del reto inválidos.") };
   }
   // Antes de insertar nada: un reto nuevo sin contraseña no tendría panel usable.
-  const passwordAdmin = validarPasswordAdmin(leerPasswordAdmin(formData));
+  const password = esquemaPasswordAdmin.safeParse(leerTexto(formData, "password_admin") ?? "");
+  if (!password.success) {
+    return { ok: false, mensaje: primerMensaje(password.error, "Contraseña de admin inválida.") };
+  }
 
+  const { slug, nombre } = resultado.data;
   const supabase = getSupabaseAdmin();
 
   const { data: retoCreado, error: errorReto } = await supabase
     .from("retos")
     .insert({
-      slug: resultado.data.slug,
-      nombre: resultado.data.nombre,
+      slug,
+      nombre,
       descripcion: resultado.data.descripcion ?? null,
       ruta_tipo: resultado.data.ruta_tipo,
       ruta_id: rutaIdAGuardar(resultado.data),
@@ -156,8 +186,11 @@ export async function crearReto(formData: FormData): Promise<void> {
     .select("id")
     .single();
 
+  if (errorReto?.code === CODIGO_VIOLACION_UNICIDAD) {
+    return { ok: false, mensaje: `Ya existe un reto con el slug «${slug}». Elige otro.` };
+  }
   if (errorReto || !retoCreado) {
-    throw new Error("No se pudo crear el reto.");
+    return { ok: false, mensaje: "No se pudo crear el reto. Inténtalo de nuevo." };
   }
 
   // Sembrar el primer intento en fase "antes" para que el panel admin
@@ -167,48 +200,69 @@ export async function crearReto(formData: FormData): Promise<void> {
     fase: "antes",
   });
 
-  if (errorIntento) {
-    throw new Error("El reto se creó pero no se pudo sembrar el intento inicial.");
-  }
-
+  // El reto ya existe pase lo que pase a partir de aquí: el panel debe verlo.
   revalidarPaneles();
 
-  try {
-    await guardarHashAdmin(retoCreado.id, await hashearPassword(passwordAdmin));
-  } catch {
-    // El reto ya existe (y aparece como "sin configurar" en el panel): no se
-    // deshace, basta con fijar la contraseña editándolo.
-    throw new Error("Reto creado; fija la contraseña editándolo.");
+  // Aunque falle el intento se intenta guardar la contraseña: sin ella el
+  // admin del reto no podría entrar a crear ese intento desde su panel.
+  const passwordGuardada = await guardarPasswordAdmin(retoCreado.id, password.data);
+
+  if (errorIntento) {
+    const avisoPassword = passwordGuardada ? "" : " Tampoco se pudo guardar la contraseña: fíjala editándolo.";
+    return {
+      ok: false,
+      mensaje: `El reto «${nombre}» se creó, pero no se pudo preparar su primer intento: créalo desde su panel admin.${avisoPassword}`,
+    };
   }
+  if (!passwordGuardada) {
+    // No se deshace el reto (aparece como "sin configurar"): basta con fijar
+    // la contraseña editándolo.
+    return {
+      ok: false,
+      mensaje: `El reto «${nombre}» se creó, pero no se pudo guardar la contraseña: fíjala editándolo.`,
+    };
+  }
+
+  return { ok: true, mensaje: `Reto «${nombre}» creado.`, slug };
 }
 
 /**
- * Actualiza los campos editables de un reto. El slug es inmutable.
+ * Actualiza los campos editables de un reto (el slug es inmutable) y, si
+ * termina bien, redirige al panel con el aviso de guardado.
  */
-export async function editarReto(id: number, formData: FormData): Promise<void> {
-  await requerirSesionSuperadmin();
+export async function editarReto(
+  id: number,
+  _estadoPrevio: ResultadoAccionSuperadmin | null,
+  formData: FormData
+): Promise<ResultadoAccionSuperadmin> {
+  if (!(await haySesionSuperadminValida())) return RESULTADO_SESION_CADUCADA;
+  if (!esquemaIdReto.safeParse(id).success) return RESULTADO_RETO_INEXISTENTE;
 
-  const datos = {
-    nombre: formData.get("nombre") as string,
-    descripcion: formData.get("descripcion") as string | undefined,
-    ruta_tipo: formData.get("ruta_tipo") as string,
-    ruta_id: (formData.get("ruta_id") as string) || undefined,
-    activo: formData.get("activo") === "true",
-  };
-
-  const resultado = esquemaEditarReto.safeParse(datos);
+  const resultado = esquemaEditarReto.safeParse({
+    nombre: leerTexto(formData, "nombre") ?? "",
+    descripcion: leerTexto(formData, "descripcion"),
+    ruta_tipo: leerTexto(formData, "ruta_tipo"),
+    ruta_id: leerTexto(formData, "ruta_id") || undefined,
+    activo: leerTexto(formData, "activo") === "true",
+  });
   if (!resultado.success) {
-    const primer = resultado.error.issues[0];
-    throw new Error(primer?.message ?? "Datos del reto inválidos.");
+    return { ok: false, mensaje: primerMensaje(resultado.error, "Datos del reto inválidos.") };
   }
   // Vacío = no cambiar la contraseña. Se valida antes de tocar la BD para no
   // dejar la edición a medias si la contraseña nueva no es válida.
-  const passwordEnFormulario = leerPasswordAdmin(formData);
-  const passwordNueva = passwordEnFormulario === "" ? null : validarPasswordAdmin(passwordEnFormulario);
+  const passwordEnFormulario = leerTexto(formData, "password_admin") ?? "";
+  let passwordNueva: string | null = null;
+  if (passwordEnFormulario !== "") {
+    const password = esquemaPasswordAdmin.safeParse(passwordEnFormulario);
+    if (!password.success) {
+      return { ok: false, mensaje: primerMensaje(password.error, "Contraseña de admin inválida.") };
+    }
+    passwordNueva = password.data;
+  }
 
   const supabase = getSupabaseAdmin();
 
-  const { error } = await supabase
+  const { data: retosActualizados, error } = await supabase
     .from("retos")
     .update({
       nombre: resultado.data.nombre,
@@ -217,10 +271,15 @@ export async function editarReto(id: number, formData: FormData): Promise<void> 
       ruta_id: rutaIdAGuardar(resultado.data),
       activo: resultado.data.activo,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) {
-    throw new Error("No se pudo actualizar el reto.");
+    return { ok: false, mensaje: "No se pudieron guardar los cambios del reto. Inténtalo de nuevo." };
+  }
+  if (!retosActualizados || retosActualizados.length === 0) {
+    revalidarPaneles();
+    return RESULTADO_RETO_INEXISTENTE;
   }
 
   // El progreso cacheado se calculó con la ruta anterior.
@@ -231,28 +290,40 @@ export async function editarReto(id: number, formData: FormData): Promise<void> 
   revalidatePath("/");
   revalidatePath("/", "layout");
 
-  if (passwordNueva !== null) {
-    // Un hash nuevo (salt nuevo) cambia la huella: las sesiones de admin
-    // abiertas con la contraseña anterior dejan de valer (DT-029).
-    await guardarHashAdmin(id, await hashearPassword(passwordNueva));
+  // Un hash nuevo (salt nuevo) cambia la huella: las sesiones de admin
+  // abiertas con la contraseña anterior dejan de valer (DT-029).
+  if (passwordNueva !== null && !(await guardarPasswordAdmin(id, passwordNueva))) {
+    return {
+      ok: false,
+      mensaje: "Los cambios del reto se guardaron, pero no se pudo cambiar la contraseña. Inténtalo de nuevo.",
+    };
   }
+
+  redirect(urlPanelTrasGuardar(id));
 }
 
 /**
- * Elimina un reto y todos sus datos asociados (cascada en BD).
+ * Elimina un reto y todos sus datos asociados (cascada en BD) y, si termina
+ * bien, redirige al panel con el aviso de eliminación.
  */
-export async function eliminarReto(id: number): Promise<void> {
-  await requerirSesionSuperadmin();
+export async function eliminarReto(id: number): Promise<ResultadoAccionSuperadmin> {
+  if (!(await haySesionSuperadminValida())) return RESULTADO_SESION_CADUCADA;
+  if (!esquemaIdReto.safeParse(id).success) return RESULTADO_RETO_INEXISTENTE;
 
   const supabase = getSupabaseAdmin();
 
-  const { error } = await supabase.from("retos").delete().eq("id", id);
+  const { data: retosEliminados, error } = await supabase.from("retos").delete().eq("id", id).select("slug");
 
   if (error) {
-    throw new Error("No se pudo eliminar el reto.");
+    return { ok: false, mensaje: "No se pudo eliminar el reto. Inténtalo de nuevo." };
   }
 
   revalidarPaneles();
+
+  const retoEliminado = retosEliminados?.[0];
+  if (!retoEliminado) return RESULTADO_RETO_INEXISTENTE;
+
+  redirect(urlPanelTrasEliminar(retoEliminado.slug));
 }
 
 /**

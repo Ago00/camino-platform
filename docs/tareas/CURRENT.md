@@ -1,111 +1,105 @@
-# Tarea en curso — FP3c: Configuración por reto desde el panel admin
+# Tarea en curso — Endurecimiento pre-reto
 
-> El contenido anterior (FP3b, "minuto a minuto" plegable) se archivó en
-> `docs/tareas/historico/2026-09-30-fp3b-mam-plegable.md`.
+> El contenido anterior (FP3c, configuración por reto) se archivó en
+> `docs/tareas/historico/2026-09-30-fp3c-config-por-reto.md`.
 
-## Prompt clarificado (producto cerrado)
+## Prompt clarificado (aprobado por el orquestador)
 
-El admin de CADA reto lo configura en `/<slug>/admin`:
+Lote de endurecimiento antes del reto:
 
-1. Encender/apagar secciones públicas: intenciones, comentarios (muro + formulario), minuto a minuto, Instagram. Por defecto encendidas.
-2. Respuestas de visitantes en comentarios (FP3a) on/off. Apagadas: sin botón "Responder", POST de respuesta rechazado; las existentes siguen visibles; el caminante puede seguir respondiendo desde el admin.
-3. Foto de "quién camina": subir/cambiar/quitar (sustituye la constante `FOTO_SANTI` de `ModoAntes.tsx`).
-4. Pestaña Textos agrupada por bloques.
+0. **Ya resuelto por el orquestador (solo documentar):** el proyecto Supabase de la plataforma no tenía el bucket `minuto-a-minuto` (lo creaba `0002`, del proyecto original; `0007` no lo incluía) y toda subida de foto fallaba. `0013_bucket_fotos.sql` lo crea (aplicada y verificada: público, 4 MB, jpeg/png/webp).
+1. **Idempotencia de `crearMinutoAMinuto`** con `clave_envio` (UUID del cliente, estable entre reintentos), columna + índice único parcial (`0014`), comprobación previa a la subida y 23505 ⇒ éxito borrando la foto.
+2. **Límites de tiempo del composer:** `cargarImagen` rechaza a los 10 s (degrada al original); aviso "Sigue subiendo, no cierres la página" pasados 15 s de envío, sin abortar (composer, y si es trivial ModalFinalizar y FotoQuienCaminaForm).
+3. **El muro muestra el comentario público recién enviado** (recarga de la página 0, sin polling nuevo).
+4. **Error de consola `<circle> attribute r: Expected length, "undefined"`** en `/santi-ago`: identificar y corregir sin cambiar la animación.
+5. **Limpieza de `DEBT.md`** (migraciones verificadas en BD por el orquestador y entradas ya resueltas en código).
 
 ## Decisión técnica
 
-**DT-032** (`docs/tecnico/decisiones-tecnicas.md`). Columnas en `retos` + RLS de INSERT de `comentarios` (migración `0012_config_reto.sql`), dominio puro `lib/retos/config.ts`, 403 en las APIs, secciones apagadas sin renderizar, pestaña "Configuración", foto en Storage bajo `<retoId>/quien-camina-…`, textos por bloques.
+**DT-033** (`docs/tecnico/decisiones-tecnicas.md`) para la idempotencia y los límites de tiempo. Nota en DT-013 remitiendo a `0013`.
 
 ## Archivos creados/modificados (Implementador)
 
-| Archivo | Estado |
+| Archivo | Cambio |
 |---|---|
-| `supabase/migrations/0012_config_reto.sql` | Creado (NO aplicado: lo aplica el orquestador) |
-| `lib/types.ts` | `Reto` + 5 booleanos + `quien_camina_foto_url` |
-| `lib/supabase/admin.ts` | Esos campos opcionales en el `Insert` de `retos` (crearReto del superadmin intacto) |
-| `lib/retos/config.ts` (+ `.test.ts`) | Creado: `configDelReto`, `fotoQuienCaminaDelReto`, `urlInstagramVisible` |
-| `lib/supabase/storage.ts` (+ `.test.ts`) | `subirFotoQuienCamina`, `rutaObjetoDelReto`, `borrarObjeto` |
-| `app/[slug]/admin/actions.ts` (+ `.test.ts`) | `guardarConfiguracion`, `guardarFotoQuienCamina` |
-| `app/[slug]/api/comentarios/route.ts` (+ `.test.ts`) | 403 con sección/respuestas apagadas; 42501 ⇒ 403 |
-| `app/[slug]/api/intenciones/route.ts` + `route.test.ts` | 403 con sección apagada; test creado |
-| `app/[slug]/api/minuto-a-minuto/route.ts` + `route.test.ts` | 403 con sección apagada; test creado |
-| `lib/textos/bloques.ts` (+ `.test.ts`) | Creado: `BLOQUES_TEXTOS` (11 bloques) + exhaustividad en tipos |
-| `lib/admin/navegacion.ts` (+ `.test.ts`) | Pestaña `configuracion` |
-| `app/[slug]/admin/page.tsx` | Renderiza `SeccionConfiguracion` |
-| `components/admin/SeccionConfiguracion.tsx`, `FormConfiguracion.tsx`, `FotoQuienCaminaForm.tsx` | Creados |
-| `components/admin/SeccionTextos.tsx` | Índice de anclas + `<details>` por bloque, etiqueta "sección apagada" |
-| `components/admin/SeccionMinutoAMinuto.tsx` | Aviso si la sección está apagada |
-| `app/[slug]/page.tsx` | `config` a todos los modos, `fotoQuienCamina` a `ModoAntes`; sin carga de entradas del MAM apagado |
-| `components/publico/ModoAntes.tsx` | Secciones según config; foto del reto o silueta; `FOTO_SANTI` eliminada |
-| `components/publico/ModoDurante.tsx`, `ModoDuranteLibre.tsx`, `ModoLlegada.tsx`, `ModoLlegadaLibre.tsx` | Secciones según config (MAM apagado no se monta ni hace polling) |
-| `components/publico/MuroComentarios.tsx`, `HiloComentario.tsx` | Prop `permitirRespuestas` |
-| `app/api/track/route.test.ts`, `app/api/admin/login/route.test.ts` | Fixtures de `Reto` con los campos nuevos |
-| `docs/tecnico/decisiones-tecnicas.md` (DT-032), `modelo-datos.md`, `arquitectura.md` | Actualizados |
-| `CHANGELOG.md`, `DEBT.md` | Actualizados |
+| `supabase/migrations/0014_mam_clave_envio.sql` | Creado (aplicado por el orquestador, según el encargo de revisión) |
+| `lib/types.ts` | `MinutoAMinuto.clave_envio: string \| null` |
+| `lib/supabase/admin.ts` | `clave_envio` opcional en el `Insert` de `minuto_a_minuto`; comentarios obsoletos de `intenciones`/`visitas_web` |
+| `lib/supabase/storage.ts` (+ `.test.ts`) | `rutaObjetoMinutoAMinuto` (pura) y extracción común de la ruta; cabecera remite a `0013` |
+| `app/[slug]/admin/actions.ts` (+ `.test.ts`) | `crearMinutoAMinuto` idempotente (zod uuid opcional, comprobación previa, 23505 ⇒ éxito, borra la foto sin fila); intento activo resuelto antes de subir |
+| `components/admin/ComposerMinutoAMinuto.tsx` | `clave_envio` en ref (estable en reintentos; nueva tras éxito o al tocar texto/foto) + aviso de envío lento |
+| `components/admin/ModalFinalizar.tsx`, `FotoQuienCaminaForm.tsx` | Aviso de envío lento |
+| `lib/envio/aviso-envio-lento.ts` (+ `.test.ts`) | Creado: `avisarSiTarda`, umbral 15 s, mensaje |
+| `lib/imagen/preparar-foto.ts` (+ `.test.ts`) | `cargarImagen` con `Promise.race` 10 s (`LIMITE_DECODIFICACION_MS`, `ErrorDecodificacionAgotada`), limpia temporizador y URL; tests con `<img>` falso y fake timers |
+| `components/publico/ComentariosConMuro.tsx` | Creado: form + muro; recarga del muro solo con comentario público |
+| `components/publico/ComentarioForm.tsx` | `onEnviado(visibilidad)` |
+| `components/publico/MuroComentarios.tsx` | `ref` con `recargar()` (`useImperativeHandle`) |
+| `components/publico/ModoDurante.tsx`, `ModoDuranteLibre.tsx`, `ModoLlegada.tsx`, `ModoLlegadaLibre.tsx` | Usan `ComentariosConMuro` |
+| `components/publico/PeregrinoLibre.tsx` | `initial={{ r: 6.5 }}` en la cabeza del peregrino |
+| `components/admin/EnlacePaginacion.tsx` | Comentario de cabecera corregido |
+| `docs/tecnico/decisiones-tecnicas.md` (DT-033, nota DT-013), `modelo-datos.md`, `arquitectura.md` | Actualizados |
+| `CHANGELOG.md`, `DEBT.md` | Actualizados (12 entradas cerradas, 1 nueva) |
 
 ## Quality gates
 
 - `pnpm typecheck`: 0 errores
 - `pnpm lint`: 0 errores, 0 warnings
-- `pnpm test`: 506 tests en verde (45 ficheros)
+- `pnpm test`: 526 tests en verde (46 ficheros)
 - `pnpm build`: OK
-- **Verificación visual pendiente** (LESSONS: UI): no la ha hecho el Implementador. Comprobar en navegador: pestaña Configuración (interruptores con teclado, guardar, aviso "Sin efecto" de respuestas con comentarios apagados); subir/cambiar/quitar foto y verla en la fase "antes"; cada sección apagada desaparece en antes/durante/llegada (guiado y libre) y el MAM apagado no hace peticiones a `/api/minuto-a-minuto`; muro sin "Responder" con respuestas apagadas; pestaña Textos por bloques con anclas y etiqueta "sección apagada"; aviso en la pestaña Minuto a minuto.
-
-## Checklist SQL post-migración (lo ejecuta el orquestador tras aplicar 0012)
-
-1. Columnas y foto del reto original:
-   ```sql
-   select slug, seccion_intenciones, seccion_comentarios, seccion_minuto_a_minuto,
-          seccion_instagram, respuestas_visitantes, quien_camina_foto_url
-   from retos order by id;
-   -- esperado: todo true; santi-ago con quien_camina_foto_url = '/santi.jpg'
-   ```
-2. Insert anon con la sección de comentarios apagada ⇒ rechazado (42501):
-   ```sql
-   update retos set seccion_comentarios = false where slug = 'santi-ago';
-   begin; set local role anon;
-   insert into comentarios (reto_id, nombre, texto, visibilidad)
-     values ((select id from retos where slug = 'santi-ago'), 'test', 'test', 'publico');
-   rollback;  -- debe fallar con "new row violates row-level security policy"
-   update retos set seccion_comentarios = true where slug = 'santi-ago';
-   ```
-   (Como `anon` no ve `retos` inactivos, el subselect del id puede sustituirse por el id literal.)
-3. Respuesta anon con respuestas de visitantes apagadas ⇒ rechazada; raíz aceptada:
-   ```sql
-   update retos set respuestas_visitantes = false where slug = 'santi-ago';
-   begin; set local role anon;
-   insert into comentarios (reto_id, parent_id, nombre, texto, visibilidad)
-     values (<id reto>, <id raíz pública visible>, 'test', 'test', 'publico');  -- debe fallar (42501)
-   rollback;
-   begin; set local role anon;
-   insert into comentarios (reto_id, nombre, texto, visibilidad)
-     values (<id reto>, 'test', 'test', 'publico');  -- debe funcionar
-   rollback;
-   update retos set respuestas_visitantes = true where slug = 'santi-ago';
-   ```
-4. Permisos de la función: `select has_function_privilege('authenticated', 'comentarios_insert_permitido(bigint, boolean)', 'execute');` ⇒ `false`; para `anon` ⇒ `true`.
-5. El panel admin (service role) sigue pudiendo responder con respuestas de visitantes apagadas (probar "Responder" desde la pestaña Comentarios).
 
 ## Decisiones de implementación (bloqueos menores resueltos) — revisar
 
-1. **`guardarConfiguracion(slug, config: unknown)`** en vez de `ConfigReto`: la Server Action es un endpoint público; el esquema zod (`satisfies z.ZodType<ConfigReto>`) da el tipo. Permite testear entradas inválidas sin `as`.
-2. **`urlInstagramVisible`** en `lib/retos/config.ts` (pura, con test) para no repetir en tres componentes la regla "interruptor + URL no vacía".
-3. **Bloque "Instagram" propio** (1 clave) para poder marcarlo como "sección apagada"; 11 bloques en total. El orden sigue el recorrido de `ModoAntes` (recorrido antes que quién camina).
-4. **Rollback de foto**: si falla el update de `retos` tras subir, se borra la foto recién subida (solo si `rutaObjetoDelReto` la reconoce).
-5. **`rutaObjetoDelReto`** exige la forma exacta del nombre generado (`<ts>-<uuid>.<jpg|png|webp>`) tras `<retoId>/quien-camina-`, además de decodificar la URL: una URL con `..` o `%2F` no pasa.
-6. **"Respuestas de visitantes"** se atenúa con aviso cuando los comentarios están apagados, conservando su valor.
-7. **Guardado conjunto** de los interruptores (un botón) en lugar de guardar al pulsar cada uno: apagar varias secciones es un único cambio en la web.
+1. **Clave conservada tras un error** si no se toca nada: si el primer envío sí llegó, el reenvío manual tampoco duplica. Se descarta al cambiar texto o foto (ya es otra entrada).
+2. **Intento activo antes de la subida:** necesario para comprobar la clave antes de subir; además, sin intento ya no queda foto huérfana.
+3. **Borrado de la foto en cualquier fallo del `INSERT`**, no solo en el 23505 (ninguna fila la referencia). Recogido en la nota de cierre de DT-033.
+4. **Clave inválida (no UUID) ⇒ error** sin subir ni escribir; clave vacía ⇒ sin clave.
+5. **Muro:** primero se probó un contador + `useEffect`; el lint (`react-hooks/set-state-in-effect`) lo rechaza, así que la recarga se pide desde el evento de envío con un handle imperativo (`ref` + `useImperativeHandle`, React 19 sin `forwardRef`). La recarga sustituye las páginas cargadas por la página 0.
+6. **Aviso lento** con un helper puro (`avisarSiTarda`) en vez de un `useEffect` por componente: cubre la espera completa, reintentos incluidos, y se limpia en `finally`.
+7. **`<circle>`:** la cabeza de `PeregrinoAndando` es un `motion.circle` sin `r` ni `initial`; motion toma como origen `getAttribute("r")` (null, ver `SVGVisualElement.readValueFromInstance` de motion-dom 12.43) y escribe `r="undefined"`. El `<animate attributeName="r">` de `Mapa.tsx` tiene `values` válidos y no es la causa.
 
-## Pendiente operativo tras el merge
+## Verificación en navegador
 
-- Aplicar `0012_config_reto.sql` y ejecutar el checklist SQL.
-- Verificación visual en preview.
-- Invocar al Agente de Producto para `docs/producto/` (registrado en DEBT).
+- **No se pudo hacer contra `/santi-ago`:** no hay `.env` local con las credenciales de Supabase, así que en `pnpm dev` la home sale vacía y `/santi-ago` da 404. No tengo herramienta de navegador en este entorno.
+- **Lo que sí se comprobó:** con `renderToString` de `motion/react`, un `motion.circle` sin `initial` se renderiza sin `r` (`<circle cx="18.5" cy="12">`) y con `initial={{ r: 6.5 }}` sale `r="6.5"`.
+- **Pendiente en preview:** consola limpia en `/santi-ago` (fase "antes") y al pinchar el peregrino (animación de enfado igual que antes); enviar un comentario público ⇒ aparece en el muro sin recargar (uno privado no recarga); publicar en el minuto a minuto con y sin foto (y con red lenta: aviso a los 15 s); el modal "Finalizar" y la foto de quién camina siguen funcionando.
+- Nota: `next dev` reescribe `AGENTS.md` (bloque `nextjs-agent-rules`); no es un cambio de esta tarea.
+
+## Trabajos añadidos al mismo lote (documentados por el Reviewer)
+
+Se unieron a este lote sin pasar por CURRENT.md. Se documentan en CHANGELOG (3 entradas), en las notas posteriores de DT-027, DT-030 y DT-031 y en la nota de DT-029 sobre `editarReto`.
+
+| Trabajo | Archivos |
+|---|---|
+| Superadmin: acciones con resultado + `useActionState`, estados pendientes, mensajes, conservar valores, enlaces "Ver web" / "Panel admin" / "Ver portada" | `app/superadmin/(panel)/{actions,resultado-accion}.ts` (+ tests), `page.tsx`, `BotonEliminarReto.tsx`, `CamposReto.tsx` (nuevo), `FormularioCrearReto.tsx` (nuevo), `FormularioEditarReto.tsx` (nuevo); `app/[slug]/admin/page.tsx` ("Ver web") |
+| Admin: comentarios en Públicos / Privados / Ocultos; privados solo se eliminan | `lib/admin/navegacion.ts` (+ test), `lib/comentarios/hilos.ts` (+ test), `components/admin/{FiltroComentarios,SeccionComentarios,AccionesComentario,FormRespuestaAdmin}.tsx` |
+| Web: "Responder" bajo cada respuesta + "Respondiendo a {nombre}"; cabecera del minuto a minuto en acordeón | `components/publico/{HiloComentario,RespuestaForm,MinutoAMinuto}.tsx`, `lib/textos/{defaults,bloques}.ts` |
+
+DEBT cerradas por estos trabajos: "Panel superadmin: mensajes de error…", "Mensajes de error de la contraseña de admin…", "Minuto a minuto plegable: botón y aviso sin contexto…" y el punto (5) de las recomendaciones de FP3a.
+
+**Quality gates:** las de arriba son del trabajo 1. Hay que volver a ejecutar `pnpm typecheck && pnpm lint && pnpm test && pnpm build` sobre el lote completo; el Reviewer no tenía shell para hacerlo.
 
 ## Historial de revisión
 
-### Reviewer — ciclo 1 (2026-09-30): APROBADO, pasa a Seguridad
+### Revisión 1 — 2026-09-30 (lote combinado) — BLOQUEANTE
 
-- Sin bloqueantes. Todas las fases/modos (antes, durante guiado/libre, llegada guiado/libre) condicionan intenciones, comentarios, MAM e Instagram; el MAM apagado no se monta (sin polling) y en llegada no se cargan sus entradas. APIs: 403 tras resolver el reto y antes de cualquier consulta (respuestas apagadas: antes de leer el padre); 42501 ⇒ 403. Foto: sube bajo `<retoId>/quien-camina-`, solo borra lo que reconoce `rutaObjetoDelReto`, rollback si falla el update. Exhaustividad de bloques en tipos + test. Interruptores `role="switch"` accesibles.
-- Recomendación registrada en `DEBT.md`: polling del MAM tras apagarlo en clientes con la página abierta.
-- Pendiente (no de código): verificación visual y checklist SQL tras aplicar 0012.
+1. `components/publico/HiloComentario.tsx:31,48-49`: `respondiendoA` guarda el **nombre** y no el comentario. Cuando varias respuestas son del mismo autor (lo normal: el caminante contesta varias veces con el mismo nombre), todos sus botones "Responder" se marcan `aria-expanded="true"` a la vez. Además, pulsar "Responder" bajo otra respuesta del mismo autor **cierra** el formulario en vez de mantenerlo abierto. **Fix:** guardar `{ id: number; nombre: string } | null`, comparar por `id` en el toggle y en `aria-expanded`, y pasar `respondiendoA.nombre` a `RespuestaForm`. `botonResponder` recibe el comentario, no el nombre.
+
+Recomendaciones registradas en `DEBT.md` ("Recomendaciones de la revisión del lote pre-reto…").
+
+### Revisión 2 — 2026-09-30 — APROBADO
+
+- El bloqueante está resuelto: `respondiendoA` es `{ id, nombre } | null` y se compara por `id`.
+- También aplicadas la recomendación 1 (en parte: `autoFocus` en el nombre) y la 3 (sin texto `sr-only`, y eliminadas las claves `minuto_a_minuto_boton_mostrar`/`_ocultar`).
+- Gates del lote completo según el orquestador: typecheck 0, lint 0, 581/581 tests, build OK.
+- Siguiente paso: Seguridad.
+
+## Pendiente operativo tras el merge
+
+- Aplicar `0014_mam_clave_envio.sql` y verificar:
+  ```sql
+  select column_name, data_type, is_nullable from information_schema.columns
+   where table_name = 'minuto_a_minuto' and column_name = 'clave_envio';   -- uuid, YES
+  select indexdef from pg_indexes where indexname = 'minuto_a_minuto_clave_envio_idx';
+   -- CREATE UNIQUE INDEX … (clave_envio) WHERE (clave_envio IS NOT NULL)
+  ```
+- Desplegar el código **después** de aplicar `0014`: el `INSERT` ya envía `clave_envio` (con o sin valor) y fallaría con la columna inexistente.

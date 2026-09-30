@@ -1,7 +1,8 @@
 // Respuesta del caminante a un comentario raíz desde el panel (FP3a, DT-030).
 // Se publica con la insignia "Caminante" y el nombre `quien_camina_nombre`.
-// Solo se ofrece en raíces públicas no ocultas (la acción lo vuelve a
-// comprobar en servidor). Mismo patrón de envío que ComposerMinutoAMinuto:
+// Solo se ofrece donde `puedeResponder` (lib/comentarios/hilos.ts) lo permite:
+// raíces públicas no ocultas, nunca privados (la acción y la BD lo vuelven a
+// comprobar). Mismo patrón de envío que ComposerMinutoAMinuto:
 // onSubmit propio y ResultadoPublicacion devuelto, sin perder el texto si falla.
 
 "use client";

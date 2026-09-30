@@ -43,8 +43,10 @@ let intentoActivoMock: { id: number } | null = null;
 let padreMock: { reto_id: number; parent_id: number | null; visibilidad: "publico" | "privado"; oculto: boolean } | null =
   null;
 let nombreCaminanteMock = "Santi";
+/** Entrada del minuto a minuto ya publicada con la clave consultada (DT-033). */
+let entradaConClaveMock: { id: number } | null = null;
 /** Error con el que resuelve cualquier consulta awaited (no `maybeSingle`). */
-let errorAlResolverMock: { message: string } | null = null;
+let errorAlResolverMock: { message: string; code?: string } | null = null;
 const RETO_B: Reto = { ...RETO, id: 4, slug: "otro-reto" };
 const RETOS_POR_SLUG = new Map([RETO, RETO_B].map((reto) => [reto.slug, reto]));
 // Solo se usa su huella: no hace falta un hash scrypt real.
@@ -69,10 +71,14 @@ function crearConsulta(tabla: string) {
     eq: (...args: unknown[]) => registrar("eq", args),
     maybeSingle: () => {
       llamadas.push({ tabla, metodo: "maybeSingle", args: [] });
-      const datos = tabla === "intentos" ? intentoActivoMock : tabla === "comentarios" ? padreMock : null;
-      return Promise.resolve({ data: datos, error: null });
+      const datosPorTabla: Record<string, unknown> = {
+        intentos: intentoActivoMock,
+        comentarios: padreMock,
+        minuto_a_minuto: entradaConClaveMock,
+      };
+      return Promise.resolve({ data: datosPorTabla[tabla] ?? null, error: null });
     },
-    then: (resolver: (valor: { data: null; error: { message: string } | null }) => void) =>
+    then: (resolver: (valor: { data: null; error: { message: string; code?: string } | null }) => void) =>
       resolver({ data: null, error: errorAlResolverMock }),
   };
   function registrar(metodo: string, args: unknown[]) {
@@ -113,15 +119,22 @@ vi.mock("next/cache", () => ({
 // Subida y borrado simulados; `rutaObjetoDelReto` es la real (es la guarda
 // que decide qué se borra, y es justo lo que hay que comprobar).
 const subirFotoQuienCaminaSpy = vi.fn();
+const subirFotoMinutoAMinutoSpy = vi.fn();
 const borrarObjetoSpy = vi.fn();
 vi.mock("@/lib/supabase/storage", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/supabase/storage")>();
   return {
     ...real,
     subirFotoQuienCamina: (foto: File, retoId: number) => subirFotoQuienCaminaSpy(foto, retoId),
+    subirFotoMinutoAMinuto: (foto: File) => subirFotoMinutoAMinutoSpy(foto),
     borrarObjeto: (ruta: string) => borrarObjetoSpy(ruta),
   };
 });
+
+// crearMinutoAMinuto toma la última posición del progreso; aquí da igual cuál.
+vi.mock("@/lib/traza/progreso-actual", () => ({
+  calcularProgresoActual: async () => ({ ultimaPosicion: null }),
+}));
 
 // La sesión se firma y verifica con el código real (admin-session +
 // huellaCredencial): así los tests cubren el cruce de retos y el cambio de
@@ -157,6 +170,7 @@ beforeEach(() => {
   intentoActivoMock = null;
   padreMock = { reto_id: RETO.id, parent_id: null, visibilidad: "publico", oculto: false };
   nombreCaminanteMock = "Santi";
+  entradaConClaveMock = null;
   errorAlResolverMock = null;
   hashesMock = new Map([
     [RETO.id, HASH_RETO],
@@ -165,6 +179,7 @@ beforeEach(() => {
   cookieMock = crearSesion(RETO, huellaCredencial(HASH_RETO));
   revalidatePathSpy.mockClear();
   subirFotoQuienCaminaSpy.mockReset();
+  subirFotoMinutoAMinutoSpy.mockReset();
   borrarObjetoSpy.mockReset();
 });
 
@@ -530,5 +545,107 @@ describe("guardarFotoQuienCamina — subir, sustituir y quitar (FP3c, DT-032)", 
 
     expect(borrarObjetoSpy).toHaveBeenCalledTimes(1);
     expect(borrarObjetoSpy).toHaveBeenCalledWith(URL_NUEVA.slice(BASE.length));
+  });
+});
+
+describe("crearMinutoAMinuto — idempotencia por clave_envio (DT-033)", () => {
+  const BASE = "https://x.supabase.co/storage/v1/object/public/minuto-a-minuto/";
+  const NOMBRE_FOTO = "1727700000000-3f2b8c1e-0a1b-4c2d-9e8f-123456789abc.jpg";
+  const CLAVE = "5d3c1c2e-8a4b-4f6e-9d7a-0b1c2d3e4f5a";
+
+  function envio(opciones: { clave?: string; conFoto?: boolean } = {}): FormData {
+    const formData = new FormData();
+    formData.set("texto", "Llegando a Tui");
+    if (opciones.clave !== undefined) formData.set("clave_envio", opciones.clave);
+    if (opciones.conFoto) {
+      formData.set("foto", new File([new Uint8Array(10)], "f.jpg", { type: "image/jpeg" }));
+    }
+    return formData;
+  }
+
+  beforeEach(() => {
+    intentoActivoMock = { id: 21 };
+    subirFotoMinutoAMinutoSpy.mockResolvedValue(`${BASE}${NOMBRE_FOTO}`);
+  });
+
+  it("un reintento con la misma clave, ya publicada, no vuelve a subir la foto ni a insertar", async () => {
+    await expect(crearMinutoAMinuto(RETO.slug, envio({ clave: CLAVE, conFoto: true }))).resolves.toEqual({ ok: true });
+    // La primera llegó al servidor; lo que se perdió fue la respuesta.
+    entradaConClaveMock = { id: 77 };
+    await expect(crearMinutoAMinuto(RETO.slug, envio({ clave: CLAVE, conFoto: true }))).resolves.toEqual({ ok: true });
+
+    expect(subirFotoMinutoAMinutoSpy).toHaveBeenCalledTimes(1);
+    expect(llamadasA("minuto_a_minuto", "insert")).toHaveLength(1);
+    expect(borrarObjetoSpy).not.toHaveBeenCalled();
+  });
+
+  it("busca la clave dentro del intento activo del reto e inserta la entrada con ella", async () => {
+    await crearMinutoAMinuto(RETO.slug, envio({ clave: CLAVE }));
+
+    expect(llamadasA("minuto_a_minuto", "eq")).toEqual([
+      ["intento_id", 21],
+      ["clave_envio", CLAVE],
+    ]);
+    const [[fila]] = llamadasA("minuto_a_minuto", "insert");
+    expect(fila).toMatchObject({ intento_id: 21, texto: "Llegando a Tui", clave_envio: CLAVE });
+  });
+
+  it("si la inserción choca con el índice único (23505) devuelve éxito y borra la foto recién subida", async () => {
+    errorAlResolverMock = { message: "duplicate key value violates unique constraint", code: "23505" };
+
+    await expect(crearMinutoAMinuto(RETO.slug, envio({ clave: CLAVE, conFoto: true }))).resolves.toEqual({ ok: true });
+
+    expect(borrarObjetoSpy).toHaveBeenCalledTimes(1);
+    expect(borrarObjetoSpy).toHaveBeenCalledWith(NOMBRE_FOTO);
+  });
+
+  it("un fallo de inserción que no es de unicidad devuelve error y tampoco deja la foto huérfana", async () => {
+    errorAlResolverMock = { message: "fallo", code: "08006" };
+
+    await expect(crearMinutoAMinuto(RETO.slug, envio({ clave: CLAVE, conFoto: true }))).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(borrarObjetoSpy).toHaveBeenCalledWith(NOMBRE_FOTO);
+  });
+
+  it("un 23505 sin clave de envío no se trata como éxito", async () => {
+    errorAlResolverMock = { message: "duplicate key", code: "23505" };
+
+    await expect(crearMinutoAMinuto(RETO.slug, envio())).resolves.toMatchObject({ ok: false });
+  });
+
+  it("sin clave sigue publicando como antes: sin consultar la clave y con clave_envio null", async () => {
+    await expect(crearMinutoAMinuto(RETO.slug, envio({ conFoto: true }))).resolves.toEqual({ ok: true });
+
+    expect(llamadasA("minuto_a_minuto", "maybeSingle")).toHaveLength(0);
+    expect(subirFotoMinutoAMinutoSpy).toHaveBeenCalledTimes(1);
+    const [[fila]] = llamadasA("minuto_a_minuto", "insert");
+    expect(fila).toMatchObject({ foto_url: `${BASE}${NOMBRE_FOTO}`, clave_envio: null });
+  });
+
+  it("una clave vacía cuenta como sin clave", async () => {
+    await expect(crearMinutoAMinuto(RETO.slug, envio({ clave: "" }))).resolves.toEqual({ ok: true });
+
+    const [[fila]] = llamadasA("minuto_a_minuto", "insert");
+    expect(fila).toMatchObject({ clave_envio: null });
+  });
+
+  it("rechaza una clave que no es un UUID sin subir la foto ni escribir", async () => {
+    await expect(
+      crearMinutoAMinuto(RETO.slug, envio({ clave: "no-es-un-uuid", conFoto: true }))
+    ).resolves.toMatchObject({ ok: false });
+
+    expect(subirFotoMinutoAMinutoSpy).not.toHaveBeenCalled();
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("sin intento activo devuelve error sin subir la foto", async () => {
+    intentoActivoMock = null;
+
+    await expect(crearMinutoAMinuto(RETO.slug, envio({ clave: CLAVE, conFoto: true }))).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(subirFotoMinutoAMinutoSpy).not.toHaveBeenCalled();
+    expect(escriturasEnBd()).toEqual([]);
   });
 });

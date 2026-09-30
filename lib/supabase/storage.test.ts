@@ -32,6 +32,7 @@ const {
   subirFotoLlegada,
   subirFotoQuienCamina,
   rutaObjetoDelReto,
+  rutaObjetoMinutoAMinuto,
   borrarObjeto,
   ErrorDeSubidaDeFoto,
 } = await import("@/lib/supabase/storage");
@@ -237,6 +238,31 @@ describe("rutaObjetoDelReto — solo reconoce fotos de quién camina del reto", 
 
   it("null para una URL con codificación inválida", () => {
     expect(rutaObjetoDelReto(`${BASE}3/quien-camina-%E0%A4%A.jpg`, 3)).toBeNull();
+  });
+});
+
+describe("rutaObjetoMinutoAMinuto (DT-033) — solo reconoce fotos del feed", () => {
+  const BASE = "https://x.supabase.co/storage/v1/object/public/minuto-a-minuto/";
+  const NOMBRE = "1727700000000-3f2b8c1e-0a1b-4c2d-9e8f-123456789abc.jpg";
+
+  it("devuelve la ruta de una foto del feed (raíz del bucket), sin la query string", () => {
+    expect(rutaObjetoMinutoAMinuto(`${BASE}${NOMBRE}`)).toBe(NOMBRE);
+    expect(rutaObjetoMinutoAMinuto(`${BASE}${NOMBRE}?v=2`)).toBe(NOMBRE);
+  });
+
+  it("reconoce el nombre que genera subirFotoMinutoAMinuto", async () => {
+    await subirFotoMinutoAMinuto(crearArchivo({ type: "image/png", size: 100 }));
+    const [nombreSubido] = uploadSpy.mock.calls[0] as [string, File, unknown];
+
+    expect(rutaObjetoMinutoAMinuto(`${BASE}${nombreSubido}`)).toBe(nombreSubido);
+  });
+
+  it("null para fotos de llegada, de quién camina, de /public o con otra forma", () => {
+    expect(rutaObjetoMinutoAMinuto(`${BASE}llegada-${NOMBRE}`)).toBeNull();
+    expect(rutaObjetoMinutoAMinuto(`${BASE}3/quien-camina-${NOMBRE}`)).toBeNull();
+    expect(rutaObjetoMinutoAMinuto("/santi.jpg")).toBeNull();
+    expect(rutaObjetoMinutoAMinuto(`${BASE}..%2F${NOMBRE}`)).toBeNull();
+    expect(rutaObjetoMinutoAMinuto(`${BASE}%E0%A4%A.jpg`)).toBeNull();
   });
 });
 
