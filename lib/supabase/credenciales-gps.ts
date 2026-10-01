@@ -3,7 +3,7 @@
  * autentica sus posiciones en `/api/track`. Solo servidor y solo con el
  * cliente service role — la tabla no tiene políticas RLS.
  *
- * El token viaja en claro (el panel vuelve a mostrar la URL y el QR), así que
+ * El token viaja en claro (el panel vuelve a mostrar la URL), así que
  * quien llame a las funciones de lectura desde una página debe haber
  * verificado antes la sesión en esa misma página (DT-034). Las Server Actions
  * que regeneran el token nunca lo devuelven.

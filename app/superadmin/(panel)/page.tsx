@@ -5,7 +5,7 @@
 // (estado pendiente y resultado visibles); editar y eliminar redirigen aquí
 // con el aviso en la query (?guardado=<id> / ?eliminado=<slug>).
 // Cada tarjeta muestra la configuración del GPS del reto (DT-035: URL con su
-// token propio y QR de OwnTracks, ocultos hasta pulsar "Mostrar", y botón
+// token propio y tutorial de OwnTracks, URL oculta hasta pulsar "Mostrar", y botón
 // para regenerar el token), si tiene contraseña de admin configurada (FP2.6,
 // DT-029) y enlaces a su web y a su panel admin.
 
@@ -188,7 +188,7 @@ function RetoCard({
         </div>
       )}
 
-      {/* GPS del reto: URL, QR de OwnTracks y regenerar (DT-035) */}
+      {/* GPS del reto: tutorial, URL y regenerar (DT-035) */}
       <div className="mt-2">
         <p className="mb-1 text-[12px] font-medium" style={{ color: C.gris }}>
           GPS (OwnTracks)

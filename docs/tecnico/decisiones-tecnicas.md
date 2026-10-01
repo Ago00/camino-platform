@@ -2118,7 +2118,7 @@ La parte B (interruptor `peregrino_animado`, `PeregrinoLibre`) queda sustituida 
 
 ---
 
-## DT-035 — Token de GPS por reto y QR de OwnTracks
+## DT-035 — Token de GPS por reto (el QR de OwnTracks se retiró)
 
 **Fecha:** 2026-10-01 · **Tarea:** Token de GPS por reto + QR de OwnTracks
 
@@ -2189,3 +2189,5 @@ DT-034 hizo opcional el peregrino animado (`PeregrinoLibre`, rojiblanco, con «�
 - **Movimiento reducido**: además de lo del catálogo (todo quieto, grito sin entrada, sin partículas), las poses estáticas del peregrino y el abuelo que el catálogo solo aplicaba con su simulador `.rm` se aplican también con la media query real. Si la preferencia cambia con la página abierta, el suelto se vuelve a crear.
 - **Verificación visual** con Chrome headless (tiempo real vía DevTools) sobre una página temporal ya borrada: las 22 figuras, el grito del mojón con la placa bajando, el grito del atleti suelto, huellas, hipo, arrebato y movimiento reducido. No hay Supabase local: la web real y el panel con datos quedan para la preview.
 - **Despliegue:** aplicar `0017` antes de desplegar (si no, guardar la configuración falla hasta aplicarla; la lectura tiene red). `0018` (borrar `peregrino_animado`) cuando el código desplegado ya no la escriba.
+
+> **Nota posterior (2026-10-01): se retira el QR.** En las pruebas con un móvil real el QR no llegó a configurar OwnTracks (al servidor no llegó ninguna petición) y el usuario prefirió no seguir con él. Se elimina el enlace `owntracks:///config?inline=`, su QR (`lib/gps/owntracks.ts`, dependencia `qrcode`) y el botón "Abrir en OwnTracks". El panel muestra un tutorial para configurar OwnTracks a mano (HTTP, URL copiada, modo **Move** y **Locator interval** 60 s) y conserva la URL con token, Copiar y Regenerar. El token por reto y `/api/track` no cambian.

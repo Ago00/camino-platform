@@ -6,7 +6,7 @@
  *
  * URL: `/api/track?reto=<slug>&t=<token del reto>`. Desde DT-035 cada reto
  * tiene su propio token (`retos_gps`, lib/supabase/credenciales-gps.ts), que el
- * admin del reto y el superadmin ven, copian o escanean como QR y pueden
+ * admin del reto y el superadmin ven y copian para pegarla en OwnTracks, y pueden
  * regenerar. Ya no existe un TRACK_TOKEN global.
  *
  * Orden de las defensas:

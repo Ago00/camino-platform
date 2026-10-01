@@ -1,4 +1,4 @@
-// Pestaña "GPS" (DT-035): URL, QR de OwnTracks y regeneración del token del
+// Pestaña "GPS" (DT-035): tutorial de OwnTracks, URL y regeneración del token del
 // GPS de este reto. Server Component.
 //
 // Vuelve a verificar la sesión del reto aunque la página ya lo haya hecho:

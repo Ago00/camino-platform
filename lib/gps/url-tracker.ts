@@ -37,7 +37,7 @@ export interface OrigenTracker {
 
 /**
  * El dominio de producción (`VERCEL_PROJECT_PRODUCTION_URL`, sin esquema) si
- * existe: así el QR sirve igual abierto desde una preview. Si no, el origen
+ * existe: así la URL sirve igual copiada desde una preview. Si no, el origen
  * de la petición actual.
  */
 export function origenDelTracker(hostProduccion: string | undefined, origenPeticion: string | null): OrigenTracker {

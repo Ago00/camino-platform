@@ -261,7 +261,7 @@ export interface RetoAdmin {
 /**
  * Token del GPS de un reto (DT-035). Tabla `retos_gps`, sin políticas RLS:
  * solo el service role la lee o escribe. En claro a propósito: el panel tiene
- * que poder volver a mostrar la URL y el QR de OwnTracks.
+ * que poder volver a mostrar la URL para OwnTracks.
  */
 export interface RetoGps {
   reto_id: number;

@@ -1,9 +1,8 @@
 // Configuración del GPS de un reto (DT-035), compartida por la pestaña GPS
-// del admin del reto y las tarjetas del superadmin. Recibe del servidor la URL
-// con el token, el enlace de OwnTracks y su QR ya generados
-// (lib/gps/config-gps-servidor.ts). URL y QR ocultos por defecto, para que no
-// queden a la vista en una pantalla compartida. Sin token (`datos` null), solo
-// "Generar", que es la misma acción que "Regenerar".
+// del admin del reto y las tarjetas del superadmin: tutorial para configurar
+// OwnTracks a mano y la URL con el token (lib/gps/config-gps-servidor.ts),
+// oculta por defecto para que no quede a la vista en una pantalla compartida.
+// Sin token (`datos` null), solo "Generar", que es la misma acción que "Regenerar".
 
 "use client";
 
@@ -25,7 +24,7 @@ const C = {
 const TOKEN_OCULTO = "••••••••";
 
 const CONFIRMACION_REGENERAR =
-  "¿Regenerar el token del GPS? El móvil dejará de enviar posiciones hasta que vuelvas a configurarlo con el nuevo QR.";
+  "¿Regenerar el token del GPS? El móvil dejará de enviar posiciones hasta que pegues la URL nueva en OwnTracks.";
 
 type EstadoCopia = "inactivo" | "copiado" | "seleccionado";
 type EstadoAccion = { fase: "inactivo" } | { fase: "hecho" } | { fase: "error"; mensaje: string };
@@ -54,7 +53,7 @@ export default function ConfigGps({ datos, accionRegenerar }: ConfigGpsProps) {
           setEstadoAccion({ fase: "error", mensaje: resultado.mensaje });
           return;
         }
-        // Recién regenerado es justo cuando hay que reconfigurar el móvil: se muestra el QR nuevo.
+        // Recién regenerado es justo cuando hay que reconfigurar el móvil: se muestra la URL nueva.
         setVisible(true);
         setEstadoCopia("inactivo");
         setEstadoAccion({ fase: "hecho" });
@@ -69,7 +68,7 @@ export default function ConfigGps({ datos, accionRegenerar }: ConfigGpsProps) {
     <>
       {estadoAccion.fase === "hecho" && (
         <p aria-live="polite" className="mt-2 text-[12.5px]" style={{ color: C.eucalipto }}>
-          Token nuevo generado. Vuelve a configurar el móvil con el QR nuevo de abajo.
+          Token nuevo generado. Pega la URL nueva en OwnTracks (paso 3 del tutorial).
         </p>
       )}
       {estadoAccion.fase === "error" && (
@@ -129,14 +128,32 @@ export default function ConfigGps({ datos, accionRegenerar }: ConfigGpsProps) {
 
   return (
     <div className="space-y-3">
-      <ol className="list-decimal space-y-1 pl-5 text-[13px] leading-snug" style={{ color: C.muted }}>
-        <li>Instala OwnTracks en el móvil.</li>
+      <ol className="list-decimal space-y-1.5 pl-5 text-[13px] leading-snug" style={{ color: C.muted }}>
+        <li>Instala OwnTracks en el móvil (iPhone o Android) y dale permiso de ubicación «Siempre».</li>
         <li>
-          En OwnTracks: Ajustes → Remote Control → activa «Allow external configuration».
+          En OwnTracks, abre los ajustes y entra en <strong>Connection</strong>: pon <strong>Mode</strong> en{" "}
+          <strong>HTTP</strong>.
         </li>
-        <li>Escanea el QR con la cámara (o pulsa «Abrir en OwnTracks» desde el propio móvil).</li>
-        <li>Comprueba en el admin del reto (pestaña Posición) que llega un punto.</li>
+        <li>
+          En el campo <strong>URL</strong> (o <em>Host</em>) pega la URL del GPS de abajo (botón «Copiar»). Deja
+          desactivada la autenticación: no hace falta usuario ni contraseña.
+        </li>
+        <li>
+          <strong>Importante:</strong> en la pantalla principal elige el modo de seguimiento{" "}
+          <strong>Move</strong> (icono de modo arriba; en Android, en el menú <em>Monitoring</em>).
+        </li>
+        <li>
+          En los ajustes avanzados pon <strong>Locator interval</strong> en <strong>60</strong> segundos (un punto
+          por minuto). Súbelo a 120–300 si quieres ahorrar batería.
+        </li>
+        <li>
+          Pulsa el botón de enviar ubicación (flecha hacia arriba) y comprueba en el admin del reto, pestaña
+          Posición, que llega el punto.
+        </li>
       </ol>
+      <p className="text-[12.5px] leading-snug" style={{ color: C.muted }}>
+        Para un reto de muchas horas, quita a OwnTracks del ahorro de batería del móvil y lleva una batería externa.
+      </p>
 
       {datos.origenProvisional && (
         <p className="rounded-lg px-3 py-2 text-[12.5px] leading-snug" style={{ background: "#8A5A0012", color: C.aviso }}>
@@ -176,11 +193,6 @@ export default function ConfigGps({ datos, accionRegenerar }: ConfigGpsProps) {
         >
           Copiar
         </button>
-        {visible && (
-          <a href={datos.enlaceOwnTracks} className={ESTILO_BOTON} style={{ borderColor: "#00000018" }}>
-            Abrir en OwnTracks
-          </a>
-        )}
         <button
           type="button"
           onClick={() => ejecutarRegeneracion(true)}
@@ -195,23 +207,6 @@ export default function ConfigGps({ datos, accionRegenerar }: ConfigGpsProps) {
           {estadoCopia === "seleccionado" && "No se pudo copiar: está seleccionada, cópiala con Ctrl+C."}
         </span>
       </div>
-
-      {!visible && (
-        <p className="text-[12.5px]" style={{ color: C.muted }}>
-          Pulsa «Mostrar» para ver el QR.
-        </p>
-      )}
-      {visible &&
-        (datos.qrDataUrl !== null ? (
-          <div className="inline-block rounded-xl border bg-white p-2" style={{ borderColor: "#00000012" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- data URL generada en el servidor, no una imagen optimizable */}
-            <img src={datos.qrDataUrl} alt="QR para configurar OwnTracks" width={240} height={240} />
-          </div>
-        ) : (
-          <p className="text-[12.5px]" style={{ color: C.peligro }}>
-            No se pudo generar el QR: usa «Abrir en OwnTracks» desde el móvil o copia la URL a mano.
-          </p>
-        ))}
 
       <p className="text-[12px]" style={{ color: C.muted }}>
         Token generado el {formatearFechaHora(datos.fechaActualizacion)}. Solo sirve para este reto; no lo compartas

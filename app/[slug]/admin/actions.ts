@@ -841,7 +841,7 @@ export async function resetearContadorTrafico(slug: string): Promise<void> {
 
 /**
  * Sustituye el token del GPS del reto por uno nuevo: el anterior deja de valer
- * en el acto y el móvil hay que reconfigurarlo con el QR nuevo. Nunca
+ * en el acto y el móvil hay que reconfigurarlo con la URL nueva. Nunca
  * devuelve el token: la pestaña GPS lo vuelve a leer al revalidarse, tras
  * verificar la sesión. Devuelve el fallo en vez de lanzarlo (DT-017).
  */

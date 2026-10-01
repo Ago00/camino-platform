@@ -1,8 +1,8 @@
 /**
  * Pestaña GPS del admin (DT-035): solo con la sesión de ESTE reto se lee el
- * token y se envían al navegador la URL y el QR. `ConfigGps` se sustituye por
+ * token y se envía al navegador la URL. `ConfigGps` se sustituye por
  * un doble y se inspeccionan las props del elemento que devuelve la sección;
- * la preparación de la URL, el enlace y el QR es la real.
+ * la preparación de la URL es la real.
  */
 
 import { isValidElement, type ReactElement, type ReactNode } from "react";
@@ -90,7 +90,7 @@ describe("SeccionGps — acceso", () => {
 });
 
 describe("SeccionGps — con sesión", () => {
-  it("pasa a ConfigGps la URL con el token del reto, el enlace de OwnTracks y el QR", async () => {
+  it("pasa a ConfigGps la URL con el token del reto", async () => {
     const elemento = await SeccionGps({ reto: RETO });
     const config = buscarElemento(elemento, mocks.ConfigGpsFalso);
 
@@ -98,8 +98,6 @@ describe("SeccionGps — con sesión", () => {
     expect(config?.props.datos).toMatchObject({
       urlSinToken: "https://camino.example/api/track?reto=santi-ago",
       urlTracker: `https://camino.example/api/track?reto=santi-ago&t=${TOKEN}`,
-      enlaceOwnTracks: expect.stringMatching(/^owntracks:\/\/\/config\?inline=/),
-      qrDataUrl: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
       fechaActualizacion: CREDENCIAL.actualizadoEn,
       origenProvisional: true,
     });

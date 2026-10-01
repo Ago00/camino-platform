@@ -110,7 +110,6 @@ describe("panel superadmin — GPS por reto (DT-035)", () => {
 
     expect(porSlug.get(RETO_CON_TOKEN.slug)).toMatchObject({
       urlTracker: `https://camino.example/api/track?reto=santi-ago&t=${CREDENCIAL.token}`,
-      qrDataUrl: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
     });
     expect(porSlug.get(RETO_SIN_TOKEN.slug)).toBeNull();
   });

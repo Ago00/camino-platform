@@ -348,7 +348,7 @@ export async function regenerarTokenGpsReto(retoId: number): Promise<ResultadoAc
   const guardado = await asignarTokenGpsNuevo(retoId);
   revalidatePath("/superadmin");
   if (!guardado) return { ok: false, mensaje: "No se pudo generar el token del GPS. Inténtalo de nuevo." };
-  return { ok: true, mensaje: "Token del GPS generado. Vuelve a configurar el móvil con el QR nuevo." };
+  return { ok: true, mensaje: "Token del GPS generado. Pega la URL nueva en OwnTracks." };
 }
 
 /**
