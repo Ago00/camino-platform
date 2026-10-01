@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-10-01 — GPS: tutorial de OwnTracks en lugar del QR
+
+**Tipo:** Cambio
+
+La pestaña GPS del admin y las tarjetas del superadmin ya no muestran el QR
+ni el botón "Abrir en OwnTracks": en las pruebas no llegaba a configurar la
+app. En su lugar, un tutorial para configurarla a mano: modo HTTP, pegar la
+URL del GPS (con "Copiar"), modo de seguimiento **Move** y **Locator
+interval** en 60 segundos. Se elimina la dependencia `qrcode`.
+
+---
+
 ## 2026-10-01 — Cada reto elige su monigote: 22 personajes del Camino
 
 **Tipo:** Feature
