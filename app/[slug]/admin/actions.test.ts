@@ -29,6 +29,9 @@ const RETO: Reto = {
   seccion_instagram: true,
   respuestas_visitantes: true,
   peregrino_animado: true,
+  monigote: "atleti",
+  monigote_grito: null,
+  monigote_sonido: true,
   quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };
@@ -467,20 +470,22 @@ describe("responderComentario — respuesta del caminante (FP3a, DT-030)", () =>
   });
 });
 
-describe("guardarConfiguracion — interruptores de la web pública (FP3c, DT-032)", () => {
+describe("guardarConfiguracion — interruptores y monigote de la web pública (FP3c, DT-032, DT-036)", () => {
   const CONFIG = {
     seccion_intenciones: false,
     seccion_comentarios: true,
     seccion_minuto_a_minuto: false,
     seccion_instagram: true,
     respuestas_visitantes: false,
-    peregrino_animado: false,
+    monigote: "pulpo",
+    monigote_grito: "¡Á feira, xa!",
+    monigote_sonido: false,
   };
 
-  it("actualiza solo el reto del slug con los interruptores y revalida la web y el panel", async () => {
+  it("actualiza solo el reto del slug en un único update y revalida la web y el panel", async () => {
     await expect(guardarConfiguracion(RETO.slug, CONFIG)).resolves.toEqual({ ok: true });
 
-    expect(llamadasA("retos", "update")).toEqual([[CONFIG]]);
+    expect(llamadasA("retos", "update")).toEqual([[{ ...CONFIG, peregrino_animado: true }]]);
     expect(llamadasA("retos", "eq")).toEqual([["id", RETO.id]]);
     expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}`);
     expect(revalidatePathSpy).toHaveBeenCalledWith(`/${RETO.slug}/admin`);
@@ -531,12 +536,61 @@ describe("guardarConfiguracion — interruptores de la web pública (FP3c, DT-03
     expect(revalidatePathSpy).not.toHaveBeenCalled();
   });
 
-  it("exige peregrino_animado (DT-034): sin él o no booleano se rechaza sin escribir", async () => {
-    const sinPeregrino = { ...CONFIG };
-    Reflect.deleteProperty(sinPeregrino, "peregrino_animado");
+  it("sin monigote guarda peregrino_animado a false y descarta el grito (columna obsoleta sincronizada)", async () => {
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, monigote: null })).resolves.toEqual({ ok: true });
 
-    await expect(guardarConfiguracion(RETO.slug, sinPeregrino)).resolves.toMatchObject({ ok: false });
-    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, peregrino_animado: "si" })).resolves.toMatchObject({
+    expect(llamadasA("retos", "update")).toEqual([
+      [{ ...CONFIG, monigote: null, monigote_grito: null, peregrino_animado: false }],
+    ]);
+  });
+
+  it("normaliza el grito antes de guardarlo: espacios y controles fuera; igual al de defecto ⇒ null", async () => {
+    await guardarConfiguracion(RETO.slug, { ...CONFIG, monigote_grito: "  ¡Á\u0007  feira,  xa!\n " });
+    await guardarConfiguracion(RETO.slug, { ...CONFIG, monigote_grito: " ¡Á feira! " });
+
+    expect(llamadasA("retos", "update")).toEqual([
+      [expect.objectContaining({ monigote_grito: "¡Á feira, xa!" })],
+      [expect.objectContaining({ monigote_grito: null })],
+    ]);
+  });
+
+  it("acepta 48 caracteres contando un emoji como uno", async () => {
+    const grito = "😀".repeat(48);
+
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, monigote_grito: grito })).resolves.toEqual({ ok: true });
+    expect(llamadasA("retos", "update")).toEqual([[expect.objectContaining({ monigote_grito: grito })]]);
+  });
+
+  it("rechaza sin escribir un monigote que no está en el catálogo", async () => {
+    for (const monigote of ["dragon", "Atleti", "", 3]) {
+      await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, monigote })).resolves.toMatchObject({ ok: false });
+    }
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("rechaza sin escribir un grito de más de 48 caracteres o vacío", async () => {
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, monigote_grito: "a".repeat(49) })).resolves.toMatchObject({
+      ok: false,
+    });
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, monigote_grito: "" })).resolves.toMatchObject({
+      ok: false,
+    });
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, monigote_grito: 42 })).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(escriturasEnBd()).toEqual([]);
+  });
+
+  it("rechaza sin escribir el obsoleto peregrino_animado y cualquier campo del monigote ausente", async () => {
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, peregrino_animado: true })).resolves.toMatchObject({
+      ok: false,
+    });
+    for (const campo of ["monigote", "monigote_grito", "monigote_sonido"]) {
+      const incompleta = { ...CONFIG };
+      Reflect.deleteProperty(incompleta, campo);
+      await expect(guardarConfiguracion(RETO.slug, incompleta)).resolves.toMatchObject({ ok: false });
+    }
+    await expect(guardarConfiguracion(RETO.slug, { ...CONFIG, monigote_sonido: "si" })).resolves.toMatchObject({
       ok: false,
     });
     expect(escriturasEnBd()).toEqual([]);

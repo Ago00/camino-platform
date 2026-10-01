@@ -1,18 +1,29 @@
-// Interruptores de la configuración del reto (FP3c, DT-032) y perfil de
-// Instagram (DT-034). Se editan en local y se guardan juntos con un solo
-// botón, para que apagar varias secciones sea un único cambio en la web. Cada
+// Interruptores de la configuración del reto (FP3c, DT-032), monigote de la
+// web (DT-036) y perfil de Instagram (DT-034). Se editan en local y se guardan
+// juntos con un solo botón, para que apagar varias secciones sea un único
+// cambio en la web; interruptores y monigote van en la misma acción. Cada
 // interruptor es un <button role="switch" aria-checked>, accesible con teclado
 // y lector. El perfil de Instagram se valida aquí con la misma función pura
 // que en el servidor (el servidor vuelve a validarlo) y se guarda con su
-// propia acción, solo si ha cambiado.
+// propia acción, solo si ha cambiado. El selector del monigote se carga aparte
+// (next/dynamic, solo cliente): trae las 22 figuras y su motor.
 
 "use client";
 
+import dynamic from "next/dynamic";
 import { useId, useState, useTransition } from "react";
 import { guardarConfiguracion, guardarInstagram } from "@/app/[slug]/admin/actions";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
 import { normalizarPerfilInstagram } from "@/lib/retos/instagram";
-import type { CampoConfigReto, ConfigReto } from "@/lib/retos/config";
+import type { CampoConfigReto, ConfigReto, MonigoteDelReto } from "@/lib/retos/config";
+import { MONIGOTES } from "@/lib/monigotes/catalogo";
+import { normalizarGritoMonigote } from "@/lib/monigotes/grito";
+import type { ValorMonigote } from "@/components/admin/SelectorMonigote";
+
+const SelectorMonigote = dynamic(() => import("@/components/admin/SelectorMonigote"), {
+  ssr: false,
+  loading: () => <EsqueletoSelector />,
+});
 
 const C = { ink: "#1B211D", muted: "#4A5450", eucalipto: "#2F5D50", peligro: "#B03A2E" };
 
@@ -52,36 +63,59 @@ const INTERRUPTORES: readonly DefinicionInterruptor[] = [
     etiqueta: "Instagram",
     descripcion: "Enlace a tu perfil de Instagram (indícalo justo debajo).",
   },
-  {
-    campo: "peregrino_animado",
-    etiqueta: "Peregrino animado",
-    descripcion: "El peregrino que pasea por la pantalla y deja huellas.",
-  },
 ];
 
 type EstadoGuardado = { fase: "inactivo" } | { fase: "guardado" } | { fase: "error"; mensaje: string };
 
+/** Grito tal cual se guardaría (normalizado; null = el del catálogo). */
+function gritoAGuardar(valor: ValorMonigote): string | null {
+  return valor.id === null ? null : normalizarGritoMonigote(valor.grito, MONIGOTES[valor.id].grito);
+}
+
+function mismoMonigote(a: ValorMonigote, b: ValorMonigote): boolean {
+  return a.id === b.id && a.sonido === b.sonido && gritoAGuardar(a) === gritoAGuardar(b);
+}
+
 interface FormConfiguracionProps {
   configInicial: ConfigReto;
+  monigoteInicial: MonigoteDelReto;
   /** URL guardada del perfil de Instagram (vacía = sin enlace). */
   perfilInstagramInicial: string;
   slug: string;
 }
 
-export default function FormConfiguracion({ configInicial, perfilInstagramInicial, slug }: FormConfiguracionProps) {
+export default function FormConfiguracion({
+  configInicial,
+  monigoteInicial,
+  perfilInstagramInicial,
+  slug,
+}: FormConfiguracionProps) {
   const [config, setConfig] = useState<ConfigReto>(configInicial);
   const [guardadaUltima, setGuardadaUltima] = useState<ConfigReto>(configInicial);
+  const valorMonigoteInicial: ValorMonigote = {
+    id: monigoteInicial.id,
+    grito: monigoteInicial.grito ?? "",
+    sonido: monigoteInicial.sonido,
+  };
+  const [monigote, setMonigote] = useState<ValorMonigote>(valorMonigoteInicial);
+  const [monigoteGuardado, setMonigoteGuardado] = useState<ValorMonigote>(valorMonigoteInicial);
   const [perfilInstagram, setPerfilInstagram] = useState(perfilInstagramInicial);
   const [perfilGuardado, setPerfilGuardado] = useState(perfilInstagramInicial);
   const [estado, setEstado] = useState<EstadoGuardado>({ fase: "inactivo" });
   const [pendiente, startTransition] = useTransition();
 
   const interruptoresSinCambios = INTERRUPTORES.every(({ campo }) => config[campo] === guardadaUltima[campo]);
+  const monigoteSinCambios = mismoMonigote(monigote, monigoteGuardado);
   const perfilSinCambios = perfilInstagram.trim() === perfilGuardado.trim();
-  const sinCambios = interruptoresSinCambios && perfilSinCambios;
+  const sinCambios = interruptoresSinCambios && monigoteSinCambios && perfilSinCambios;
 
   function alternar(campo: CampoConfigReto) {
     setConfig((previa) => ({ ...previa, [campo]: !previa[campo] }));
+    setEstado({ fase: "inactivo" });
+  }
+
+  function cambiarMonigote(valor: ValorMonigote) {
+    setMonigote(valor);
     setEstado({ fase: "inactivo" });
   }
 
@@ -103,16 +137,23 @@ export default function FormConfiguracion({ configInicial, perfilInstagramInicia
       urlPerfil = perfil.url;
     }
     const configAGuardar = config;
+    const monigoteAGuardar = monigote;
 
     startTransition(async () => {
       try {
-        if (!interruptoresSinCambios) {
-          const resultado = await guardarConfiguracion(slug, configAGuardar);
+        if (!interruptoresSinCambios || !monigoteSinCambios) {
+          const resultado = await guardarConfiguracion(slug, {
+            ...configAGuardar,
+            monigote: monigoteAGuardar.id,
+            monigote_grito: gritoAGuardar(monigoteAGuardar),
+            monigote_sonido: monigoteAGuardar.sonido,
+          });
           if (!resultado.ok) {
             setEstado({ fase: "error", mensaje: resultado.mensaje });
             return;
           }
           setGuardadaUltima(configAGuardar);
+          setMonigoteGuardado(monigoteAGuardar);
         }
         if (urlPerfil !== null) {
           const resultado = await guardarInstagram(slug, urlPerfil);
@@ -155,6 +196,10 @@ export default function FormConfiguracion({ configInicial, perfilInstagramInicia
         ))}
       </ul>
 
+      <div className="mt-4 border-t pt-4" style={{ borderColor: "#00000010" }}>
+        <SelectorMonigote valor={monigote} onCambiar={cambiarMonigote} deshabilitado={pendiente} />
+      </div>
+
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"
@@ -179,6 +224,21 @@ export default function FormConfiguracion({ configInicial, perfilInstagramInicia
           {estado.mensaje}
         </p>
       )}
+    </div>
+  );
+}
+
+/** Hueco del selector mientras se descarga (mismas proporciones, sin saltos). */
+function EsqueletoSelector() {
+  return (
+    <div aria-busy="true" aria-label="Cargando monigotes">
+      <div className="h-4 w-40 rounded bg-black/5" />
+      <div className="mt-2 h-3 w-64 max-w-full rounded bg-black/5" />
+      <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="h-[132px] animate-pulse rounded-xl bg-black/5 motion-reduce:animate-none" />
+        ))}
+      </div>
     </div>
   );
 }

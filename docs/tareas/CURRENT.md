@@ -1,81 +1,87 @@
-# Tarea en curso — DT-035: token de GPS por reto + QR de OwnTracks
+# Tarea en curso — DT-036: monigote elegible por reto (22 del catálogo)
 
-> El contenido anterior (muro en vivo y pendientes menores) se archivó en
-> `docs/tareas/historico/2026-09-30-muro-en-vivo-y-menores.md`.
+> El contenido anterior (DT-035, token de GPS por reto + QR) se archivó en
+> `docs/tareas/historico/2026-10-01-token-gps-y-qr.md`.
 
 ## Prompt clarificado (aprobado por el usuario)
 
-Cada reto tiene su PROPIO token de GPS (desaparece `TRACK_TOKEN` global). El admin de cada reto
-(`/<slug>/admin`) y el superadmin pueden verlo, copiarlo y regenerarlo (regenerar invalida el
-anterior al instante). Un QR que configura OwnTracks automáticamente, en el admin del reto y en el
-superadmin.
+El admin de cada reto elige en Configuración qué monigote pasea por su web pública (o ninguno) entre
+los 22 del catálogo aprobado (`design-sandbox/public/monigotes-tematicos.html`), puede cambiar el
+grito que lanza al pincharlo (máx. 48 caracteres) y decidir si suena. El "Peregrino animado" actual
+pasa a ser el monigote "Atleti" (conserva "¡AUPA ATLETI!" rojiblanco). Port fiel del catálogo.
 
 ## Decisión técnica
 
-DT-035 en `docs/tecnico/decisiones-tecnicas.md` (plan aprobado: tabla `retos_gps` sin políticas,
-token en claro de 192 bits en base64url, `/api/track` con 401 único y rate limit por IP + por reto,
-acciones que nunca devuelven el token, `ConfigGps` compartido, QR SVG generado en servidor).
+DT-036 en `docs/tecnico/decisiones-tecnicas.md` (plan aprobado: catálogo puro en `lib/monigotes/`,
+motor de navegador en `components/monigotes/`, CSS aislado bajo `.mng`, columnas `monigote`,
+`monigote_grito`, `monigote_sonido` en `retos` (0017), `peregrino_animado` obsoleta hasta 0018).
 
 ## Archivos creados/modificados (Implementador)
 
 | Archivo | Cambio |
 |---|---|
-| `supabase/migrations/0016_retos_gps.sql` | Creado: tabla `retos_gps` + token para cada reto existente. **Aplicada y verificada** en producción por el orquestador (2026-10-01) |
-| `lib/types.ts`, `lib/supabase/admin.ts` | `RetoGps`; tabla `retos_gps` en `BaseDeDatos` (con `Relationships` hacia `retos` para el embed) |
-| `lib/supabase/credenciales-gps.ts` (+ test) | Creado: `generarTokenGps`, `obtenerTokenGps`, `listarCredencialesGps`, `obtenerTokenGpsPorSlug`, `guardarTokenGps`, `asignarTokenGpsNuevo` (reintento único ante 23505) |
-| `lib/gps/owntracks.ts` (+ test) | Creado: `construirConfigOwnTracks`, `enlaceOwnTracks`, `tidDesdeSlug` |
-| `lib/gps/url-tracker.ts` (+ test) | Movido desde `lib/superadmin/`; añade `origenDesdeCabeceras` y `origenDelTracker` |
-| `lib/gps/config-gps-servidor.ts` (+ test) | Creado: `obtenerOrigenTracker`, `prepararDatosConfigGps` (URL, enlace y QR SVG) |
-| `app/api/track/route.ts` (+ test reescrito) | Token por reto, 401 único, rate limit IP 120/min + reto 40/min, sin `TRACK_TOKEN`; cabecera actualizada |
-| `app/[slug]/admin/actions.ts` (+ test) | `regenerarTokenGps(slug)` |
-| `app/superadmin/(panel)/actions.ts` (+ test) | `crearReto` genera el token; `regenerarTokenGpsReto(retoId)` |
-| `components/gps/ConfigGps.tsx` | Creado: componente cliente compartido |
-| `components/admin/SeccionGps.tsx` (+ test) | Creado: pestaña GPS; vuelve a verificar la sesión |
-| `lib/admin/navegacion.ts` (+ test), `app/[slug]/admin/page.tsx` | Pestaña "GPS" |
-| `app/superadmin/(panel)/page.tsx` (+ test nuevo) | `ConfigGps` por tarjeta; sin `TRACK_TOKEN` |
-| `app/superadmin/(panel)/UrlTrackerConToken.tsx` | Eliminado |
-| `package.json`, `pnpm-lock.yaml` | `qrcode` + `@types/qrcode` |
-| `next.config.ts` | Solo comentario (la CSP no bloquea el QR en `data:`) |
-| `docs/tecnico/{decisiones-tecnicas,arquitectura,modelo-datos}.md`, `docs/producto/funcionalidades.md`, `CHANGELOG.md`, `DEBT.md` | Actualizados (DT-035 nuevo; notas en DT-028 y DT-034; DEBT: 2 entradas nuevas, 3 actualizadas) |
+| `supabase/migrations/0017_monigote.sql` | Creado. **Aplicada** el 2026-10-01 (`santi-ago`, `prueba` → `atleti`; `saco-walkers` → null) |
+| `lib/monigotes/catalogo.ts` (+ test) | Creado: `IDS_MONIGOTE`, `DefMonigote`, `MONIGOTES` (22), `esIdMonigote` |
+| `lib/monigotes/piezas.ts`, `figuras.ts`, `marcas.ts` | Creados: piezas SVG, `FIGURAS`, `svgFigura`, `uidSvgSeguro`, `MARCAS`, `particulaSvg` (extraídos del HTML por script) |
+| `lib/monigotes/grito.ts` (+ test) | Creado: `normalizarGritoMonigote`, `gritoEfectivo`, `partirGrito`, `longitudGrito`, km del mojón |
+| `components/monigotes/motor.ts`, `sonidos.ts`, `monigotes.css`, `MonigoteSuelto.tsx` | Creados: motor imperativo, Web Audio, CSS aislado `.mng`/`mng-*`, capas + efecto |
+| `components/publico/MonigoteWeb.tsx` | Creado: `next/dynamic` `ssr:false` de `MonigoteSuelto` |
+| `components/admin/SelectorMonigote.tsx` | Creado: radiogroup "Ninguno" + 22, "Probar", panel del elegido |
+| `components/publico/PeregrinoLibre.tsx` | **Eliminado** |
+| `lib/types.ts`, `lib/supabase/admin.ts` | 3 campos nuevos en `Reto` (opcionales al insertar); `peregrino_animado` marcada obsoleta |
+| `lib/retos/config.ts` (+ test) | `peregrino_animado` fuera de `CAMPOS_CONFIG_RETO`; `ConfiguracionWebReto`, `MonigoteDelReto`, `monigoteDelReto` |
+| `lib/retos/huella-publica.ts` (+ test) | Monigote `[id, grito, sonido]` en la huella |
+| `lib/textos/bloques.ts` | `SeccionConfigurable` sin `peregrino_animado` |
+| `app/[slug]/admin/actions.ts` (+ test) | `guardarConfiguracion`: zod con monigote, grito normalizado, un solo update que sincroniza `peregrino_animado` |
+| `app/[slug]/api/fase/route.ts` | Pasa `monigoteDelReto(reto)` a la huella |
+| `components/publico/WebReto.tsx` (+ test nuevo) | `MonigoteWeb` solo con `monigote.id`; huella con monigote |
+| `components/admin/FormConfiguracion.tsx`, `SeccionConfiguracion.tsx` | Selector por `next/dynamic` + esqueleto en lugar del interruptor; mismo guardado |
+| `components/publico/FotoLlegada.tsx`, `app/[slug]/page.test.ts` | Referencias a `PeregrinoLibre`/`peregrino_animado` en config |
+| Fixtures `Reto` (7 tests más) | Campos del monigote |
+| `docs/tecnico/{decisiones-tecnicas,arquitectura,modelo-datos}.md`, `docs/producto/funcionalidades.md`, `CHANGELOG.md`, `DEBT.md` | DT-036 nueva + nota en DT-034; DEBT: 3 entradas nuevas, 1 actualizada |
 
 ## Quality gates
 
 - `pnpm typecheck`: 0 errores
 - `pnpm lint`: 0 errores, 0 warnings
-- `pnpm test`: 820 tests en verde (65 ficheros)
+- `pnpm test`: 931 tests en verde
 - `pnpm build`: OK
 
 ## Decisiones de implementación (bloqueos menores resueltos) — revisar
 
-1. **`obtenerTokenGpsPorSlug` devuelve también `rutaId`** (`{ retoId, rutaId, token }`): el filtro geográfico necesita la ruta y así sigue siendo una sola consulta (`retos_gps` con `retos!inner` embebido).
-2. **Pestaña propia "GPS"** en el admin (no dentro de Configuración): es una tarea distinta (configurar un dispositivo) y así el token no viaja al navegador cada vez que se abre Configuración.
-3. **`SeccionGps` vuelve a llamar a `resolverRetoConSesion`** aunque la página ya lo hizo: la sección lleva el token y no debe depender de quién la monte (consultas deduplicadas con `React.cache`).
-4. **`lib/superadmin/url-tracker.ts` pasa a `lib/gps/url-tracker.ts`**: ahora lo usan admin y superadmin; la lectura de cabeceras que vivía en la página del superadmin se extrae a `lib/gps/config-gps-servidor.ts` (lógica pura en `url-tracker.ts`).
-5. **QR en SVG** (`qrcode.toString({ type: "svg" })` → data URL), corrección "M". URL y QR solo se pintan tras "Mostrar"; "Abrir en OwnTracks" también.
-6. **`ConfigGps` recibe `datos: DatosConfigGps | null`** (en vez de props sueltas): `null` = "Sin token GPS" + "Generar". Añade `urlSinToken` (para enmascarar) y `origenProvisional` (aviso).
-7. **Claves de rate limit con prefijo** (`track:ip:`, `track:reto:`): el `Map` de `lib/rate-limit.ts` es compartido y las demás rutas usan la IP a secas.
-8. **`crearReto` sigue devolviendo `ok: true` si solo falla el token**, con el aviso en el mensaje ("pulsa «Generar» en su tarjeta").
-9. **Slug mal formado ⇒ 401 sin consultar la BD** (no hace falta la comparación ficticia: el formato del slug no es secreto).
+Detalladas en las notas de cierre de DT-036. Resumen:
+1. `normalizarGritoMonigote(valor, gritoPorDefecto)` (dos argumentos); quita también marcas bidi.
+2. `gritoVivo` booleano; el grito por defecto del mojón escrito a mano sigue cantando los km.
+3. `MonigoteWeb` con props primitivas (`id`, `grito`, `sonido`) en vez de `config={monigote}`.
+4. Margen superior de 64 px para el suelto (el de `PeregrinoLibre`).
+5. Hipo y arrebato también en las tarjetas del selector (solo visibles).
+6. "Probar" en eucalipto (contraste); grito recortado por caracteres en `onChange` en vez de `maxLength`.
+7. Poses estáticas de movimiento reducido también con la media query real.
+8. El obsoleto `peregrino_animado` se rechaza en la entrada de `guardarConfiguracion` (`.strict()`).
 
 ## Verificación en navegador
 
-- **No hecha:** no hay `.env` local con Supabase ni navegador en este entorno.
-- **Pendiente en preview:** pestaña GPS del admin y tarjetas del superadmin (Mostrar/Ocultar, Copiar, QR visible y escaneable, Regenerar con confirmación, "Sin token GPS" + Generar); escanear el QR con OwnTracks en el móvil (con "Allow external configuration") y comprobar que llega un punto en Posición.
-
-## Despliegue (orden obligatorio)
-
-1. ~~Aplicar `0016_retos_gps.sql` en Supabase de producción.~~ Hecho y verificado (2026-10-01).
-2. Desplegar.
-3. Reconfigurar el móvil de cada reto con el QR (el `TRACK_TOKEN` deja de valer).
-4. Borrar `TRACK_TOKEN` de Vercel.
+- **Hecha (parcial)** con Chrome headless sobre una página temporal ya borrada (sin Supabase local):
+  las 22 figuras animadas en el selector, "Probar" del mojón (grito «¡QUEDAN 99!» y placa a 99) y del
+  atleti (Fraunces cursiva rojiblanca), atleti suelto pinchado (pose, bocadillo, carrera, huellas,
+  grito a pantalla completa), hipo del borrachillo, arrebato del pimiento y movimiento reducido
+  (quieto en la esquina, sin animaciones). Consola sin errores de React.
+- **Pendiente en preview:** web real con un reto (y vista previa del admin), guardar desde
+  Configuración tras aplicar `0017`, sonido con clic real (en headless el clic sintético no desbloquea
+  el audio), teclado del radiogroup, y en iPhone con el modo silencio.
 
 ## Historial de revisión
 
-### Reviewer — 2026-10-01 — Aprobado (pasa a Seguridad)
+- **2026-10-01 — Reviewer: APROBADO** (pasa a Seguridad). Sin bloqueantes. Port fiel verificado contra
+  el catálogo (22 defs, `partir`, `lanzarGrito`, `Suelto`, km del mojón, `gritoDe`); limpieza del motor
+  completa; CSS 100 % bajo `.mng` (con test); guardado strict + normalización + sincronía
+  `peregrino_animado`; huella idéntica en `WebReto` y `/api/fase`. Arreglado por el Reviewer:
+  `docs/tecnico/modelo-datos.md` (fila `monigote` corrompida con el inicio del documento duplicado),
+  0017 marcada como aplicada aquí y en `DEBT.md`. Recomendaciones registradas en `DEBT.md`: cursiva de
+  Fraunces sintetizada, caracteres de anchura cero en el grito, flechas del selector durante el guardado.
 
-Sin bloqueantes. `/api/track` conserva intento activo del reto, fallback 0003, modo guiado/libre y filtro
-geográfico por `ruta_id`; `TRACK_TOKEN` ya no aparece en código; claves de OwnTracks coinciden con la
-documentación oficial; el token solo se lee tras verificar sesión en la propia página/sección.
-Recomendaciones (registradas en `DEBT.md`): texto de `ConfigGps` tras regenerar ("QR de abajo" con el QR
-vuelto a ocultar). Docs retocadas por el Reviewer: estado de `0016` aplicada (aquí y en `DEBT.md`) y
-`TRACK_TOKEN` marcada obsoleta en `docs/producto/roadmap.md`.
+## Despliegue
+
+1. ~~Aplicar `0017_monigote.sql` y verificar~~ — hecho (2026-10-01).
+2. Desplegar.
+3. Más adelante, `0018` para borrar `peregrino_animado`.

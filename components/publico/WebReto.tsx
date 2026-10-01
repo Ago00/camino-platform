@@ -18,6 +18,8 @@
 //   `vistaPrevia` los formularios no envían, no hay polling y no se monta
 //   RefrescoAlCambiarFase (consulta /api/fase y, como la fase previsualizada
 //   no tiene por qué coincidir con la real, recargaría el iframe sin parar).
+// - DT-036: el monigote elegido por el reto (o ninguno) sustituye al
+//   PeregrinoLibre; también aparece en la vista previa.
 
 import { getSupabasePublic } from "@/lib/supabase/public";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
@@ -31,7 +33,7 @@ import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
 import type { Textos } from "@/lib/textos/obtener-textos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { calcularRitmoMedioIntento } from "@/lib/ritmo";
-import { fotoQuienCaminaDelReto, type ConfigReto } from "@/lib/retos/config";
+import { fotoQuienCaminaDelReto, monigoteDelReto, type ConfigReto } from "@/lib/retos/config";
 import { huellaContenidoPublico } from "@/lib/retos/huella-publica";
 import type { DatosEjemplo } from "@/lib/vista-previa/datos-ejemplo";
 import type {
@@ -43,7 +45,7 @@ import type {
   ProgresoPublicoLibre,
   Reto,
 } from "@/lib/types";
-import PeregrinoLibre from "@/components/publico/PeregrinoLibre";
+import MonigoteWeb from "@/components/publico/MonigoteWeb";
 import ModoAntes from "@/components/publico/ModoAntes";
 import ModoDurante from "@/components/publico/ModoDurante";
 import ModoDuranteLibre from "@/components/publico/ModoDuranteLibre";
@@ -87,6 +89,7 @@ interface WebRetoProps {
 
 export default function WebReto({ reto, config, textos, trazaCoords, fase, fuente, vistaPrevia }: WebRetoProps) {
   const slug = reto.slug;
+  const monigote = monigoteDelReto(reto);
 
   return (
     <VistaPreviaProvider activa={vistaPrevia}>
@@ -94,11 +97,16 @@ export default function WebReto({ reto, config, textos, trazaCoords, fase, fuent
         {!vistaPrevia && (
           <RefrescoAlCambiarFase
             faseActual={fase}
-            huellaActual={huellaContenidoPublico({ config, fotoQuienCamina: fotoQuienCaminaDelReto(reto), textos })}
+            huellaActual={huellaContenidoPublico({
+              config,
+              monigote,
+              fotoQuienCamina: fotoQuienCaminaDelReto(reto),
+              textos,
+            })}
             slug={slug}
           />
         )}
-        {config.peregrino_animado && <PeregrinoLibre />}
+        {monigote.id && <MonigoteWeb id={monigote.id} grito={monigote.grito} sonido={monigote.sonido} />}
         <div className="mx-auto w-full max-w-[480px] px-5 pb-28">
           {fase === "antes" && (
             <ModoAntes

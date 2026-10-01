@@ -44,6 +44,9 @@ const RETO: Reto = {
   seccion_instagram: true,
   respuestas_visitantes: true,
   peregrino_animado: false,
+  monigote: null,
+  monigote_grito: null,
+  monigote_sonido: true,
   quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };
@@ -76,7 +79,8 @@ describe("app/[slug]/page — usa WebReto (DT-034)", () => {
       trazaCoords: TRAZA,
       textos: { reto_titulo: "Título" },
     });
-    expect(elemento.props.config).toMatchObject({ peregrino_animado: false });
+    // El monigote (DT-036) lo lee WebReto del propio reto: ya no viaja en la configuración.
+    expect(elemento.props.config).not.toHaveProperty("peregrino_animado");
   });
 
   it("con intento activo usa su fase y le pasa el intento", async () => {

@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-10-01 — Cada reto elige su monigote: 22 personajes del Camino
+
+**Tipo:** Feature
+
+En Configuración, el admin de cada reto elige qué monigote pasea por su web (o
+ninguno) entre 22 personajes del Camino —el Atleti de siempre, la meiga en
+escoba, el pulpo, el mojón que cuenta los kilómetros, el pimiento de Padrón que
+a veces pica…—, cada uno con su forma de andar, su rastro, su grito y su
+sonido. Puede probarlos antes de elegir, cambiar el grito y decidir si suena al
+pincharlo. Los retos que tenían el peregrino animado pasan al Atleti, con su
+«¡AUPA ATLETI!» rojiblanco.
+
+---
+
 ## 2026-10-01 — Token de GPS propio de cada reto y QR para configurar OwnTracks
 
 **Tipo:** Feature

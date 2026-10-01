@@ -1,6 +1,6 @@
 // Foto opcional de la pantalla "llegada" (DT-024): tarjeta redondeada con
-// object-cover, mismo tratamiento visual que FotoQuienCamina (ModoAntes.tsx)
-// y FOTO_PEREGRINO (PeregrinoLibre.tsx). Compartida entre ModoLlegada.tsx y
+// object-cover, mismo tratamiento visual que FotoQuienCamina (ModoAntes.tsx).
+// Compartida entre ModoLlegada.tsx y
 // la preview del modal "Finalizar" del panel admin
 // (components/admin/ModalFinalizar.tsx) para que ambas se vean igual.
 

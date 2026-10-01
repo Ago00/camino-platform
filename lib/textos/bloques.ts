@@ -26,7 +26,7 @@ export function esClaveGestionadaEnConfiguracion(clave: string): clave is ClaveG
 }
 
 /** Interruptor de sección de la configuración del reto del que depende un bloque. */
-export type SeccionConfigurable = Exclude<CampoConfigReto, "respuestas_visitantes" | "peregrino_animado">;
+export type SeccionConfigurable = Exclude<CampoConfigReto, "respuestas_visitantes">;
 
 interface BloqueTextos {
   id: string;

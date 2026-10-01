@@ -168,11 +168,20 @@ hasta que se despliega. El punto marcado en el mapa se mantiene al plegar.
 
 ### Otros elementos
 
-- **Peregrino animado** — un monigote con camiseta rojiblanca deambula por
-  la web; al pincharlo se enfada y grita "¡AUPA ATLETI!" a pantalla
-  completa. Interruptor en Configuración para
-  encenderlo/apagarlo por reto: encendido en `santi-ago`, apagado por
-  defecto en los retos nuevos.
+- **Monigote** — cada reto puede tener un monigote que deambula por la web
+  dejando su propio rastro (huellas, tinta, estrellitas, notas, charcos…).
+  Hay 22 para elegir, todos del Camino: el Atleti rojiblanco de siempre,
+  peregrino clásico, borrachillo, pulpo, meiga, gaiteiro, vaca rubia,
+  gallego con paraguas, peregrino con ampollas, abuelo, guiri, botafumeiro,
+  flecha amarilla, mojón, caracol, sello de la credencial, pimiento de
+  Padrón, tarta de Santiago, tortilla, hórreo, roncador de albergue y perro
+  peregrino. Cada uno anda a su manera (en zigzag, volando, reptando, a
+  saltos, dando volteretas…). Al pincharlo se enfada, se acelera y lanza su
+  grito a pantalla completa con su propio estilo (el mojón canta los km que
+  le quedan, y bajan con cada pinchazo); si el reto lo tiene activado,
+  además suena. Con "reducir movimiento" activado en el dispositivo se queda
+  quieto en una esquina. Se elige en Configuración (o ninguno); los retos
+  que tenían el peregrino animado pasan al Atleti.
 - **Cielo-reloj** — degradado de fondo día → noche según la hora real.
 
 ---
@@ -273,7 +282,10 @@ Qué ve el público de este reto, sin tocar código:
 - **Respuestas de visitantes** — on/off (ver "Comentarios" de la web
   pública). Sin efecto si los comentarios están apagados.
 - **Foto de "quién camina"** — subir, cambiar o quitar (sin foto, silueta).
-- Interruptor del peregrino animado.
+- **Monigote de la web** — galería con "Ninguno" y los 22 monigotes andando;
+  "Probar" enseña cómo se enfada, su grito y su sonido. Del elegido se puede
+  cambiar el grito (hasta 48 caracteres; vacío = el suyo) y decidir si suena
+  al pincharlo. Se guarda con el resto de la configuración.
 - Perfil de Instagram del reto, configurado aquí.
 
 ### Textos

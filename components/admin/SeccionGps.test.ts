@@ -43,6 +43,9 @@ const RETO: Reto = {
   seccion_instagram: true,
   respuestas_visitantes: true,
   peregrino_animado: true,
+  monigote: "atleti",
+  monigote_grito: null,
+  monigote_sonido: true,
   quien_camina_foto_url: null,
   created_at: "2026-09-01T00:00:00.000Z",
 };

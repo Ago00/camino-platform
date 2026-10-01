@@ -44,10 +44,22 @@ export interface Reto {
   /** Respuestas de visitantes en los comentarios (FP3a). false = solo responde el caminante desde el admin. */
   respuestas_visitantes: boolean;
   /**
-   * Peregrino animado que pasea por la pantalla (DT-034, migración 0015).
-   * Default false en BD; true en 'santi-ago'. Leer con `configDelReto`.
+   * OBSOLETA (DT-036): sustituida por `monigote`; se elimina en 0018. Solo se
+   * lee como respaldo si la columna `monigote` aún no existe, y
+   * `guardarConfiguracion` la mantiene sincronizada (`monigote !== null`).
    */
   peregrino_animado: boolean;
+  /**
+   * Monigote que pasea por la web pública (DT-036, migración 0017): uno de
+   * `IDS_MONIGOTE` (lib/monigotes/catalogo.ts) o null (ninguno). La BD solo
+   * exige el formato; un id desconocido se trata como null. Leer siempre con
+   * `monigoteDelReto` (lib/retos/config.ts).
+   */
+  monigote: string | null;
+  /** Grito personalizado (1–48 caracteres); null = el del catálogo. */
+  monigote_grito: string | null;
+  /** Si suena al pincharlo. Default true en BD. */
+  monigote_sonido: boolean;
   /**
    * Foto de "quién camina": URL pública del bucket `minuto-a-minuto` (objeto
    * `<reto_id>/quien-camina-…`) o ruta de `/public` heredada (`/santi.jpg`).

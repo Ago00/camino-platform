@@ -32,6 +32,9 @@ type CampoRetoOpcionalAlCrear =
   | "seccion_instagram"
   | "respuestas_visitantes"
   | "peregrino_animado"
+  | "monigote"
+  | "monigote_grito"
+  | "monigote_sonido"
   | "quien_camina_foto_url";
 
 /**
@@ -60,8 +63,8 @@ export interface BaseDeDatos {
     Tables: {
       retos: {
         Row: Pick<Reto, keyof Reto>;
-        // La configuración de FP3c (DT-032) y el peregrino (DT-034) tienen
-        // defaults en BD: el superadmin crea retos sin fijarlos.
+        // La configuración de FP3c (DT-032), el peregrino (DT-034) y el
+        // monigote (DT-036) tienen defaults en BD: el superadmin crea retos sin fijarlos.
         Insert: Omit<Pick<Reto, keyof Reto>, "id" | "created_at" | CampoRetoOpcionalAlCrear> &
           Partial<Pick<Pick<Reto, keyof Reto>, CampoRetoOpcionalAlCrear>>;
         Update: Partial<Pick<Reto, keyof Reto>>;

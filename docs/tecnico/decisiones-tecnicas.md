@@ -2112,6 +2112,10 @@ Cuatro peticiones del usuario: (A) poder ver desde el admin cómo se vería ahor
 
 La parte D (URL del GPS con el `TRACK_TOKEN` global, `UrlTrackerConToken.tsx`) queda sustituida por DT-035: token propio por reto, visible también en el admin del reto, con QR de OwnTracks y regeneración. `lib/superadmin/url-tracker.ts` se movió a `lib/gps/url-tracker.ts`.
 
+### Nota posterior (2026-10-01) — el peregrino pasa a DT-036
+
+La parte B (interruptor `peregrino_animado`, `PeregrinoLibre`) queda sustituida por DT-036: cada reto elige su monigote entre 22 (o ninguno), con grito y sonido configurables. `peregrino_animado` sale de `CAMPOS_CONFIG_RETO`/`ConfigReto`, queda obsoleta en BD (`0017`) y se elimina en `0018`; `PeregrinoLibre.tsx` se borra (el monigote "atleti" es el mismo peregrino rojiblanco).
+
 ---
 
 ## DT-035 — Token de GPS por reto y QR de OwnTracks
@@ -2145,3 +2149,43 @@ La parte D (URL del GPS con el `TRACK_TOKEN` global, `UrlTrackerConToken.tsx`) q
 - **Rate limit con claves prefijadas** (`track:ip:`, `track:reto:`) porque el `Map` de `lib/rate-limit.ts` es compartido con las rutas que usan la IP a secas.
 - **Slug mal formado ⇒ 401 sin consultar BD** (el formato del slug no es secreto; la comparación ficticia se reserva para los casos que sí consultan).
 - **Despliegue:** aplicar `0016` → desplegar → reconfigurar cada móvil con el QR → borrar `TRACK_TOKEN` de Vercel.
+
+
+---
+
+## DT-036 — Monigote elegible por reto (22 del catálogo)
+
+**Fecha:** 2026-10-01 · **Tarea:** Monigote elegible por reto
+
+### Contexto
+
+DT-034 hizo opcional el peregrino animado (`PeregrinoLibre`, rojiblanco, con «¡AUPA ATLETI!»), pero es un guiño personal del reto original. El usuario aprobó un catálogo de 22 monigotes temáticos del Camino (`design-sandbox/public/monigotes-tematicos.html`: HTML + CSS + JS vanilla + SVG inline + Web Audio) y pide que cada reto elija el suyo (o ninguno), con su grito personalizable y la opción de que suene al pincharlo. Port fiel: mismo aspecto y comportamiento que el catálogo.
+
+### Decisión
+
+1. **Catálogo puro en `lib/monigotes/`** (servidor + cliente): `catalogo.ts` (`IDS_MONIGOTE` as const, `DefMonigote`, `MONIGOTES`, `esIdMonigote`), `piezas.ts` (piezas SVG comunes), `figuras.ts` (`FIGURAS: Record<IdMonigote, (uid) => string>`, `svgFigura`, `uidSvgSeguro`), `marcas.ts` (`MARCAS`, `particulaSvg`) y `grito.ts` (`normalizarGritoMonigote`, `gritoEfectivo`, `partirGrito`, km del mojón). Figuras, marcas, partículas y CSS se extrajeron del HTML con un script (no a mano) para no perder fidelidad.
+2. **Motor de navegador en `components/monigotes/`**: `motor.ts` (DOM imperativo: `crearSuelto`, `lanzarGrito`, `montarTarjeta`; contador de km a nivel de módulo; limpieza completa de rAF, temporizadores de pose/arrebato/hipo, marcas y grito), `sonidos.ts` (Web Audio sintetizado, versión mejorada para iPhone: `navigator.audioSession.type = "playback"`, buffer mudo de desbloqueo y reproducción tras `ctx.resume()`), `monigotes.css` y `MonigoteSuelto.tsx` (crea las tres capas con refs y llama al motor en un efecto; StrictMode-safe). DOM imperativo a propósito: el monigote se mueve en cada frame y deja decenas de marcas animadas; con estado de React serían renders por frame.
+3. **CSS aislado**: todo el CSS del catálogo bajo la clase raíz `.mng` y keyframes con prefijo `mng-` (las clases del catálogo son genéricas: `.pa`, `.pose`, `.bob`, `.giro`…). El grito usa `var(--font-fraunces)` (next/font del layout raíz). Un test comprueba que ninguna regla queda fuera de `.mng` y que toda animación usada tiene su `@keyframes`.
+4. **SVG como string**: `innerHTML`/`dangerouslySetInnerHTML` solo con strings de `FIGURAS`/`MARCAS`/`particulaSvg` (números y colores del catálogo) y un `uid` derivado de `useId()` saneado a `[a-z0-9-]` (va en `url(#ra-…)`). El grito y el bocadillo **nunca** por innerHTML: `textContent`.
+5. **BD** (`0017`): `retos.monigote text null` con check de formato `^[a-z]{2,24}$` (solo formato: el catálogo vive en el código y puede crecer sin migración), `monigote_grito text null` con `char_length between 1 and 48`, `monigote_sonido boolean not null default true`; `monigote = 'atleti'` donde `peregrino_animado`; `peregrino_animado` comentada como obsoleta (se elimina en `0018`).
+6. **Lectura** con `monigoteDelReto(reto)` (`lib/retos/config.ts`): columna `monigote` ausente ⇒ red de compatibilidad con `peregrino_animado ?? true` (encendido ⇒ "atleti"); id desconocido ⇒ ninguno; grito normalizado; `sonido ?? true`. `peregrino_animado` sale de `CAMPOS_CONFIG_RETO`/`ConfigReto`.
+7. **Escritura**: `guardarConfiguracion` amplía su zod `.strict()` con `monigote: z.enum(IDS_MONIGOTE).nullable()`, `monigote_grito` (1–48 caracteres contados por code point, como `char_length`) o null y `monigote_sonido`; normaliza el grito en el servidor (sin monigote ⇒ null); un solo `update` tras `resolverRetoConSesion` (DT-029) que además escribe `peregrino_animado = monigote !== null` mientras exista la columna. Revalida `/<slug>` y `/<slug>/admin`. El obsoleto `peregrino_animado` ya no se acepta en la entrada.
+8. **Huella pública** (`lib/retos/huella-publica.ts`): incluye `[id, grito, sonido]` en orden fijo; `WebReto` y `/api/fase` la calculan igual, así que cambiar de monigote refresca la web abierta.
+9. **Web**: `WebReto` (Server Component) monta `MonigoteWeb` solo si `monigote.id`; `MonigoteWeb` (cliente) carga `MonigoteSuelto` con `next/dynamic` + `ssr: false` (no se admite en Server Components). La vista previa lo hereda. Sin aviso "Activar sonido": con el sonido apagado, no suena.
+10. **Admin**: en Configuración, el interruptor "Peregrino animado" se sustituye por `SelectorMonigote` (cargado con `next/dynamic` + esqueleto): `role="radiogroup"` con "Ninguno" + 22 tarjetas (figura de 64 px andando en su sitio sin rastro, nombre y "Probar" = pose 3 s + bocadillo + grito a pantalla completa + sonido si está marcado), roving tabindex con flechas/Inicio/Fin, tarjetas fuera de pantalla pausadas con IntersectionObserver. Debajo, el panel del elegido: grito (máx. 48, placeholder = grito por defecto, contador) y "Que suene al pincharlo". Cambiar de monigote vacía el grito personalizado. Interruptores y monigote se guardan con la misma acción.
+
+### Alternativas valoradas
+
+**Figuras como componentes JSX**: descartada, 22 figuras reescritas a mano perderían fidelidad y el motor necesitaría React por frame. **Imágenes/sprites estáticos**: descartada, se pierden las animaciones por partes (piernas, brazos, pose) del catálogo. **Enum en BD con los 22 ids**: descartada, cada monigote nuevo exigiría migración; basta el check de formato y que el código trate un id desconocido como "ninguno". **CSS Modules**: descartada, el motor genera marcado con las clases literales del catálogo; el aislamiento por prefijo `.mng` es equivalente y mantiene el CSS idéntico. **Aviso "Activar sonido" en la web pública**: descartado por el usuario.
+
+### Notas de cierre (implementación)
+
+- **`normalizarGritoMonigote(valor, gritoPorDefecto)`** recibe el grito por defecto (el plan lo nombraba con un solo argumento): hace falta para "igual al de defecto ⇒ null". Quita controles C0/C1 y además las marcas bidi de incrustación/aislamiento (U+202A–E, U+2066–9), que también son invisibles y reordenan el texto; respeta el ZWJ de los emoji compuestos.
+- **`gritoVivo` es un booleano** en `DefMonigote` (en el catálogo era una función que leía la variable global `KM`): `gritoEfectivo(def, grito, km)` produce «¡Quedan N!». Escribir el grito por defecto del mojón («¡Quedan 100!») cuenta como no personalizado y sigue cantando los km.
+- **`MonigoteWeb` recibe `id`, `grito` y `sonido` como props primitivas** (el plan decía `config={monigote}`): son las dependencias del efecto de `MonigoteSuelto` y así no se recrea el monigote por una referencia nueva.
+- **Margen superior de 64 px** para los destinos del suelto (el catálogo usaba el borde de su propia barra, que la web no tiene): el mismo que usaba `PeregrinoLibre`.
+- **Las tarjetas del selector conservan el hipo del borrachillo y el arrebato del pimiento** (solo con la tarjeta visible), como en el catálogo; nunca suenan.
+- **"Probar" en color eucalipto** en vez del acento de cada monigote: varios acentos (guiri, flecha) no tienen contraste suficiente sobre blanco.
+- **Movimiento reducido**: además de lo del catálogo (todo quieto, grito sin entrada, sin partículas), las poses estáticas del peregrino y el abuelo que el catálogo solo aplicaba con su simulador `.rm` se aplican también con la media query real. Si la preferencia cambia con la página abierta, el suelto se vuelve a crear.
+- **Verificación visual** con Chrome headless (tiempo real vía DevTools) sobre una página temporal ya borrada: las 22 figuras, el grito del mojón con la placa bajando, el grito del atleti suelto, huellas, hipo, arrebato y movimiento reducido. No hay Supabase local: la web real y el panel con datos quedan para la preview.
+- **Despliegue:** aplicar `0017` antes de desplegar (si no, guardar la configuración falla hasta aplicarla; la lectura tiene red). `0018` (borrar `peregrino_animado`) cuando el código desplegado ya no la escriba.

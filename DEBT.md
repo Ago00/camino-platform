@@ -2,6 +2,74 @@
 
 ---
 
+## ~~Recordatorio: aplicar `supabase/migrations/0017_monigote.sql` contra producción ANTES de desplegar DT-036~~ — RESUELTO
+
+Aplicada por el orquestador el 2026-10-01 (`santi-ago` y `prueba` a `atleti`, `saco-walkers` a `null`).
+
+**Fecha:** 2026-10-01
+**Contexto:** Monigote elegible por reto (DT-036). La migración está escrita; la aplica el orquestador.
+**Problema:** Sin las columnas `monigote`, `monigote_grito` y `monigote_sonido`, la web sigue funcionando (`monigoteDelReto` cae a `peregrino_animado`: encendido ⇒ "atleti"), pero "Guardar configuración" falla en todos los retos porque el `update` envía las columnas nuevas.
+**Impacto:** Medio mientras no se aplique: ningún admin puede guardar la configuración de su web.
+**Solución propuesta:** Aplicar `0017` y verificar: `select slug, peregrino_animado, monigote, monigote_grito, monigote_sonido from retos;` ⇒ `monigote = 'atleti'` exactamente donde `peregrino_animado` es `true`, `monigote_sonido = true` en todos; y que `update retos set monigote = 'X1' where false;` falla por el check de formato.
+**Prioridad:** Alta
+
+---
+
+## ~~Grito de los monigotes: Fraunces cursiva sintetizada (no la cursiva real del catálogo)~~ — RESUELTO antes del commit de DT-036
+
+**Fecha:** 2026-10-01
+**Contexto:** Revisión de DT-036. El catálogo cargaba Fraunces con `ital` 0 y 1; `app/layout.tsx` carga `Fraunces({ subsets: ["latin"], variable })` sin `style`, es decir, solo la redonda.
+**Problema:** Los gritos con `italica: true` (atleti, peregrino, pulpo, meiga, gaiteiro, gallego, caracol, tarta, tortilla…) salen en oblicua falsa del navegador, no con los glifos de la cursiva de Fraunces que aprobó el usuario.
+**Impacto:** Bajo-medio: diferencia visible respecto al catálogo en el elemento más llamativo (el grito a pantalla completa).
+**Solución propuesta:** `Fraunces({ subsets: ["latin"], style: ["normal", "italic"], variable: "--font-fraunces" })` y comprobar el peso añadido (un fichero de fuente más; valorar `preload` solo de la redonda). Alternativa: aceptar la oblicua tras compararlas a ojo con el usuario.
+**Prioridad:** Media
+
+---
+
+## ~~`normalizarGritoMonigote` no quita los caracteres de anchura cero~~ — RESUELTO antes del commit de DT-036
+
+**Fecha:** 2026-10-01
+**Contexto:** Revisión de DT-036 (`lib/monigotes/grito.ts`). Se quitan controles C0/C1 y marcas bidi de incrustación/aislamiento.
+**Problema:** U+200B (ZWSP), U+2060 (WJ) y U+200E/U+200F (LRM/RLM) sobreviven (no son `\s` en JS): un grito hecho solo de ellos se guarda como "personalizado" y el grito sale invisible.
+**Impacto:** Bajo: solo lo puede provocar el propio admin.
+**Solución propuesta:** Añadir `​‎‏⁠` a `CARACTERES_INVISIBLES` (respetando el ZWJ U+200D) con su caso en `grito.test.ts`.
+**Prioridad:** Baja
+
+---
+
+## ~~Selector de monigote: con el formulario guardando, las flechas mueven el foco sin elegir~~ — RESUELTO antes del commit de DT-036
+
+**Fecha:** 2026-10-01
+**Contexto:** Revisión de DT-036 (`components/admin/SelectorMonigote.tsx`, `alPulsarTecla`).
+**Problema:** Con `deshabilitado`, `elegir` no hace nada pero el foco sí salta a otra opción (con `tabIndex=-1`); el roving tabindex queda desincronizado durante el guardado.
+**Impacto:** Muy bajo (ventana de un guardado).
+**Solución propuesta:** `if (deshabilitado) return;` al principio de `alPulsarTecla`.
+**Prioridad:** Baja
+
+---
+
+## Migración 0018: eliminar la columna obsoleta `retos.peregrino_animado`
+
+**Fecha:** 2026-10-01
+**Contexto:** DT-036 sustituye `peregrino_animado` por `monigote`. Se dejó la columna para que el código desplegado antes de `0017` siguiera funcionando, y `guardarConfiguracion` la mantiene sincronizada (`monigote !== null`).
+**Problema:** Columna muerta en `retos`; `Reto.peregrino_animado`, la red de `monigoteDelReto` y la escritura en `guardarConfiguracion` existen solo por compatibilidad.
+**Impacto:** Bajo: confusión y una escritura de más por guardado.
+**Solución propuesta:** Cuando `0017` esté aplicada y el código de DT-036 desplegado: `0018` con `alter table public.retos drop column peregrino_animado;` y, en el mismo cambio, quitar `peregrino_animado` de `lib/types.ts`, `lib/supabase/admin.ts`, del `update` de `guardarConfiguracion`, de la red de `monigoteDelReto` (columna `monigote` ausente ⇒ ninguno) y de los fixtures de tests.
+**Prioridad:** Baja
+
+---
+
+## El motor de los monigotes no tiene tests de DOM
+
+**Fecha:** 2026-10-01
+**Contexto:** DT-036. El proyecto no tiene entorno DOM en Vitest (`environment: "node"`); el motor (`components/monigotes/motor.ts`) es DOM imperativo (rAF, Web Animations, matchMedia, IntersectionObserver en el selector).
+**Problema:** Lo cubierto por tests es el catálogo, las reglas del grito, la lectura/escritura y el montaje condicional en `WebReto`. La limpieza de `destruir()` (rAF, temporizadores de pose/arrebato/hipo, marcas, grito, listeners de `visibilitychange` y de la media query), el movimiento reducido y el contador de km se verificaron solo a mano en Chrome headless.
+**Impacto:** Bajo-medio: una regresión en la limpieza (p. ej. un temporizador que sobrevive al desmontar) no la detecta ninguna gate; en una web abierta 30 h acumularía nodos o timers.
+**Solución propuesta:** Añadir `happy-dom` (o `jsdom`) solo para `components/monigotes/*.test.ts` (`// @vitest-environment happy-dom`) con tests de `crearSuelto` → `destruir()` que comprueben capas vacías y que no quedan temporizadores (`vi.useFakeTimers` + `vi.getTimerCount()`), y de `montarTarjeta` → `probar()`/`destruir()`.
+**Prioridad:** Baja
+
+---
+
 ## Recordatorio: aplicar `supabase/migrations/0016_retos_gps.sql` contra producción ANTES de desplegar DT-035
 
 **Fecha:** 2026-10-01
@@ -125,6 +193,7 @@ Aplicada por el orquestador el 2026-09-30 (`santi-ago` a `true`, el resto a `fal
 (3) `esUrlPerfilInstagram` exige esquema: si el valor guardado de `santi-ago` en `textos.cierre_antes_instagram_url` no lo lleva (o no es un perfil), el enlace desaparece de su web tras desplegar.
 (4) Los km de los datos de ejemplo del modo guiado salen de la traza de PINTADO (acortada por DP), así que el mojón de ejemplo no cuadra con la longitud real de la ruta.
 **Impacto:** Bajo, salvo (3), que cambia la web de `santi-ago` si el valor no es válido.
+**Actualización 2026-10-01 (DT-036):** de (1) ya hay test (`components/publico/WebReto.test.ts`, recorriendo el árbol de elementos con dobles): la vista previa no monta `RefrescoAlCambiarFase` y `MonigoteWeb` (que sustituye a `PeregrinoLibre`) solo se monta con monigote. Falta el caso de `FaseConDatosEjemplo` con el minuto a minuto apagado.
 **Actualización 2026-09-30:** de (2) ya se rechaza el dominio a secas (`instagram.com`, `www.`/`m.`) y se acepta `m.instagram.com/usuario`; siguen sin aplicarse las reglas de puntos (inicial/final, `..`).
 **Solución propuesta:** (1) Test con `renderToString` de `WebReto` en "antes" con `RefrescoAlCambiarFase`/`PeregrinoLibre` sustituidos por dobles. (2) Rechazar usuarios con punto inicial/final, `..` o que terminen en un dominio (`.com`), y admitir `m.`. (3) Antes de desplegar: `select valor from textos where clave = 'cierre_antes_instagram_url';` y, si no pasa, volver a guardarlo desde Configuración. (4) Si molesta, escalar con la longitud del catálogo de rutas.
 **Prioridad:** Media para (3) (comprobar antes de desplegar); Baja el resto.

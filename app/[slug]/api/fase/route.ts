@@ -10,7 +10,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { obtenerFaseActual } from "@/lib/fase-actual";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
-import { configDelReto, fotoQuienCaminaDelReto } from "@/lib/retos/config";
+import { configDelReto, fotoQuienCaminaDelReto, monigoteDelReto } from "@/lib/retos/config";
 import { huellaContenidoPublico } from "@/lib/retos/huella-publica";
 import { obtenerRetoPorSlug } from "@/lib/supabase/retos";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
@@ -37,6 +37,7 @@ export async function GET(
   const [fase, textos] = await Promise.all([obtenerFaseActual(reto.id), obtenerTextos(reto.id)]);
   const huella = huellaContenidoPublico({
     config: configDelReto(reto),
+    monigote: monigoteDelReto(reto),
     fotoQuienCamina: fotoQuienCaminaDelReto(reto),
     textos,
   });

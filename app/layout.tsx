@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces } from "next/font/google";
 import "./globals.css";
 
-const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces" });
+// Cursiva real: los gritos de los monigotes (DT-036) la usan; sin ella el navegador la imita inclinando.
+const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
   title: "Camino de Santi·ago",

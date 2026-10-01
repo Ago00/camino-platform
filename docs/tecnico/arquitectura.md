@@ -43,7 +43,8 @@ camino-santi-ago/
 │   │   ├── WebReto.tsx        # DT-034: composición de la web (Server Component, con los *Conectado y sus
 │   │   │                      # cargadores), compartida por app/[slug]/page.tsx y la vista previa del admin;
 │   │   │                      # `fuente` real/ejemplo; con `vistaPrevia` no monta RefrescoAlCambiarFase;
-│   │   │                      # PeregrinoLibre solo si config.peregrino_animado
+│   │   │                      # DT-036: MonigoteWeb solo si monigoteDelReto(reto).id (también en la vista previa)
+│   │   ├── MonigoteWeb.tsx    # DT-036: puente cliente; next/dynamic ssr:false de components/monigotes/MonigoteSuelto
 │   │   ├── VistaPrevia.tsx    # DT-034: VistaPreviaProvider + useVistaPrevia (formularios sin envío, sin polling)
 │   │   ├── MuroComentarios.tsx / HiloComentario.tsx / RespuestaForm.tsx / InsigniaCaminante.tsx
 │   │   │                      # FP3a/DT-030: muro en hilos de un nivel, plegado si > 2 respuestas;
@@ -71,6 +72,13 @@ camino-santi-ago/
 │   │   └── ModoLlegadaLibre.tsx   # DT-016: "llegada" del modo libre (sin condicionales en ModoLlegada.tsx);
 │   │                              # CURRENT.md/DT-020 añade Stats.tsx (tiempo en marcha/km/ritmo,
 │   │                              # con ended_at como referencia final)
+│   ├── monigotes/            # DT-036: motor de navegador de los monigotes (solo cliente)
+│   │   ├── motor.ts           # DOM imperativo: crearSuelto (deambula, rastro, pose, arrebato, hipo; reduced-motion
+│   │   │                      # ⇒ quieto en esquina), lanzarGrito (textContent + partículas), montarTarjeta (selector);
+│   │   │                      # km del mojón a nivel de módulo; limpieza completa en destruir()
+│   │   ├── sonidos.ts         # tocarSonido(id): Web Audio sintetizado (audioSession "playback", buffer mudo, resume)
+│   │   ├── monigotes.css      # CSS del catálogo aislado bajo .mng, keyframes mng-*
+│   │   └── MonigoteSuelto.tsx # capas fijas con refs + crearSuelto en un efecto (StrictMode-safe)
 │   ├── gps/ConfigGps.tsx     # DT-035: URL + QR de OwnTracks + Regenerar (cliente), compartido por la
 │   │                         # pestaña GPS del admin y las tarjetas del superadmin; recibe los datos ya
 │   │                         # preparados en el servidor (o null ⇒ "Sin token GPS" + "Generar")
@@ -79,7 +87,10 @@ camino-santi-ago/
 │       ├── SeccionGps.tsx             # DT-035: pestaña "GPS" (Server Component); vuelve a verificar la
 │       │                              # sesión del reto antes de leer el token
 │       ├── FormConfiguracion.tsx      # FP3c/DT-032: interruptores (role="switch"), guardado conjunto;
-│       │                              # DT-034: "Peregrino animado" y campo "Perfil de Instagram" (guardarInstagram)
+│       │                              # DT-034: campo "Perfil de Instagram" (guardarInstagram); DT-036: monigote
+│       │                              # (SelectorMonigote por next/dynamic) en la misma guardarConfiguracion
+│       ├── SelectorMonigote.tsx       # DT-036: galería role="radiogroup" (Ninguno + 22, roving tabindex, "Probar",
+│       │                              # IntersectionObserver pausa las de fuera), grito (48) y "Que suene"
 │       ├── SeccionVistaPrevia.tsx     # DT-034: pestaña "Vista previa" — selector de fase (estado local),
 │       │                              # iframe 390×780 a /<slug>/admin/vista-previa?fase=…, "Recargar"
 │       ├── FotoQuienCaminaForm.tsx    # FP3c/DT-032: subir/cambiar/quitar la foto de "quién camina"
@@ -120,8 +131,13 @@ camino-santi-ago/
 │   │                          # página 0, "Cargar más" y respuesta propia (puro)
 │   ├── retos/modo-inicio.ts   # nota DT-016: modosDeInicioPermitidos (sin ruta ⇒ solo libre), action + UI
 │   ├── retos/config.ts        # FP3c/DT-032: dominio puro de la configuración del reto — configDelReto
-│   │                          # (campo ausente ⇒ encendido, también peregrino_animado DT-034),
+│   │                          # (campo ausente ⇒ encendido), monigoteDelReto (DT-036: sin columna ⇒
+│   │                          # peregrino_animado ?? true ⇒ "atleti"; id desconocido ⇒ null),
 │   │                          # fotoQuienCaminaDelReto, urlInstagramVisible
+│   ├── retos/huella-publica.ts # huella de config + monigote [id, grito, sonido] + foto + textos (WebReto y /api/fase)
+│   ├── monigotes/             # DT-036: catálogo puro (servidor + cliente) — catalogo.ts (IDS_MONIGOTE, MONIGOTES),
+│   │                          # piezas.ts / figuras.ts / marcas.ts (SVG como string, solo datos del catálogo;
+│   │                          # uidSvgSeguro), grito.ts (normalizarGritoMonigote, gritoEfectivo, partirGrito)
 │   ├── retos/instagram.ts     # DT-034: normalizarPerfilInstagram / esUrlPerfilInstagram (puro)
 │   ├── vista-previa/          # DT-034: datos-ejemplo.ts (puro, `ahora` como parámetro, km de la traza de
 │   │                          # PINTADO solo para la maqueta), fuente.ts (real vs ejemplo, modo) y
@@ -302,6 +318,9 @@ en cada petición.
 - Las posiciones con `descartado = true` no participan en ningún cálculo.
 - La `Fase` del intento activo determina qué muestra la web pública.
 - Las intenciones son siempre privadas: ninguna política RLS de anon las alcanza.
+- El monigote de la web (DT-036) se lee siempre con `monigoteDelReto` (`lib/retos/config.ts`). Sus figuras
+  se insertan como SVG con innerHTML **solo** desde `FIGURAS`/`MARCAS`/`particulaSvg` (datos del catálogo y un
+  uid saneado a `[a-z0-9-]`); el grito y el bocadillo van siempre por `textContent`, nunca por innerHTML.
 - La configuración de la web de cada reto (secciones y respuestas de visitantes, FP3c/DT-032)
   se lee siempre con `configDelReto` (`lib/retos/config.ts`). Una sección apagada no se
   renderiza en ninguna fase ni modo y su API pública responde 403; los comentarios lo

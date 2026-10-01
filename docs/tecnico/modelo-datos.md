@@ -33,11 +33,14 @@ datos aislados en el resto de tablas top-level vía `reto_id` FK.
 | `seccion_minuto_a_minuto` | boolean | default `true`. `false` = el feed no se pinta ni hace polling; API GET ⇒ 403. El admin puede seguir publicando |
 | `seccion_instagram` | boolean | default `true`. El enlace se pinta solo si está a `true` y el texto `cierre_antes_instagram_url` es una URL de perfil de Instagram válida (`esUrlPerfilInstagram`, DT-034) |
 | `respuestas_visitantes` | boolean | default `true`. `false` = sin "Responder" en el muro; POST de respuesta ⇒ 403 y RLS lo rechaza; las respuestas del caminante (service role) siguen permitidas |
-| `peregrino_animado` | boolean | default `false` (DT-034, 0015); `true` en `santi-ago`. Muestra el peregrino animado (`PeregrinoLibre`) en la web. Sin la columna, `configDelReto` lo da por encendido |
+| `peregrino_animado` | boolean | **OBSOLETA (DT-036, 0017)**: sustituida por `monigote`; se elimina en `0018`. Solo se lee como respaldo si falta la columna `monigote` (`monigoteDelReto`), y `guardarConfiguracion` la mantiene a `monigote IS NOT NULL` |
+| `monigote` | text | nullable (DT-036, 0017); check `^[a-z]{2,24}$` (solo formato). Monigote que pasea por la web: uno de `IDS_MONIGOTE` (`lib/monigotes/catalogo.ts`) o `null` (ninguno). Un id que el código no conoce se trata como `null`. La 0017 pone `atleti` donde `peregrino_animado` estaba a `true` |
+| `monigote_grito` | text | nullable; check `char_length between 1 and 48`. Grito personalizado, ya normalizado por el servidor; `null` = el del catálogo (nunca igual al de defecto) |
+| `monigote_sonido` | boolean | default `true`. Si suena al pincharlo |
 | `quien_camina_foto_url` | text | Foto de "quién camina". URL pública del bucket `minuto-a-minuto` (`<reto_id>/quien-camina-…`) o ruta de `/public` heredada (`/santi.jpg` en `santi-ago`). `null` = silueta |
 | `created_at` | timestamptz | Automático |
 
-**Configuración (FP3c):** el código lee siempre estas columnas con `configDelReto` (`lib/retos/config.ts`), que trata un campo ausente como `true` por si el código llega antes que la migración 0012 (o la 0015 para `peregrino_animado`). Solo el admin del reto las edita (pestaña "Configuración"); el superadmin crea retos sin fijarlas (defaults).
+**Configuración (FP3c):** el código lee siempre estas columnas con `configDelReto` (`lib/retos/config.ts`), que trata un campo ausente como `true` por si el código llega antes que la migración 0012. El monigote se lee con `monigoteDelReto` (misma idea: sin la columna `monigote`, respeta `peregrino_animado`, y si tampoco existe, "atleti"). Solo el admin del reto las edita (pestaña "Configuración"); el superadmin crea retos sin fijarlas (defaults).
 
 **Fila inicial:** `portuguesa-110` — el reto del Camino Portugués, `id = 1`.
 
@@ -312,8 +315,9 @@ posteriores: `0012_config_reto.sql` (configuración por reto en `retos` y RLS
 de INSERT de `comentarios`, DT-032), `0013_bucket_fotos.sql` (bucket de
 Storage `minuto-a-minuto`, que 0007 no creaba),
 `0014_mam_clave_envio.sql` (`minuto_a_minuto.clave_envio` + índice único
-parcial, DT-033) y la última, `0016_retos_gps.sql` (tabla `retos_gps` con el
-token del GPS de cada reto, DT-035).
+parcial, DT-033), `0016_retos_gps.sql` (tabla `retos_gps` con el
+token del GPS de cada reto, DT-035) y la última, `0017_monigote.sql`
+(columnas `monigote`, `monigote_grito` y `monigote_sonido` de `retos`, DT-036).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase

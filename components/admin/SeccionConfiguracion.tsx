@@ -1,10 +1,10 @@
 // Pestaña "Configuración" (FP3c, DT-032): interruptores de las secciones de la
-// web pública, de las respuestas de visitantes y del peregrino animado, perfil
-// de Instagram (DT-034) y foto de "quién camina".
+// web pública y de las respuestas de visitantes, monigote de la web (DT-036),
+// perfil de Instagram (DT-034) y foto de "quién camina".
 // Server Component: la configuración ya viene en el `reto` resuelto por la
 // página (select * de `retos`), no hace falta otra consulta.
 
-import { configDelReto, fotoQuienCaminaDelReto } from "@/lib/retos/config";
+import { configDelReto, fotoQuienCaminaDelReto, monigoteDelReto } from "@/lib/retos/config";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import type { Reto } from "@/lib/types";
 import FormConfiguracion from "@/components/admin/FormConfiguracion";
@@ -29,6 +29,7 @@ export default async function SeccionConfiguracion({ reto, slug }: { reto: Reto;
         </div>
         <FormConfiguracion
           configInicial={configDelReto(reto)}
+          monigoteInicial={monigoteDelReto(reto)}
           perfilInstagramInicial={textos.cierre_antes_instagram_url}
           slug={slug}
         />

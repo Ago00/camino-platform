@@ -3,18 +3,18 @@ import {
   configDelReto,
   esRespuestaDeSeccionApagada,
   fotoQuienCaminaDelReto,
+  monigoteDelReto,
   urlInstagramVisible,
 } from "@/lib/retos/config";
 
 describe("configDelReto", () => {
-  it("sin columnas de configuración (migraciones 0012/0015 sin aplicar) todo queda encendido", () => {
+  it("sin columnas de configuración (migración 0012 sin aplicar) todo queda encendido", () => {
     expect(configDelReto({})).toEqual({
       seccion_intenciones: true,
       seccion_comentarios: true,
       seccion_minuto_a_minuto: true,
       seccion_instagram: true,
       respuestas_visitantes: true,
-      peregrino_animado: true,
     });
   });
 
@@ -26,7 +26,6 @@ describe("configDelReto", () => {
         seccion_minuto_a_minuto: false,
         seccion_instagram: true,
         respuestas_visitantes: false,
-        peregrino_animado: false,
       })
     ).toEqual({
       seccion_intenciones: false,
@@ -34,7 +33,6 @@ describe("configDelReto", () => {
       seccion_minuto_a_minuto: false,
       seccion_instagram: true,
       respuestas_visitantes: false,
-      peregrino_animado: false,
     });
   });
 
@@ -45,22 +43,55 @@ describe("configDelReto", () => {
     });
   });
 
-  it("peregrino_animado: ausente (código antes que la migración 0015) ⇒ true; false de BD ⇒ false (DT-034)", () => {
-    expect(configDelReto({}).peregrino_animado).toBe(true);
-    expect(configDelReto({ peregrino_animado: false }).peregrino_animado).toBe(false);
-    expect(configDelReto({ peregrino_animado: true }).peregrino_animado).toBe(true);
-  });
-
   it("no copia campos ajenos a la configuración", () => {
     const config = configDelReto({ seccion_instagram: false });
     expect(Object.keys(config).sort()).toEqual([
-      "peregrino_animado",
       "respuestas_visitantes",
       "seccion_comentarios",
       "seccion_instagram",
       "seccion_intenciones",
       "seccion_minuto_a_minuto",
     ]);
+  });
+});
+
+describe("monigoteDelReto (DT-036)", () => {
+  it("sin la columna monigote (0017 sin aplicar) respeta peregrino_animado: encendido o ausente ⇒ atleti", () => {
+    expect(monigoteDelReto({ peregrino_animado: true })).toEqual({ id: "atleti", grito: null, sonido: true });
+    expect(monigoteDelReto({})).toEqual({ id: "atleti", grito: null, sonido: true });
+  });
+
+  it("sin la columna monigote y peregrino_animado apagado ⇒ ninguno", () => {
+    expect(monigoteDelReto({ peregrino_animado: false })).toEqual({ id: null, grito: null, sonido: true });
+  });
+
+  it("con la columna, manda monigote aunque peregrino_animado diga otra cosa", () => {
+    expect(monigoteDelReto({ monigote: null, peregrino_animado: true }).id).toBeNull();
+    expect(monigoteDelReto({ monigote: "pulpo", peregrino_animado: false }).id).toBe("pulpo");
+  });
+
+  it("un id que no está en el catálogo ⇒ ninguno", () => {
+    expect(monigoteDelReto({ monigote: "dragon", monigote_grito: "¡Fuego!" })).toEqual({
+      id: null,
+      grito: null,
+      sonido: true,
+    });
+  });
+
+  it("devuelve el grito personalizado normalizado y el sonido guardado", () => {
+    expect(monigoteDelReto({ monigote: "vaca", monigote_grito: " ¡Muuu  fuerte! ", monigote_sonido: false })).toEqual({
+      id: "vaca",
+      grito: "¡Muuu fuerte!",
+      sonido: false,
+    });
+  });
+
+  it("un grito guardado igual al del catálogo cuenta como no personalizado", () => {
+    expect(monigoteDelReto({ monigote: "vaca", monigote_grito: "¡Muuu!" }).grito).toBeNull();
+  });
+
+  it("sonido ausente ⇒ true (default de BD)", () => {
+    expect(monigoteDelReto({ monigote: "perro", monigote_grito: null }).sonido).toBe(true);
   });
 });
 

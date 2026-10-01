@@ -38,7 +38,9 @@ import {
   subirFotoMinutoAMinuto,
   subirFotoQuienCamina,
 } from "@/lib/supabase/storage";
-import { fotoQuienCaminaDelReto, type ConfigReto } from "@/lib/retos/config";
+import { fotoQuienCaminaDelReto, type ConfiguracionWebReto } from "@/lib/retos/config";
+import { IDS_MONIGOTE, MONIGOTES } from "@/lib/monigotes/catalogo";
+import { LONGITUD_MAXIMA_GRITO, longitudGrito, normalizarGritoMonigote } from "@/lib/monigotes/grito";
 import { NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import { resolverRetoConSesion } from "@/lib/auth/sesion-admin-servidor";
 import { guardarCacheProgreso, limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
@@ -514,8 +516,9 @@ function revalidarWebYAdmin(slug: string): void {
   revalidarAdmin(slug);
 }
 
-// `.strict()`: un campo que no sea uno de los interruptores (p. ej. `activo`,
-// `slug` o `quien_camina_foto_url`) se rechaza en vez de ignorarse.
+// `.strict()`: un campo que no sea uno de los interruptores ni del monigote
+// (p. ej. `activo`, `slug`, `quien_camina_foto_url` o el obsoleto
+// `peregrino_animado`) se rechaza en vez de ignorarse.
 const esquemaConfiguracion = z
   .object({
     seccion_intenciones: z.boolean(),
@@ -523,15 +526,26 @@ const esquemaConfiguracion = z
     seccion_minuto_a_minuto: z.boolean(),
     seccion_instagram: z.boolean(),
     respuestas_visitantes: z.boolean(),
-    peregrino_animado: z.boolean(),
+    monigote: z.enum(IDS_MONIGOTE).nullable(),
+    // Contado por caracteres (un emoji = 1), como el check de BD (0017).
+    monigote_grito: z
+      .string()
+      .refine((grito) => longitudGrito(grito) >= 1 && longitudGrito(grito) <= LONGITUD_MAXIMA_GRITO)
+      .nullable(),
+    monigote_sonido: z.boolean(),
   })
-  .strict() satisfies z.ZodType<ConfigReto>;
+  .strict() satisfies z.ZodType<ConfiguracionWebReto>;
 
 /**
- * Guarda los interruptores de la web pública del reto del slug. Devuelve el
- * fallo en vez de lanzarlo (DT-017). `config` es `unknown` a propósito: una
- * Server Action es un endpoint público y el argumento llega tal cual lo mande
- * el cliente; el tipo real (`ConfigReto`) lo da el esquema.
+ * Guarda los interruptores de la web pública y el monigote (DT-036) del reto
+ * del slug en un solo update. Devuelve el fallo en vez de lanzarlo (DT-017).
+ * `config` es `unknown` a propósito: una Server Action es un endpoint público
+ * y el argumento llega tal cual lo mande el cliente; el tipo real
+ * (`ConfiguracionWebReto`) lo da el esquema.
+ *
+ * El grito se normaliza aquí (no se confía en el cliente): igual al de
+ * defecto o vacío ⇒ null; sin monigote no se guarda grito. Mientras exista la
+ * columna obsoleta `peregrino_animado` (hasta 0018) se mantiene sincronizada.
  */
 export async function guardarConfiguracion(slug: string, config: unknown): Promise<ResultadoPublicacion> {
   const reto = await resolverRetoConSesion(slug);
@@ -540,7 +554,22 @@ export async function guardarConfiguracion(slug: string, config: unknown): Promi
   const datos = esquemaConfiguracion.safeParse(config);
   if (!datos.success) return { ok: false, mensaje: "Configuración no válida." };
 
-  const { error } = await getSupabaseAdmin().from("retos").update(datos.data).eq("id", reto.id);
+  const { monigote, monigote_grito, monigote_sonido, ...interruptores } = datos.data;
+  const gritoNormalizado =
+    monigote === null || monigote_grito === null
+      ? null
+      : normalizarGritoMonigote(monigote_grito, MONIGOTES[monigote].grito);
+
+  const { error } = await getSupabaseAdmin()
+    .from("retos")
+    .update({
+      ...interruptores,
+      monigote,
+      monigote_grito: gritoNormalizado,
+      monigote_sonido,
+      peregrino_animado: monigote !== null,
+    })
+    .eq("id", reto.id);
   if (error) return { ok: false, mensaje: "No se pudo guardar la configuración. Vuelve a intentarlo." };
 
   revalidarWebYAdmin(slug);

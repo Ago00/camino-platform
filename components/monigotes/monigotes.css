@@ -1,0 +1,254 @@
+/*
+ * Monigotes de la web pública y del selector del admin (DT-036).
+ *
+ * CSS portado literalmente del catálogo aprobado
+ * (design-sandbox/public/monigotes-tematicos.html). Las clases del catálogo
+ * son genéricas (.pa, .pose, .bob, .giro…), así que TODO va bajo la clase raíz
+ * `.mng` y los keyframes llevan el prefijo `mng-`: no pueden chocar con
+ * Tailwind ni con el resto de la web. Las capas fijas (#capa-rastros,
+ * #capa-suelto, #gritos del catálogo) son aquí .mng-capa-*.
+ *
+ * El grito usa Fraunces vía next/font (variable --font-fraunces del layout raíz).
+ */
+
+.mng .mono-btn{display:block;border:0;background:none;padding:0;border-radius:50%;line-height:0;-webkit-tap-highlight-color:transparent}
+.mng .bocadillo{position:absolute;left:68%;top:-6px;z-index:3;white-space:nowrap;background:#fff;color:#D23B3B;border:1.6px solid #1B211D;border-radius:999px;padding:2px 8px;font:700 13px/1.1 var(--font-fraunces), Georgia, "Times New Roman", serif;transform:scale(0);transform-origin:0 100%;transition:transform .18s cubic-bezier(.3,1.6,.5,1);pointer-events:none}
+.mng .bocadillo.ver{transform:scale(1)}
+.mng .mng-capa-rastros{position:fixed;inset:0;pointer-events:none;z-index:30;overflow:hidden}
+.mng .marca{position:absolute;left:0;top:0;pointer-events:none;line-height:0}
+.mng .mng-capa-suelto{position:fixed;inset:0;pointer-events:none;z-index:40;overflow:hidden}
+.mng .suelto{position:absolute;left:0;top:0;will-change:transform}
+.mng .suelto .giro-cara{line-height:0}
+.mng .suelto .mono-btn{pointer-events:auto}
+.mng .suelto .bocadillo{left:30px;top:-14px}
+.mng .suelto.quieto{left:16px;bottom:16px;top:auto}
+.mng .mng-capa-gritos{position:fixed;inset:0;pointer-events:none;z-index:80}
+.mng .grito{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;animation:mng-g-fade 1.5s ease-in-out forwards}
+.mng .grito-txt{text-align:center;max-width:min(92vw,1000px);text-shadow:0 3px 0 #1B211D}
+.mng .grito-txt span{display:block;line-height:.98;overflow-wrap:anywhere;letter-spacing:-.01em}
+.mng .particula{position:absolute;left:50%;top:50%;line-height:0}
+@keyframes mng-g-fade{0%{opacity:0}10%{opacity:1}75%{opacity:1}100%{opacity:0}}
+.mng .e-estallido{animation:mng-e-estallido .85s ease-out both}
+@keyframes mng-e-estallido{0%{transform:scale(.15) rotate(-10deg)}45%{transform:scale(1.18) rotate(4deg)}65%{transform:scale(.96) rotate(-3deg)}82%{transform:scale(1.05) rotate(1deg)}100%{transform:none}}
+.mng .e-tambaleo{animation:mng-e-tambaleo 1.2s ease-in-out both}
+@keyframes mng-e-tambaleo{0%{transform:scale(.3)}25%{transform:scale(1.1) rotate(-8deg) skewX(8deg)}45%{transform:scale(1) rotate(7deg) skewX(-7deg)}65%{transform:rotate(-5deg) skewX(4deg)}85%{transform:rotate(3deg)}100%{transform:none}}
+.mng .e-remolino{animation:mng-e-remolino .8s cubic-bezier(.2,.8,.3,1.2) both}
+@keyframes mng-e-remolino{0%{transform:scale(0) rotate(-220deg)}100%{transform:none}}
+.mng .e-lento{animation:mng-e-lento .9s ease-out both}
+@keyframes mng-e-lento{0%{opacity:0;transform:translateY(24px)}100%{opacity:1;transform:none}}
+.mng .e-rebote{animation:mng-e-rebote .85s ease-out both}
+@keyframes mng-e-rebote{0%{transform:translateY(-70vh)}50%{transform:translateY(0) scaleY(.8)}72%{transform:translateY(-28px) scaleY(1.05)}100%{transform:none}}
+.mng .e-temblor{animation:mng-e-temblor .8s ease-out both}
+@keyframes mng-e-temblor{0%{transform:scale(.5)}20%{transform:scale(1.08) translateX(-8px)}35%{transform:translateX(8px)}50%{transform:translateX(-6px)}65%{transform:translateX(5px)}80%{transform:translateX(-2px)}100%{transform:none}}
+.mng .e-pendulo{animation:mng-e-pendulo 1.1s ease-in-out both;transform-origin:50% -60%}
+@keyframes mng-e-pendulo{0%{transform:rotate(-30deg) scale(.6)}35%{transform:rotate(18deg) scale(1.05)}60%{transform:rotate(-9deg)}82%{transform:rotate(4deg)}100%{transform:none}}
+.mng .e-volteo{animation:mng-e-volteo .9s cubic-bezier(.3,1.4,.5,1) both}
+@keyframes mng-e-volteo{0%{transform:rotate(180deg) scale(.3)}60%{transform:rotate(180deg) scale(1)}100%{transform:rotate(360deg) scale(1)}}
+.mng .e-desliza{animation:mng-e-desliza .8s cubic-bezier(.2,.9,.3,1.25) both}
+@keyframes mng-e-desliza{0%{transform:translateX(-80vw) skewX(-18deg)}70%{transform:translateX(3vw) skewX(8deg)}100%{transform:none}}
+.mng .e-estampa{animation:mng-e-estampa .55s cubic-bezier(.5,0,.6,1.4) both}
+@keyframes mng-e-estampa{0%{transform:scale(2.6) rotate(-8deg);opacity:0}55%{transform:scale(.9) rotate(-4deg);opacity:1}75%{transform:scale(1.04) rotate(-4deg)}100%{transform:rotate(-4deg)}}
+.mng .mono{display:block;overflow:visible;--paso:.5s}
+.mng .mono.pose{--paso:.2s}
+.mng .mono .vb{transform-box:view-box}
+.mng .mono .fb{transform-box:fill-box;transform-origin:center}
+.mng .solo-pose{display:none}
+.mng .mono.pose .solo-pose{display:inline}
+.mng .mono.pose .solo-normal{display:none}
+.mng .bob{animation:mng-bob var(--paso) ease-in-out infinite}
+@keyframes mng-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+.mng .pa,.mng .pb,.mng .pac,.mng .pbc{transform-box:fill-box;transform-origin:50% 0}
+.mng .pa{animation:mng-pa var(--paso) ease-in-out infinite}
+.mng .pb{animation:mng-pb var(--paso) ease-in-out infinite}
+.mng .pac{animation:mng-pac var(--paso) ease-in-out infinite}
+.mng .pbc{animation:mng-pbc var(--paso) ease-in-out infinite}
+@keyframes mng-pa{0%,100%{transform:rotate(16deg)}50%{transform:rotate(-16deg)}}
+@keyframes mng-pb{0%,100%{transform:rotate(-16deg)}50%{transform:rotate(16deg)}}
+@keyframes mng-pac{0%,100%{transform:rotate(9deg)}50%{transform:rotate(-9deg)}}
+@keyframes mng-pbc{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
+.mng .mono.pose .piel-enf{fill:#E0483C;transform-box:fill-box;transform-origin:center;animation:mng-latido .45s ease-in-out infinite}
+@keyframes mng-latido{50%{transform:scale(1.15)}}
+.mng .vapor circle{transform-box:fill-box;transform-origin:center;animation:mng-vapor .9s ease-out infinite}
+.mng .vapor circle:nth-child(2){animation-delay:.45s}
+@keyframes mng-vapor{0%{transform:translateY(0) scale(1);opacity:.75}100%{transform:translateY(-7px) scale(2);opacity:0}}
+.mng .destello{transform-box:fill-box;transform-origin:center;animation:mng-destello .5s ease-in-out infinite alternate}
+@keyframes mng-destello{0%{transform:scale(.4)}100%{transform:scale(1.2)}}
+.mng .pop{transform-box:fill-box;transform-origin:center;animation:mng-pop .4s cubic-bezier(.3,1.6,.5,1) both}
+@keyframes mng-pop{0%{transform:scale(0)}100%{transform:scale(1)}}
+.mng .giro{transform-box:fill-box;transform-origin:center;animation:mng-giro .8s linear infinite}
+@keyframes mng-giro{100%{transform:rotate(360deg)}}
+.mng .sube{transform-box:fill-box;transform-origin:center;animation:mng-sube 1s ease-out infinite}
+@keyframes mng-sube{0%{transform:translateY(0) scale(.6);opacity:.9}100%{transform:translateY(-10px) scale(1.3);opacity:0}}
+.mng .cae{animation:mng-cae .7s ease-in infinite}
+@keyframes mng-cae{0%{transform:translateY(0);opacity:1}100%{transform:translateY(6px);opacity:0}}
+.mng .m-peregrino{--paso:.55s}
+.mng .m-peregrino.pose{--paso:.3s}
+.mng .m-peregrino .brazo{transition:transform .25s}
+.mng .m-peregrino.pose .brazo{animation:mng-alza .35s ease-in-out infinite}
+@keyframes mng-alza{0%,100%{transform:rotate(-18deg)}50%{transform:rotate(-32deg)}}
+.mng .m-borrachillo{--paso:.62s}
+.mng .m-borrachillo.pose{--paso:.3s}
+.mng .m-borrachillo .bota{animation:mng-bota 1.3s ease-in-out infinite}
+@keyframes mng-bota{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(10deg)}}
+.mng .m-borrachillo.pose .bota{transform:rotate(-40deg);animation:none}
+.mng .mono.hic{animation:mng-hic .33s ease-out 3}
+@keyframes mng-hic{0%,100%{transform:translateY(0)}40%{transform:translateY(-4px)}}
+.mng .m-pulpo{--paso:.6s}
+.mng .m-pulpo.pose{--paso:.22s}
+.mng .m-pulpo .tent{transform-box:fill-box;transform-origin:50% 0;animation:mng-ta var(--paso) ease-in-out infinite}
+.mng .m-pulpo .tent.t1{animation-name:mng-tb}
+.mng .m-pulpo.pose .tent{animation-name:mng-ta2;stroke:#B0352A}
+.mng .m-pulpo.pose .tent.t1{animation-name:mng-tb2}
+.mng .m-pulpo.pose .tent.atras{stroke:#8A2A20}
+.mng .m-pulpo.pose .manto{fill:#C63B2E}
+@keyframes mng-ta{0%,100%{transform:rotate(13deg)}50%{transform:rotate(-13deg)}}
+@keyframes mng-tb{0%,100%{transform:rotate(-13deg)}50%{transform:rotate(13deg)}}
+@keyframes mng-ta2{0%,100%{transform:rotate(26deg)}50%{transform:rotate(-26deg)}}
+@keyframes mng-tb2{0%,100%{transform:rotate(-26deg)}50%{transform:rotate(26deg)}}
+.mng .m-meiga .flota{animation:mng-flota 1.8s ease-in-out infinite}
+@keyframes mng-flota{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.5px)}}
+.mng .m-meiga .capa{animation:mng-capa .45s ease-in-out infinite}
+.mng .m-meiga.pose .capa{animation-duration:.18s}
+@keyframes mng-capa{0%,100%{transform:rotate(0)}50%{transform:rotate(-12deg)}}
+.mng .m-meiga .pelo{animation:mng-capa .6s ease-in-out infinite}
+.mng .m-gaiteiro{--paso:.55s}
+.mng .m-gaiteiro .fol{animation:mng-fol .9s ease-in-out infinite}
+.mng .m-gaiteiro.pose .fol{animation:mng-folp .3s ease-in-out infinite}
+@keyframes mng-fol{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes mng-folp{0%,100%{transform:scale(1.1)}50%{transform:scale(1.32)}}
+.mng .m-gaiteiro .moflete{transform-box:fill-box;transform-origin:center;transition:transform .2s}
+.mng .m-gaiteiro.pose .moflete{transform:scale(1.7)}
+.mng .m-gaiteiro.pose .piel{fill:#EE9A80}
+.mng .m-gaiteiro .borla{animation:mng-borla .7s ease-in-out infinite}
+@keyframes mng-borla{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(12deg)}}
+.mng .m-vaca{--paso:.6s}
+.mng .m-vaca.pose{--paso:.25s}
+.mng .m-vaca .rabo{animation:mng-rabo .9s ease-in-out infinite}
+@keyframes mng-rabo{0%,100%{transform:rotate(-16deg)}50%{transform:rotate(14deg)}}
+.mng .m-vaca .cencerro{animation:mng-cencerro var(--paso) ease-in-out infinite}
+.mng .m-vaca.pose .cencerro{animation:mng-cencerrop .14s ease-in-out infinite}
+@keyframes mng-cencerro{0%,100%{transform:rotate(-14deg)}50%{transform:rotate(14deg)}}
+@keyframes mng-cencerrop{0%,100%{transform:rotate(-38deg)}50%{transform:rotate(38deg)}}
+.mng .m-vaca .cabeza{transition:transform .25s}
+.mng .m-vaca.pose .cabeza{transform:rotate(-16deg)}
+.mng .m-gallego .nube{animation:mng-nube 3s ease-in-out infinite}
+@keyframes mng-nube{0%,100%{transform:translateX(-.8px)}50%{transform:translateX(.8px)}}
+.mng .m-gallego .gota{animation:mng-gota .6s linear infinite}
+.mng .m-gallego.pose .gota{animation-duration:.28s}
+@keyframes mng-gota{0%{transform:translateY(0);opacity:0}25%{opacity:1}100%{transform:translateY(2.6px);opacity:0}}
+.mng .m-gallego .escurre{animation:mng-escurre .9s ease-in infinite}
+@keyframes mng-escurre{0%{transform:translateY(0);opacity:1}100%{transform:translateY(8px);opacity:0}}
+.mng .m-gallego .hombro{transition:transform .3s}
+.mng .m-gallego.pose .hombro{transform:rotate(115deg)}
+.mng .m-cojo .salto{animation:mng-salto .52s ease-out infinite}
+.mng .m-cojo.pose .salto{animation-duration:.28s}
+@keyframes mng-salto{0%{transform:translateY(0)}35%{transform:translateY(-3.4px)}70%,100%{transform:translateY(0)}}
+.mng .m-cojo .alta{animation:mng-alta .52s ease-in-out infinite}
+@keyframes mng-alta{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(8deg)}}
+.mng .m-abuelo{--paso:.95s}
+.mng .m-abuelo.pose{--paso:.45s}
+.mng .m-abuelo .garrota{animation:mng-garrota var(--paso) ease-in-out infinite}
+.mng .m-abuelo.pose .garrota{animation:mng-agita .28s ease-in-out infinite}
+@keyframes mng-garrota{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(4deg)}}
+@keyframes mng-agita{0%,100%{transform:rotate(-82deg)}50%{transform:rotate(-56deg)}}
+.mng .m-guiri{--paso:.5s}
+.mng .m-guiri .mapa{animation:mng-mapa 1.4s ease-in-out infinite}
+.mng .m-guiri.pose .mapa{animation:mng-mapap .3s ease-in-out infinite}
+@keyframes mng-mapa{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+@keyframes mng-mapap{0%,100%{transform:rotate(-16deg)}50%{transform:rotate(16deg)}}
+.mng .m-guiri .gafas{transition:transform .25s}
+.mng .m-guiri.pose .gafas{transform:translateY(-3.6px)}
+.mng .m-botafumeiro .pendulo{animation:mng-pendulo 1.8s ease-in-out infinite}
+.mng .m-botafumeiro.pose .pendulo{animation:mng-pendulop .9s ease-in-out infinite}
+@keyframes mng-pendulo{0%,100%{transform:rotate(-20deg)}50%{transform:rotate(20deg)}}
+@keyframes mng-pendulop{0%,100%{transform:rotate(-42deg)}50%{transform:rotate(42deg)}}
+.mng .m-botafumeiro .humito{transform-box:fill-box;transform-origin:center;animation:mng-humito 1.4s ease-out infinite}
+@keyframes mng-humito{0%{transform:translateY(0) scale(.6);opacity:.8}100%{transform:translateY(-9px) scale(2);opacity:0}}
+@keyframes mng-tiembla{0%,100%{transform:translateX(-.6px)}50%{transform:translateX(.6px)}}
+.mng .m-flecha{--paso:.45s}
+.mng .m-flecha .apunta{animation:mng-apunta var(--paso) ease-in-out infinite}
+.mng .m-flecha.pose .apunta{animation:mng-apuntap .22s ease-in-out infinite}
+@keyframes mng-apunta{0%,100%{transform:translateX(0)}50%{transform:translateX(.8px)}}
+@keyframes mng-apuntap{0%,100%{transform:translateX(0) scale(1)}50%{transform:translateX(2px) scale(1.09)}}
+.mng .m-flecha .brocha{animation:mng-brocha .9s ease-in-out infinite}
+.mng .m-flecha.pose .brocha{animation-duration:.3s}
+@keyframes mng-brocha{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(12deg)}}
+.mng .m-mojon{--paso:.4s}
+.mng .m-mojon .bloque{animation:mng-bamboleo .8s ease-in-out infinite}
+.mng .m-mojon.pose .bloque{animation:mng-tiembla .09s linear infinite}
+@keyframes mng-bamboleo{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+.mng .km-num{transform-box:fill-box;transform-origin:center}
+.mng .km-num.cambia{animation:mng-pop .4s cubic-bezier(.3,1.6,.5,1)}
+.mng .m-mojon .piedrita{transition:transform .25s}
+.mng .m-mojon.pose .piedrita{transform:translateY(-3px) rotate(-25deg)}
+.mng .m-caracol .ondula{animation:mng-ondula 2.4s ease-in-out infinite}
+.mng .m-caracol.pose .ondula{animation-duration:.7s}
+@keyframes mng-ondula{0%,100%{transform:scaleX(1)}50%{transform:scaleX(1.06) scaleY(.96)}}
+.mng .m-caracol .antenas{animation:mng-antenas 2.4s ease-in-out infinite;transition:transform .25s}
+.mng .m-caracol.pose .antenas{animation:none;transform:scaleY(1.28)}
+@keyframes mng-antenas{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(5deg)}}
+.mng .m-sello .salta{animation:mng-salta .7s cubic-bezier(.4,0,.6,1) infinite}
+.mng .m-sello.pose .salta{animation-duration:.32s}
+@keyframes mng-salta{0%,100%{transform:translateY(0) scale(1.06,.9)}12%{transform:translateY(0) scale(1)}50%{transform:translateY(-8px) scale(.96,1.05)}88%{transform:translateY(-.5px) scale(1)}}
+.mng .m-pimiento{--paso:.42s}
+.mng .m-pimiento.pose{--paso:.2s}
+.mng .m-pimiento .pim{transition:fill .3s,stroke .3s}
+.mng .m-pimiento.pica .pim,.mng .m-pimiento.pose .pim{fill:#D8322A;stroke:#8E1E18}
+.mng .m-pimiento.pica .arruga,.mng .m-pimiento.pose .arruga{stroke:#A8241E}
+.mng .m-pimiento.pica .brillo,.mng .m-pimiento.pose .brillo{stroke:#FF9A8A}
+.mng .m-pimiento .llama{display:none}
+.mng .m-pimiento.pica .llama,.mng .m-pimiento.pose .llama{display:inline}
+.mng .m-pimiento.pica .solo-pose{display:inline}
+.mng .m-pimiento.pica .solo-normal{display:none}
+.mng .m-pimiento .fuego{animation:mng-fuego .14s ease-in-out infinite alternate}
+@keyframes mng-fuego{0%{transform:scale(.85,.9)}100%{transform:scale(1.14,1.08)}}
+.mng .m-pimiento.pica .agita-p,.mng .m-pimiento.pose .agita-p{animation:mng-tiembla .1s linear infinite}
+.mng .m-tarta{--paso:.5s}
+.mng .m-tarta.pose{--paso:.22s}
+.mng .m-tortilla{--paso:.3s}
+.mng .m-tortilla .voltea{animation:mng-voltea 1.8s ease-in-out infinite}
+.mng .m-tortilla.pose .voltea{animation-duration:.75s}
+@keyframes mng-voltea{0%,50%{transform:none}62%{transform:translateY(-7px) rotate(110deg)}76%{transform:translateY(-11px) rotate(230deg)}90%{transform:translateY(-2px) rotate(345deg)}100%{transform:rotate(360deg)}}
+.mng .m-horreo{--paso:.5s}
+.mng .m-horreo.pose{--paso:.2s}
+.mng .m-horreo.pose .tejado{animation:mng-tejado .25s ease-in-out infinite}
+@keyframes mng-tejado{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.6px)}}
+.mng .m-roncador .repta{animation:mng-repta 2.2s ease-in-out infinite}
+@keyframes mng-repta{0%,100%{transform:scaleX(1)}45%{transform:scaleX(.9)}}
+.mng .m-roncador .respira{animation:mng-respira 2.2s ease-in-out infinite}
+@keyframes mng-respira{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.1)}}
+.mng .m-roncador .moco{animation:mng-moco 2.2s ease-in-out infinite}
+@keyframes mng-moco{0%,100%{transform:scale(.25)}50%{transform:scale(1.3)}}
+.mng .m-roncador .incorpora{transition:transform .3s cubic-bezier(.3,1.5,.5,1)}
+.mng .m-roncador.pose .incorpora{transform:rotate(-24deg)}
+.mng .m-roncador.pose .repta,.mng .m-roncador.pose .respira{animation:none}
+.mng .m-perro{--paso:.36s}
+.mng .m-perro.pose{--paso:.18s}
+.mng .m-perro .rabo-p{animation:mng-menea .3s ease-in-out infinite}
+.mng .m-perro.pose .rabo-p{animation-duration:.12s}
+@keyframes mng-menea{0%,100%{transform:rotate(-22deg)}50%{transform:rotate(18deg)}}
+.mng .m-perro .credencial{animation:mng-cencerro var(--paso) ease-in-out infinite}
+.mng .m-perro .lengua{transform-box:fill-box;transform-origin:50% 0;animation:mng-lengua .36s ease-in-out infinite}
+@keyframes mng-lengua{50%{transform:scaleY(1.35)}}
+.mng .m-perro .oreja,.mng .m-perro .cabeza-p{transition:transform .2s}
+.mng .m-perro.pose .oreja{transform:rotate(38deg)}
+.mng .m-perro.pose .cabeza-p{transform:rotate(-12deg)}
+
+/* Foco visible del botón del monigote (el catálogo lo tenía global con --foco). */
+.mng .mono-btn{cursor:pointer}
+.mng .mono-btn:focus-visible{outline:2px solid #D9773B;outline-offset:2px}
+
+/* ── Selector del admin: figura en su sitio, sin rastro ─── */
+.mng .mng-figura{position:relative;display:inline-block;line-height:0}
+.mng .mng-figura .bocadillo{left:58%;top:-12px;font-size:12px}
+/* Fuera de pantalla (IntersectionObserver) las tarjetas no animan. */
+.mng .mng-pausado .mono,.mng .mng-pausado .mono *{animation-play-state:paused!important}
+
+/* ── Movimiento reducido: todo quieto, pose estática ──── */
+@media (prefers-reduced-motion: reduce){
+  .mng .mono,.mng .mono *{animation:none!important;transition:none!important}
+  .mng .m-peregrino.pose .brazo{transform:rotate(-26deg)}
+  .mng .m-abuelo.pose .garrota{transform:rotate(-70deg)}
+  .mng .grito-txt{animation:none!important}
+  .mng .bocadillo{transition:none}
+}
