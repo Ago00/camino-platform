@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { guardarTexto } from "@/app/[slug]/admin/actions";
+import { AYUDAS_TEXTO } from "@/lib/textos/ayudas";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 
 const C = { ink: "#1B211D", muted: "#4A5450", eucalipto: "#2F5D50" };
@@ -32,6 +33,11 @@ export default function CampoTexto({ clave, valorInicial, slug }: CampoTextoProp
       <label className="text-[12px] font-mono uppercase tracking-wide" style={{ color: C.muted }}>
         {clave}
       </label>
+      {AYUDAS_TEXTO[clave] && (
+        <p className="mt-1 text-[12.5px] leading-snug" style={{ color: C.muted }}>
+          {AYUDAS_TEXTO[clave]}
+        </p>
+      )}
       <textarea
         value={valor}
         onChange={(e) => setValor(e.target.value)}

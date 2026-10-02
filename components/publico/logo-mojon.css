@@ -1,0 +1,22 @@
+/*
+ * Logo del mojón con el monigote del reto dentro (cabecera y llegada).
+ *
+ * La figura es la del catálogo (lib/monigotes/figuras.ts), pero sin la hoja
+ * `.mng`: aquí no hay animaciones. Solo hace falta ocultar lo que el catálogo
+ * enseña únicamente al pinchar o como efecto (gestos "solo-pose", partículas,
+ * llamas), para que quede un esquema limpio del personaje.
+ */
+
+.logo-fig .solo-pose,
+.logo-fig .llama,
+.logo-fig .vapor,
+.logo-fig .sube,
+.logo-fig .cae,
+.logo-fig .humito,
+.logo-fig .escurre,
+.logo-fig .gota,
+.logo-fig .moco,
+.logo-fig .destello,
+.logo-fig .pop {
+  display: none;
+}

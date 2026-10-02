@@ -40,7 +40,7 @@ export const BLOQUES_TEXTOS = [
   {
     id: "cabecera",
     titulo: "Cabecera y el reto",
-    claves: ["ruta_badge", "hito_salida_kicker", "reto_titulo", "reto_descripcion"],
+    claves: ["portada_lema", "ruta_badge", "hito_salida_kicker", "reto_titulo", "reto_descripcion"],
   },
   {
     id: "recorrido",

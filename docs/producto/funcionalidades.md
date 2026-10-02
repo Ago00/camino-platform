@@ -341,3 +341,11 @@ posiciones a otro. La URL que se pega en OwnTracks se consulta en la
 pestaña GPS del admin del reto o en el superadmin, donde también se regenera
 el token. Un envío sin reto, con un reto que no existe o con un token que no
 es el de ese reto se rechaza (el móvil lo ve como "no autorizado").
+
+### Logo y frase de la portada
+
+- El **logo** es el mojón del Camino con el monigote elegido por el reto dentro
+  (esquemático y quieto); si el reto no tiene monigote, solo el mojón. Sale en
+  la cabecera y en el recuadro de la llegada.
+- La **frase bajo el título** de la portada se edita en la pestaña Textos
+  (`portada_lema`). Una palabra entre *asteriscos* sale destacada.

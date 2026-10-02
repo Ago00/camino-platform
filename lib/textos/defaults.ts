@@ -20,6 +20,7 @@ export const CLAVES_TEXTOS = [
   "llegada_libre_kicker",
   "llegada_libre_titulo",
   "ruta_badge",
+  "portada_lema",
   "hito_salida_kicker",
   "recorrido_kicker",
   "recorrido_titulo",
@@ -99,6 +100,8 @@ export const TEXTOS_POR_DEFECTO: Record<ClaveTexto, string> = {
   llegada_libre_kicker: "Intento completado",
   llegada_libre_titulo: "¡Ha llegado!",
   ruta_badge: "O Porriño → Santiago · ~100 km",
+  // Frase bajo el título de la portada. Una palabra entre *asteriscos* sale destacada (negrita y verde).
+  portada_lema: "…y este camino, ¡no lo *hago* solo!",
   hito_salida_kicker: "La salida · km 0",
   recorrido_kicker: "El recorrido",
   recorrido_titulo: "De O Porriño a Santiago",

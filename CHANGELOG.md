@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-10-02 — Logo con el monigote del reto y frase de la portada editable
+
+**Tipo:** Mejora
+
+El logo del mojón (cabecera de la web y recuadro de llegada) lleva dentro el
+monigote que haya elegido el reto, en versión esquemática y quieta, en lugar
+del del Atleti fijo. Un reto sin monigote muestra solo el mojón. En la
+pestaña Textos hay una clave nueva, `portada_lema`, para cambiar la frase bajo
+el título ("…y este camino, ¡no lo hago solo!"); una palabra entre
+*asteriscos* sale destacada en negrita y verde.
+
+---
+
 ## 2026-10-01 — GPS: tutorial de OwnTracks en lugar del QR
 
 **Tipo:** Cambio

@@ -30,6 +30,9 @@ import SeccionTextos from "@/components/admin/SeccionTextos";
 import SeccionConfiguracion from "@/components/admin/SeccionConfiguracion";
 import SeccionGps from "@/components/admin/SeccionGps";
 import SeccionVistaPrevia from "@/components/admin/SeccionVistaPrevia";
+import { LogoMojonProvider } from "@/components/publico/LogoMojon";
+import { monigoteDelReto } from "@/lib/retos/config";
+import { figuraParaLogo } from "@/lib/monigotes/logo";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +63,7 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
   const faseTraficoQuery = esFaseTraficoValida(sp.fase) ? sp.fase : undefined;
 
   return (
+    <LogoMojonProvider figuraSvg={figuraParaLogo(monigoteDelReto(reto).id)}>
     <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
       <div className="mx-auto w-full max-w-[720px] px-5 py-6">
         <header className="mb-5 flex items-center justify-between">
@@ -96,6 +100,7 @@ export default async function SlugAdminPage({ params, searchParams }: SlugAdminP
         </main>
       </div>
     </div>
+    </LogoMojonProvider>
   );
 }
 

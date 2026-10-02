@@ -53,6 +53,8 @@ import ModoLlegada from "@/components/publico/ModoLlegada";
 import ModoLlegadaLibre from "@/components/publico/ModoLlegadaLibre";
 import RefrescoAlCambiarFase from "@/components/publico/RefrescoAlCambiarFase";
 import { VistaPreviaProvider } from "@/components/publico/VistaPrevia";
+import { LogoMojonProvider } from "@/components/publico/LogoMojon";
+import { figuraParaLogo } from "@/lib/monigotes/logo";
 
 const C = { paper: "#F4F3EF", ink: "#1B211D" };
 
@@ -93,6 +95,7 @@ export default function WebReto({ reto, config, textos, trazaCoords, fase, fuent
 
   return (
     <VistaPreviaProvider activa={vistaPrevia}>
+      <LogoMojonProvider figuraSvg={figuraParaLogo(monigote.id)}>
       <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
         {!vistaPrevia && (
           <RefrescoAlCambiarFase
@@ -139,6 +142,7 @@ export default function WebReto({ reto, config, textos, trazaCoords, fase, fuent
           )}
         </div>
       </div>
+      </LogoMojonProvider>
     </VistaPreviaProvider>
   );
 }
