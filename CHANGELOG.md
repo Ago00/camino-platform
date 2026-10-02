@@ -10,7 +10,7 @@ La pestaña GPS del admin y las tarjetas del superadmin ya no muestran el QR
 ni el botón "Abrir en OwnTracks": en las pruebas no llegaba a configurar la
 app. En su lugar, un tutorial para configurarla a mano: modo HTTP, pegar la
 URL del GPS (con "Copiar"), modo de seguimiento **Move** y **Locator
-interval** en 60 segundos. Se elimina la dependencia `qrcode`.
+interval** en 30 segundos (cada cuánto envía el móvil su posición). Se elimina la dependencia `qrcode`.
 
 ---
 

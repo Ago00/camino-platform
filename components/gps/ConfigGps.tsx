@@ -143,17 +143,15 @@ export default function ConfigGps({ datos, accionRegenerar }: ConfigGpsProps) {
           <strong>Move</strong> (icono de modo arriba; en Android, en el menú <em>Monitoring</em>).
         </li>
         <li>
-          En los ajustes avanzados pon <strong>Locator interval</strong> en <strong>60</strong> segundos (un punto
-          por minuto). Súbelo a 120–300 si quieres ahorrar batería.
+          En los ajustes avanzados pon <strong>Locator interval</strong> en <strong>30</strong> segundos. Ese valor
+          es cada cuánto tiempo envía el móvil su posición: con 30 s llega un punto cada medio minuto y el mapa se
+          ve fluido. Un número más alto envía menos puntos y ahorra batería.
         </li>
         <li>
           Pulsa el botón de enviar ubicación (flecha hacia arriba) y comprueba en el admin del reto, pestaña
           Posición, que llega el punto.
         </li>
       </ol>
-      <p className="text-[12.5px] leading-snug" style={{ color: C.muted }}>
-        Para un reto de muchas horas, quita a OwnTracks del ahorro de batería del móvil y lleva una batería externa.
-      </p>
 
       {datos.origenProvisional && (
         <p className="rounded-lg px-3 py-2 text-[12.5px] leading-snug" style={{ background: "#8A5A0012", color: C.aviso }}>

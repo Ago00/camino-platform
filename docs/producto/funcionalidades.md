@@ -312,8 +312,8 @@ Configurar el móvil que envía la posición del reto:
 
 - **Tutorial** para configurar OwnTracks a mano: instalarlo con permiso de
   ubicación "Siempre", poner Connection → Mode en HTTP, pegar la URL del GPS,
-  elegir el modo de seguimiento **Move** y poner **Locator interval** en 60 s
-  (más para ahorrar batería), y enviar un punto para comprobar que llega a la
+  elegir el modo de seguimiento **Move** y poner **Locator interval** en 30 s
+  (cada cuánto envía el móvil su posición; más segundos ahorran batería), y enviar un punto para comprobar que llega a la
   pestaña Posición.
 - **URL del GPS** con el token propio de este reto, oculta por defecto
   ("Mostrar") para que no quede a la vista en una pantalla compartida, y
