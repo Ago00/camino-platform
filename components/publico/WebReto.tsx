@@ -96,7 +96,7 @@ export default function WebReto({ reto, config, textos, trazaCoords, fase, fuent
   return (
     <VistaPreviaProvider activa={vistaPrevia}>
       <LogoMojonProvider figuraSvg={figuraParaLogo(monigote.id)}>
-      <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
+      <div className="min-h-dvh w-full overflow-x-clip" style={{ background: C.paper, color: C.ink }}>
         {!vistaPrevia && (
           <RefrescoAlCambiarFase
             faseActual={fase}
