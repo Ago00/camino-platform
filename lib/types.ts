@@ -304,7 +304,7 @@ export type EstadoRuta = "en-ruta" | "desvio-menor" | "desvio-mayor";
 export interface Progreso {
   porcentaje: number; // 0-100, monótono
   kmAvanzados: number; // proyectado sobre el plan (no el andado real)
-  kmRestantes: number; // plan restante desde el punto proyectado más cercano
+  kmRestantes: number; // max(plan restante desde el punto proyectado, longitud desde la salida − odómetro)
   odometroKm: number; // haversine real, rodeos incluidos
   estado: EstadoRuta;
   separacionM: number; // distancia perpendicular a la traza en metros

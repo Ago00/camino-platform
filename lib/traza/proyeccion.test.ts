@@ -609,3 +609,47 @@ describe("calcularProgreso — puntoProyectado (DT-021)", () => {
     expect(result.puntoProyectado!.lat).toBeCloseTo(0.22, 2);
   });
 });
+
+describe("calcularProgreso — km restantes cuadrados con lo andado", () => {
+  it("si el odómetro se deja tramos, restante = total desde la salida − andado (la suma no baja del total)", () => {
+    // Sale del km 50 (quedan 50). El punto del km ~60 llega con acc mala y su tramo
+    // no suma al odómetro: andado medido ~15 km, avance real 25 km.
+    const historico = [
+      posicion({ lat: 0.45049, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+      posicion({ lat: 0.54, lon: 0, acc: 500, ts: "2026-07-30T12:00:00Z" }),
+      posicion({ lat: 0.67574, lon: 0, ts: "2026-07-30T16:00:00Z" }),
+    ];
+
+    const r = calcularProgreso(historico, TRAZA_5P);
+
+    expect(r.odometroKm).toBeLessThan(25);
+    expect(r.odometroKm + r.kmRestantes).toBeCloseTo(50, 0);
+    expect(r.kmRestantes).toBeGreaterThan(25);
+  });
+
+  it("con un rodeo la suma supera el total y manda el restante real de la ruta", () => {
+    // Sale del km 50, se aleja ~5,5 km de la ruta y vuelve al mismo punto.
+    const historico = [
+      posicion({ lat: 0.45049, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+      posicion({ lat: 0.45049, lon: 0.05, ts: "2026-07-30T12:00:00Z" }),
+      posicion({ lat: 0.45049, lon: 0, ts: "2026-07-30T16:00:00Z" }),
+    ];
+
+    const r = calcularProgreso(historico, TRAZA_5P);
+
+    expect(r.kmRestantes).toBeCloseTo(50, 0);
+    expect(r.odometroKm + r.kmRestantes).toBeGreaterThan(55);
+  });
+
+  it("en la llegada el restante es el del plan (0), no se arrastra el odómetro corto", () => {
+    const historico = [
+      posicion({ lat: 0.45049, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+      posicion({ lat: 0.67574, lon: 0, acc: 500, ts: "2026-07-30T16:00:00Z" }),
+      posicion({ lat: 0.90099, lon: 0, ts: "2026-07-30T23:00:00Z" }),
+    ];
+
+    const r = calcularProgreso(historico, TRAZA_5P);
+
+    expect(r.kmRestantes).toBeCloseTo(0, 1);
+  });
+});

@@ -129,6 +129,9 @@ export function separacionDeTrazaM(
 // calcularProgreso
 // ---------------------------------------------------------------------------
 
+/** Por debajo de este plan restante se considera llegada y no se compensa el odómetro. */
+const LLEGADA_PLAN_RESTANTE_KM = 0.05;
+
 /**
  * Calcula el progreso de Santi dado su historial de posiciones y la traza.
  *
@@ -276,7 +279,17 @@ export function calcularProgreso(
     0,
     traza.longitudTotalKm - maxKmAvanzados
   );
-  const kmRestantes = planRestanteKm;
+  // Cuadre con lo andado: el odómetro es lo realmente medido y se deja tramos
+  // (huecos de señal, puntos descartados), así que "andado + restante" quedaría por
+  // debajo de lo que había al salir. Mientras eso pase, el restante es lo que
+  // faltaba al salir menos lo andado (la suma da siempre ese total); cuando un
+  // rodeo hace que la suma lo supere, manda el restante real de la ruta. En la
+  // llegada (plan agotado) no se arrastra nada.
+  const totalDesdeSalidaKm = traza.longitudTotalKm - kmPrimerPunto;
+  const kmRestantes =
+    planRestanteKm <= LLEGADA_PLAN_RESTANTE_KM
+      ? planRestanteKm
+      : Math.max(planRestanteKm, totalDesdeSalidaKm - odometroKm);
 
   const estado = clasificarEstado(separacionM);
 

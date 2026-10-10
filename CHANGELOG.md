@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-10-10 — Los km restantes cuadran con lo andado (modo guiado)
+
+**Tipo:** Corrección
+
+Los km andados son siempre el odómetro real medido por el GPS. Como el odómetro
+se deja tramos (huecos de señal, puntos descartados), "andado + restante"
+quedaba por debajo de lo que faltaba al salir (p. ej. 100,2 km). Ahora el
+restante del mojón es el mayor de "plan restante de la ruta" y "total desde la
+salida − andado": mientras el odómetro se quede corto, la suma da siempre el
+total de salida; si hay un rodeo y la suma lo supera, manda el restante real.
+En la llegada (plan restante < 50 m) no se arrastra nada. Solo cambia
+`kmRestantes` en `calcularProgreso`; el modo libre, el porcentaje y el ritmo
+medio no cambian.
+
+---
+
 ## 2026-10-02 — Logo con el monigote del reto y frase de la portada editable
 
 **Tipo:** Mejora
