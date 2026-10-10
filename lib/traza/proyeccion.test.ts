@@ -653,3 +653,18 @@ describe("calcularProgreso — km restantes cuadrados con lo andado", () => {
     expect(r.kmRestantes).toBeCloseTo(0, 1);
   });
 });
+
+describe("calcularProgreso — total de salida fijado a mano", () => {
+  it("con total fijo, andado + restante da ese total aunque el derivado de la traza sea menor", () => {
+    // Sale del km 50 (derivado: 50 km); se fija 52 como cifra del mojón de salida.
+    const historico = [
+      posicion({ lat: 0.45049, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+      posicion({ lat: 0.54, lon: 0, acc: 500, ts: "2026-07-30T12:00:00Z" }),
+      posicion({ lat: 0.67574, lon: 0, ts: "2026-07-30T16:00:00Z" }),
+    ];
+
+    const r = calcularProgreso(historico, TRAZA_5P, 52);
+
+    expect(r.odometroKm + r.kmRestantes).toBeCloseTo(52, 0);
+  });
+});

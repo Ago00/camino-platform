@@ -33,6 +33,7 @@ import { getSupabasePublic } from "@/lib/supabase/public";
 import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
+import { totalSalidaFijoKm } from "@/lib/traza/total-salida-fijo";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
@@ -114,7 +115,7 @@ export async function calcularProgresoActual(
   }
 
   const traza = cargarTrazaDeCalculo(reto.ruta_id);
-  const progreso = calcularProgreso(historico, traza);
+  const progreso = calcularProgreso(historico, traza, totalSalidaFijoKm(reto.id));
 
   return aProgresoPublico(progreso);
 }

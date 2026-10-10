@@ -28,6 +28,7 @@ import { CACHE_TTL_MS, guardarCacheProgreso, obtenerCacheProgreso } from "@/lib/
 import { guardarCacheHistorico, obtenerCacheHistorico } from "@/lib/historico-cache";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
+import { totalSalidaFijoKm } from "@/lib/traza/total-salida-fijo";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
 import type { Textos } from "@/lib/textos/obtener-textos";
@@ -534,7 +535,7 @@ async function calcularProgresoDelIntento(
 
   const historico = await obtenerHistoricoPosicionesCacheado(retoId, intentoId);
   const traza = cargarTrazaDeCalculo(rutaId);
-  const progreso = aProgresoPublico(calcularProgreso(historico, traza));
+  const progreso = aProgresoPublico(calcularProgreso(historico, traza, totalSalidaFijoKm(retoId)));
 
   guardarCacheProgreso(retoId, progreso);
 

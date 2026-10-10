@@ -25,6 +25,7 @@ import { obtenerHistoricoCompleto } from "@/lib/traza/progreso-actual";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { cargarTrazaDeMapa } from "@/lib/traza/cargar-traza-mapa";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
+import { totalSalidaFijoKm } from "@/lib/traza/total-salida-fijo";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
 import type { ModoIntento, Reto } from "@/lib/types";
@@ -98,7 +99,7 @@ export async function obtenerDatosMapaAdmin(
   }
 
   const traza = cargarTrazaDeCalculo(reto.ruta_id);
-  const progreso = calcularProgreso(historico, traza);
+  const progreso = calcularProgreso(historico, traza, totalSalidaFijoKm(reto.id));
 
   return {
     modo: "guiado",

@@ -16,6 +16,10 @@ En la llegada (plan restante < 50 m) no se arrastra nada. Solo cambia
 `kmRestantes` en `calcularProgreso`; el modo libre, el porcentaje y el ritmo
 medio no cambian.
 
+Para Saco-walkers el total de salida se fija a mano en 100,220 km (el que marcaba
+el mojón de la salida; derivado del primer punto GPS salía 98,8), en
+`lib/traza/total-salida-fijo.ts`.
+
 ---
 
 ## 2026-10-02 — Logo con el monigote del reto y frase de la portada editable

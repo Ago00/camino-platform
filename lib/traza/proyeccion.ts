@@ -144,10 +144,14 @@ const LLEGADA_PLAN_RESTANTE_KM = 0.05;
  *
  * @param historico Lista de posiciones ordenadas por ts ascendente.
  * @param traza TrazaPreparada obtenida de prepararTraza().
+ * @param totalDesdeSalidaFijoKm Si se indica, sustituye al total derivado de la
+ *   traza (longitud − km del primer punto) en el cuadre de `kmRestantes`; ver
+ *   `total-salida-fijo.ts`.
  */
 export function calcularProgreso(
   historico: Posicion[],
-  traza: TrazaPreparada
+  traza: TrazaPreparada,
+  totalDesdeSalidaFijoKm?: number
 ): Progreso {
   const validas = historico.filter((p) => !p.descartado);
 
@@ -285,7 +289,7 @@ export function calcularProgreso(
   // faltaba al salir menos lo andado (la suma da siempre ese total); cuando un
   // rodeo hace que la suma lo supere, manda el restante real de la ruta. En la
   // llegada (plan agotado) no se arrastra nada.
-  const totalDesdeSalidaKm = traza.longitudTotalKm - kmPrimerPunto;
+  const totalDesdeSalidaKm = totalDesdeSalidaFijoKm ?? traza.longitudTotalKm - kmPrimerPunto;
   const kmRestantes =
     planRestanteKm <= LLEGADA_PLAN_RESTANTE_KM
       ? planRestanteKm
