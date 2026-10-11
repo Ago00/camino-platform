@@ -7,6 +7,7 @@
 // publicado.
 
 import LogoMojon from "@/components/publico/LogoMojon";
+import { partirLema } from "@/lib/textos/lema";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
 
@@ -33,7 +34,15 @@ export default function RecuadroLlegada({ kicker, titulo, mensaje }: RecuadroLle
           {titulo}
         </h2>
         <p className="mx-auto mt-4 max-w-xs text-[14px] leading-relaxed" style={{ color: "#3C433E" }}>
-          {mensaje}
+          {partirLema(mensaje).map((trozo, i) =>
+            trozo.enfasis ? (
+              <strong key={i} style={{ color: "#2F5D50", fontWeight: 700 }}>
+                {trozo.texto}
+              </strong>
+            ) : (
+              <span key={i}>{trozo.texto}</span>
+            )
+          )}
         </p>
       </div>
     </div>

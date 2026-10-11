@@ -4,7 +4,6 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { soloIntentoActivoDelReto } from "@/lib/supabase/intentos";
-import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import ActividadAcciones from "@/components/admin/ActividadAcciones";
 import CrearPrimerIntentoBoton from "@/components/admin/CrearPrimerIntentoBoton";
@@ -92,7 +91,7 @@ export default async function SeccionActividad({ reto, slug }: { reto: Reto; slu
 
       <ActividadAcciones
         fase={intentoActivo.fase}
-        mensajeLlegadaDefault={intentoActivo.mensaje_llegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
+        mensajeLlegadaDefault={intentoActivo.mensaje_llegada ?? textos.mensaje_llegada_default}
         fotoLlegadaUrlActual={intentoActivo.foto_llegada_url}
         llegadaKicker={textos.llegada_kicker}
         llegadaTitulo={textos.llegada_titulo}

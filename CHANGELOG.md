@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-10-11 — El mensaje de llegada usa el texto configurado del reto
+
+**Tipo:** Corrección
+
+El mensaje de llegada (clave `mensaje_llegada_default` de la pestaña Textos) se
+ignoraba: el modal "Finalizar" del admin y la web usaban el texto por defecto del
+código, así que el mensaje publicado no era el configurado. Ahora ambos usan el
+texto del reto. Además, el mensaje de llegada admite `*asteriscos*` para destacar
+una palabra, igual que la frase de portada.
+
+---
+
 ## 2026-10-10 — Los km restantes cuadran con lo andado (modo guiado)
 
 **Tipo:** Corrección

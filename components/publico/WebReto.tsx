@@ -32,7 +32,6 @@ import { totalSalidaFijoKm } from "@/lib/traza/total-salida-fijo";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
 import type { Textos } from "@/lib/textos/obtener-textos";
-import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { calcularRitmoMedioIntento } from "@/lib/ritmo";
 import { fotoQuienCaminaDelReto, monigoteDelReto, type ConfigReto } from "@/lib/retos/config";
 import { huellaContenidoPublico } from "@/lib/retos/huella-publica";
@@ -218,7 +217,7 @@ function FaseConDatosEjemplo({
   config: ConfigReto;
 }) {
   const entradas = config.seccion_minuto_a_minuto ? datos.entradasMinutoAMinuto : SIN_ENTRADAS;
-  const mensajeLlegada = datos.mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default;
+  const mensajeLlegada = datos.mensajeLlegada ?? textos.mensaje_llegada_default;
 
   if (datos.modo === "guiado") {
     return fase === "durante" ? (
@@ -345,7 +344,7 @@ async function ModoLlegadaConectado({
   return (
     <ModoLlegada
       progreso={progreso}
-      mensajeLlegada={mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
+      mensajeLlegada={mensajeLlegada ?? textos.mensaje_llegada_default}
       tiempoTotal={tiempoTotal}
       puntosGps={puntosGps}
       ritmoMedio={ritmoMedio}
@@ -428,7 +427,7 @@ async function ModoLlegadaLibreConectado({
   return (
     <ModoLlegadaLibre
       progreso={progreso}
-      mensajeLlegada={mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
+      mensajeLlegada={mensajeLlegada ?? textos.mensaje_llegada_default}
       puntosGps={puntosGps}
       entradasMinutoAMinuto={entradasMinutoAMinuto}
       startedAt={startedAt}
