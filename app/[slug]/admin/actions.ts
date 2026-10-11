@@ -210,14 +210,15 @@ export async function iniciarReto(slug: string, params: IniciarRetoParams): Prom
   revalidarAdmin(slug);
 }
 
-/**
- * durante → llegada, sobre el intento activo del reto, con el mensaje de
- * llegada editado y, opcional, la foto de llegada (DT-024).
- */
-export async function finalizarReto(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
-  const reto = await resolverRetoConSesion(slug);
-  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+type CambiosDeLlegada = { mensaje_llegada: string; foto_llegada_url?: string | null };
 
+/**
+ * Mensaje de llegada y foto (subir, quitar o dejar) del formulario de
+ * "Finalizar" / "Editar llegada" (DT-024). Devuelve el fallo como valor.
+ */
+async function leerCambiosDeLlegada(
+  formData: FormData
+): Promise<{ ok: true; cambios: CambiosDeLlegada } | { ok: false; mensaje: string }> {
   const mensajeLimpio = String(formData.get("mensaje") ?? "").trim();
   if (mensajeLimpio.length === 0) {
     return { ok: false, mensaje: "El mensaje de llegada no puede estar vacío." };
@@ -226,16 +227,7 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
     return { ok: false, mensaje: "El mensaje de llegada no puede superar 1000 caracteres." };
   }
 
-  const cambios: {
-    fase: "llegada";
-    ended_at: string;
-    mensaje_llegada: string;
-    foto_llegada_url?: string | null;
-  } = {
-    fase: "llegada",
-    ended_at: new Date().toISOString(),
-    mensaje_llegada: mensajeLimpio,
-  };
+  const cambios: CambiosDeLlegada = { mensaje_llegada: mensajeLimpio };
 
   const foto = formData.get("foto");
   const quitarFoto = formData.get("quitarFoto") === "true";
@@ -254,6 +246,20 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
     cambios.foto_llegada_url = null;
   }
 
+  return { ok: true, cambios };
+}
+
+/**
+ * durante → llegada, sobre el intento activo del reto, con el mensaje de
+ * llegada editado y, opcional, la foto de llegada (DT-024).
+ */
+export async function finalizarReto(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+
+  const leidos = await leerCambiosDeLlegada(formData);
+  if (!leidos.ok) return leidos;
+
   const supabase = getSupabaseAdmin();
   const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
     supabase.from("intentos").select("id, fase"),
@@ -264,9 +270,41 @@ export async function finalizarReto(slug: string, formData: FormData): Promise<R
     return { ok: false, mensaje: "No hay ningún intento en fase 'durante' que finalizar." };
   }
 
-  const { error } = await supabase.from("intentos").update(cambios).eq("id", intentoActivo.id);
+  const { error } = await supabase
+    .from("intentos")
+    .update({ fase: "llegada", ended_at: new Date().toISOString(), ...leidos.cambios })
+    .eq("id", intentoActivo.id);
 
   if (error) return { ok: false, mensaje: "No se pudo finalizar el reto." };
+  limpiarCacheProgreso(reto.id);
+  revalidarAdmin(slug);
+  return { ok: true };
+}
+
+/**
+ * Cambia el mensaje y la foto de la llegada con el intento YA en llegada,
+ * sin tocar la fase ni la hora de llegada (así no se mueve el tiempo total).
+ */
+export async function editarLlegada(slug: string, formData: FormData): Promise<ResultadoPublicacion> {
+  const reto = await resolverRetoConSesion(slug);
+  if (!reto) return { ok: false, mensaje: MENSAJE_SESION_CADUCADA };
+
+  const leidos = await leerCambiosDeLlegada(formData);
+  if (!leidos.ok) return leidos;
+
+  const supabase = getSupabaseAdmin();
+  const { data: intentoActivo, error: errorBusqueda } = await soloIntentoActivoDelReto(
+    supabase.from("intentos").select("id, fase"),
+    reto.id
+  ).maybeSingle();
+
+  if (errorBusqueda || !intentoActivo || intentoActivo.fase !== "llegada") {
+    return { ok: false, mensaje: "No hay ningún intento en fase 'llegada' que editar." };
+  }
+
+  const { error } = await supabase.from("intentos").update(leidos.cambios).eq("id", intentoActivo.id);
+
+  if (error) return { ok: false, mensaje: "No se pudo guardar la llegada." };
   limpiarCacheProgreso(reto.id);
   revalidarAdmin(slug);
   return { ok: true };

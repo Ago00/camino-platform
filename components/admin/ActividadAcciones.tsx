@@ -7,8 +7,9 @@
 // - durante → Finalizar (abre ModalFinalizar.tsx, DT-024: mensaje + foto
 //             opcional + preview real) + Reiniciar (confirmación; aborta el
 //             intento en marcha)
-// - llegada → Retomar (SIN confirmación: reversible con otro Finalizar,
-//             mismo intento) + Reiniciar (confirmación: cierra de verdad)
+// - llegada → Editar llegada (mensaje y foto, sin tocar la hora) + Retomar (SIN
+//             confirmación: reversible con otro Finalizar, mismo intento) +
+//             Reiniciar (confirmación: cierra de verdad)
 
 "use client";
 
@@ -57,7 +58,15 @@ export default function ActividadAcciones({
     );
   }
 
-  return <RetomarYReiniciar slug={slug} />;
+  return (
+    <EditarRetomarYReiniciar
+      mensajeLlegadaDefault={mensajeLlegadaDefault}
+      fotoLlegadaUrlActual={fotoLlegadaUrlActual}
+      llegadaKicker={llegadaKicker}
+      llegadaTitulo={llegadaTitulo}
+      slug={slug}
+    />
+  );
 }
 
 function IniciarConModo({
@@ -249,18 +258,53 @@ function FinalizarYReiniciar({
   );
 }
 
-function RetomarYReiniciar({ slug }: { slug: string }) {
+function EditarRetomarYReiniciar({
+  mensajeLlegadaDefault,
+  fotoLlegadaUrlActual,
+  llegadaKicker,
+  llegadaTitulo,
+  slug,
+}: {
+  mensajeLlegadaDefault: string;
+  fotoLlegadaUrlActual: string | null;
+  llegadaKicker: string;
+  llegadaTitulo: string;
+  slug: string;
+}) {
+  const [modalAbierto, setModalAbierto] = useState(false);
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {/* Retomar: reversible con otro Finalizar, sin confirmación (ver CURRENT.md). */}
-      <BotonConfirmable etiqueta="Retomar" etiquetaPendiente="Retomando…" accion={retomarReto.bind(null, slug)} />
-      <BotonConfirmable
-        etiqueta="Reiniciar"
-        etiquetaPendiente="Reiniciando…"
-        mensajeConfirmacion="¿Reiniciar? Se cerrará este intento (queda guardado para siempre) y se abrirá uno nuevo desde cero."
-        accion={reiniciarReto.bind(null, slug)}
-        variante="peligro"
-      />
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setModalAbierto(true)}
+          className="rounded-full px-4 py-2 text-[13px] font-medium text-white"
+          style={{ background: C.eucalipto }}
+        >
+          Editar llegada
+        </button>
+        {/* Retomar: reversible con otro Finalizar, sin confirmación (ver CURRENT.md). */}
+        <BotonConfirmable etiqueta="Retomar" etiquetaPendiente="Retomando…" accion={retomarReto.bind(null, slug)} />
+        <BotonConfirmable
+          etiqueta="Reiniciar"
+          etiquetaPendiente="Reiniciando…"
+          mensajeConfirmacion="¿Reiniciar? Se cerrará este intento (queda guardado para siempre) y se abrirá uno nuevo desde cero."
+          accion={reiniciarReto.bind(null, slug)}
+          variante="peligro"
+        />
+      </div>
+
+      {modalAbierto && (
+        <ModalFinalizar
+          modo="editar"
+          mensajeLlegadaDefault={mensajeLlegadaDefault}
+          fotoLlegadaUrlActual={fotoLlegadaUrlActual}
+          kicker={llegadaKicker}
+          titulo={llegadaTitulo}
+          onClose={() => setModalAbierto(false)}
+          slug={slug}
+        />
+      )}
     </div>
   );
 }

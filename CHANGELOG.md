@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-10-11 — Editar la llegada (mensaje y foto) sin retomar
+
+**Tipo:** Mejora
+
+Con el reto en fase "llegada" hay un botón nuevo, **Editar llegada**, junto a
+Retomar y Reiniciar en la pestaña Actividad. Abre el mismo modal que Finalizar
+(mensaje, foto y vista previa real) y guarda solo el mensaje y la foto del
+intento, sin tocar la fase ni la hora de llegada, así que el tiempo total y el
+ritmo medio no cambian. Acción nueva `editarLlegada`; `finalizarReto` comparte
+con ella la lectura del formulario.
+
+---
+
 ## 2026-10-11 — El mensaje de llegada usa el texto configurado del reto
 
 **Tipo:** Corrección

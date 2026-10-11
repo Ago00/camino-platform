@@ -17,7 +17,7 @@
 "use client";
 
 import { useRef, useState, useTransition, type FormEvent } from "react";
-import { finalizarReto } from "@/app/[slug]/admin/actions";
+import { editarLlegada, finalizarReto } from "@/app/[slug]/admin/actions";
 import { prepararFotoParaSubida } from "@/lib/imagen/preparar-foto";
 import { ejecutarConReintentos } from "@/lib/envio/reintentar";
 import { describirFalloDeEnvio, esControlDeFlujoDeNext } from "@/lib/envio/errores-de-envio";
@@ -55,6 +55,8 @@ interface ModalFinalizarProps {
   titulo: string;
   onClose: () => void;
   slug: string;
+  /** "editar": el intento ya está en llegada; solo cambian mensaje y foto. */
+  modo?: "finalizar" | "editar";
 }
 
 export default function ModalFinalizar({
@@ -64,7 +66,9 @@ export default function ModalFinalizar({
   titulo,
   onClose,
   slug,
+  modo = "finalizar",
 }: ModalFinalizarProps) {
+  const editando = modo === "editar";
   const inputFotoRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | null>(null);
   const [mensaje, setMensaje] = useState(mensajeLlegadaDefault);
@@ -118,7 +122,7 @@ export default function ModalFinalizar({
 
         setEstado({ fase: "publicando" });
         const resultado = await avisarSiTarda(
-          ejecutarConReintentos(() => finalizarReto(slug, formData), {
+          ejecutarConReintentos(() => (editando ? editarLlegada(slug, formData) : finalizarReto(slug, formData)), {
             alReintentar: (intento) => setEstado({ fase: "reintentando", intento }),
           }),
           UMBRAL_AVISO_ENVIO_LENTO_MS,
@@ -147,19 +151,19 @@ export default function ModalFinalizar({
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Finalizar el reto"
+      aria-label={editando ? "Editar la llegada" : "Finalizar el reto"}
     >
       <div
         className="max-h-[92dvh] w-full max-w-[460px] overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl"
         style={{ color: C.ink }}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold">Finalizar el reto</h2>
+          <h2 className="text-[16px] font-semibold">{editando ? "Editar la llegada" : "Finalizar el reto"}</h2>
           <button
             type="button"
             onClick={onClose}
             disabled={pendiente}
-            aria-label="Cerrar sin finalizar"
+            aria-label={editando ? "Cerrar sin guardar" : "Cerrar sin finalizar"}
             className="text-[20px] leading-none disabled:opacity-40"
             style={{ color: C.muted }}
           >
@@ -270,7 +274,7 @@ export default function ModalFinalizar({
               className="rounded-full px-5 py-2 text-[13px] font-semibold text-white disabled:opacity-40"
               style={{ background: C.verde }}
             >
-              {etiquetaDelBoton(estado, pendiente)}
+              {etiquetaDelBoton(estado, pendiente, editando)}
             </button>
           </div>
         </form>
@@ -279,9 +283,9 @@ export default function ModalFinalizar({
   );
 }
 
-function etiquetaDelBoton(estado: EstadoEnvio, pendiente: boolean): string {
-  if (!pendiente) return "Finalizar";
+function etiquetaDelBoton(estado: EstadoEnvio, pendiente: boolean, editando: boolean): string {
+  if (!pendiente) return editando ? "Guardar" : "Finalizar";
   if (estado.fase === "preparando-foto") return "Preparando foto…";
   if (estado.fase === "reintentando") return "Reintentando…";
-  return "Finalizando…";
+  return editando ? "Guardando…" : "Finalizando…";
 }
